@@ -1,0 +1,715 @@
+services:
+# ===== Greenplum =====
+  greenplum-db:
+    image: polyakovrbc/greenplum-db-6
+    hostname: greenplum
+    container_name: greenplum
+    networks:
+      - shared-network
+    ports:
+      - "25432:5432"
+    volumes:
+      - /data/greenplum/master:/data/master
+      - /data/greenplum/primary:/data/primary
+      - /data/greenplum/backups:/data/backups
+      - ./init-scripts:/opt/init-scripts:ro
+      - ./03-load-csv-gl.sh:/opt/init-scripts/03-load-csv-gl.sh:ro
+    restart: unless-stopped
+    entrypoint: /bin/bash
+    command:
+      - -lc
+      - |
+        set -e
+        echo "---------------------INIT DB-----------------------"
+        service ssh start
+        chown -R gpadmin:gpadmin /data
+        su - gpadmin -c "source /opt/greenplum-db-6.19.1/greenplum_path.sh; /home/gpadmin/init.sh"
+        echo "Waiting for Greenplum on 5432..."
+        until su - gpadmin -c "psql -h 127.0.0.1 -p 5432 -d postgres -c 'select 1' >/dev/null 2>&1"; do
+          sleep 2
+        done
+        echo "Greenplum is up."
+        if [ -d /opt/init-scripts ]; then
+          echo "Running init scripts from /opt/init-scripts ..."
+          for f in /opt/init-scripts/*.sql; do
+            [ -e "$f" ] || continue
+            echo "Executing SQL: $f"
+            su - gpadmin -c "psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -d postgres -f '$f'"
+          done
+          for f in /opt/init-scripts/*.sh; do
+            [ -e "$f" ] || continue
+            echo "Executing SH: $f"
+            bash "$f"
+          done
+        fi
+        echo "Init complete. Keeping container alive..."
+        tail -f /dev/null
+
+  # ===== DBeaver CloudBeaver =====
+  dbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: cloudbeaver
+    depends_on:
+      - greenplum-db
+    networks:
+      - shared-network
+    #ports:
+    #  - "8978:8978"
+    volumes:
+      - cloudbeaver-data:/opt/cloudbeaver/workspace
+    restart: unless-stopped
+
+  # ===== ClickHouse =====
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse_container
+    networks:
+      shared-network:
+        aliases:
+          - clickhouse-server
+    ports:
+      - "10123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=CL4ICLIsdf4HOUOUSE
+    restart: unless-stopped
+    
+  postgres:
+    container_name: datalens-postgres
+    image: ghcr.io/datalens-tech/datalens-postgres:16
+    pull_policy: ${IMAGE_PULL_POLICY:-always}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB_US:-pg-us-db}", "-U", "${POSTGRES_USER:-pg-user}"]
+      interval: 10s
+      retries: 6
+      timeout: 5s
+      start_period: 3s
+    environment:
+      HC: ${HC:-0}
+      CONTROL_API_CRYPTO_KEY: "${CONTROL_API_CRYPTO_KEY:-ZGF0YWxlbnN1bnNlY3VyZWZlcm5ldGNyeXB0b2tleQo=}"
+      US_ENDPOINT: ${US_ENDPOINT:-http://us:8080}
+      #
+      POSTGRES_HOST: ${POSTGRES_HOST:-localhost}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      #
+      POSTGRES_USER: ${POSTGRES_USER:-pg-user}
+      #
+      POSTGRES_DB_COMPENG: ${POSTGRES_DB_COMPENG:-pg-compeng-db}
+      POSTGRES_DB_AUTH: ${POSTGRES_DB_AUTH:-pg-auth-db}
+      POSTGRES_DB_US: ${POSTGRES_DB_US:-pg-us-db}
+      POSTGRES_DB_DEMO: ${POSTGRES_DB_DEMO:-pg-demo-db}
+      POSTGRES_DB_META_MANAGER: ${POSTGRES_DB_META_MANAGER:-pg-meta-manager-db}
+      POSTGRES_DB_TEMPORAL: ${POSTGRES_DB_TEMPORAL:-pg-temporal-db}
+      POSTGRES_DB_TEMPORAL_VISIBILITY: ${POSTGRES_DB_TEMPORAL_VISIBILITY:-pg-temporal-visibility-db}
+      #
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      #
+      INIT_DEMO_DATA: ${INIT_DEMO_DATA:-1}
+      INIT_DB_DEMO: ${INIT_DB_DEMO:-1}
+      #
+      INIT_DB_AUTH: ${INIT_DB_AUTH:-1}
+      INIT_DB_META_MANAGER: ${INIT_DB_META_MANAGER:-1}
+      INIT_DB_TEMPORAL: ${INIT_DB_TEMPORAL:-1}
+      #
+      INIT_EXTERNAL_POSTGRES: ${INIT_EXTERNAL_POSTGRES:-0}
+    volumes:
+      - db-postgres:/var/lib/postgresql/data
+    networks:
+      - shared-network
+  #
+  temporal:
+    container_name: datalens-temporal
+    image: ghcr.io/datalens-tech/datalens-temporal:1.27.2
+    pull_policy: ${IMAGE_PULL_POLICY:-always}
+    healthcheck:
+      test: ["CMD", "/etc/temporal/healthcheck.sh"]
+      interval: 10s
+      retries: 6
+      timeout: 5s
+      start_period: 3s
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:-pg-user}
+      POSTGRES_DB: ${POSTGRES_DB_TEMPORAL:-pg-temporal-db}
+      POSTGRES_DB_VISIBILITY: ${POSTGRES_DB_TEMPORAL_VISIBILITY:-pg-temporal-visibility-db}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      #
+      POSTGRES_TLS_ENABLED: ${POSTGRES_TLS_ENABLED:-false}
+      POSTGRES_TLS_DISABLE_HOST_VERIFICATION: ${POSTGRES_TLS_DISABLE_HOST_VERIFICATION:-true}
+      POSTGRES_TLS_CA_FILE: ${POSTGRES_TLS_CA_FILE:-}
+      #
+      TEMPORAL_AUTH_ENABLED: ${TEMPORAL_AUTH_ENABLED:-true}
+      TEMPORAL_AUTH_PUBLIC_KEY: ${TEMPORAL_AUTH_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqHLHK4aK5RGhTqbk5SYU\neNtJDdP2wNR7e45Q+fKAdnR51rxCXIJdg11d4UkkkzwmwblFEzCQt0dFHrnsHNso\n3YU3bM4xPsxKRdJ4L4+nH7fcj4lHKpl1PosNBi/py7dtJLGOFktEhZ4YvtB9Fqq6\no/kF0hPhuTm1mzyoYAN4Aisch3ZYw8WjPFYZPUqLqi+OEUyuYU8j36I7uxybpw55\npSvnCHCtxuxSuX1er14fCplX8yiknc2ePY7dOwTM9iS1aMcWoobQOuyda3Vp2opz\nnassgcnXkgAj+1e1vosDahc98nXbExyMRDzJglLUmF+wb1/jaNClK48bX+CihRxO\nKQIDAQAB\n-----END PUBLIC KEY-----}
+      TEMPORAL_AUTH_PRIVATE_KEY: ${TEMPORAL_AUTH_PRIVATE_KEY:------BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAqHLHK4aK5RGhTqbk5SYUeNtJDdP2wNR7e45Q+fKAdnR51rxC\nXIJdg11d4UkkkzwmwblFEzCQt0dFHrnsHNso3YU3bM4xPsxKRdJ4L4+nH7fcj4lH\nKpl1PosNBi/py7dtJLGOFktEhZ4YvtB9Fqq6o/kF0hPhuTm1mzyoYAN4Aisch3ZY\nw8WjPFYZPUqLqi+OEUyuYU8j36I7uxybpw55pSvnCHCtxuxSuX1er14fCplX8yik\nnc2ePY7dOwTM9iS1aMcWoobQOuyda3Vp2opznassgcnXkgAj+1e1vosDahc98nXb\nExyMRDzJglLUmF+wb1/jaNClK48bX+CihRxOKQIDAQABAoIBADk06cE1axxKdX7R\nnTDZUuCMkG3ay5VHVDxs48FPAyO3gN1ViDAEsh936PcmsP4z0nG+KuBOgQdNdALw\nX2iZYXKB2IXiLMVH+f1mchys67QQ7B3vIDUucqvv61drlDn0LGPmzPtzSm0aeQrs\noV6+Uq53Vuu2htUx7SQwYHpjEzGgx03WDwwPze7rf/jsVZAILpW3z2Na/514rOtO\n7Kd5c4U+3YDcfQuQyp4PTW4h6VQm/TBalvR26bYKdcdB5UR0s1tply0zUxPmA/Rm\nseJpKhfnUipKvQMPdaEvEGVJO3GeHiCc2ssULWXDPc/cpg4V66w3zP939NRsWaG9\n47H6fJECgYEA2qvCkj30yl7LbjgW1O/eYUH9BXQrialYLGx8sO275cocV+dGfDLg\na2PHzYUWDhEXYM/sBCR19p/agcG9TPDkHTSheuNoDxIz8Q8BuCB9C5FA51flL6vd\neyKcdnq0KlL0qSGMAD3twuGDh2p54dWcUM3lUPhcq6FCfnsE5TZY6t0CgYEAxTQ3\nq5VqCtVQEQy4hZNW+fjdBKoT9cM4TsZ9IqFrkkt/+JVBLP0G8bYYz+pB6E2GsFPP\n89EdnRecu/qQxfXLQ8oKpBOP4o7tVMTEgQatmbmPuzxycABmiVLf65tfrcxvRKCS\nH9hzHVPyn6BQOZfZeL/id5Q5ioqkayKhLYLdfb0CgYEAgmQfLqMBH9csyPlrK+go\nm6gEn0bpWzn+mObL55irDVfaVNRU5GRWC9NA5h0wzIyGezUgkEvJh5lEa1FCdunB\nrGSg0a1edHYvQNPo+4lr5wTjRc/UmvuJow49bCy41/AFcgDOAarr5uQgURQ9v1tn\nzYso7YJbiAAtrUvf3Gnu1YUCgYAW0U7rtJMbg8kK3/ztv7mdnNT9+CvtENSQENlj\ny2el+sRo3+Q1r2VBTH+cdw9/MJE4D8qM/JI/nf7NpVVhAmqtglAu4fCRF1aQq1/N\nSheGJPljgcAAA5vZodQ077pnYrMxLp8ZvjK7nv4AyEzgDRjlptYuXeE2jYout0gM\n+wpjxQKBgAkaphyQPD0hsv9Q3+CRXzmFX9XL3NEcQtNUv/h5Iq3DgctgGkG0qeJP\ns4qhnarh6IFQZf53j35AUuIp45A6C26xkvS0NoTi/J9Q4xNkgl4aaPQ6h/t9aqIH\nGofbNqb4LSXato4Kxh4BEGCv6X6kbi//xGCQ2JMkZgt1bOmM6r+e\n-----END RSA PRIVATE KEY-----}
+      #
+      NAMESPACES: meta-manager
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: []
+    networks:
+      - shared-network
+  #
+  control-api:
+    container_name: datalens-control-api
+    image: ghcr.io/datalens-tech/datalens-control-api:0.2396.0
+    environment:
+      BI_API_UWSGI_WORKERS_COUNT: 4
+      RQE_FORCE_OFF: 1
+      RQE_SECRET_KEY: ""
+      #
+      DL_CRY_ACTUAL_KEY_ID: KEY
+      DL_CRY_KEY_VAL_ID_KEY: "${CONTROL_API_CRYPTO_KEY:-ZGF0YWxlbnN1bnNlY3VyZWZlcm5ldGNyeXB0b2tleQo=}"
+      #
+      US_HOST: http://us:8080
+      #
+      US_MASTER_TOKEN: ${US_MASTER_TOKEN:-us-master-token}
+      #
+      CONNECTOR_AVAILABILITY_VISIBLE: clickhouse,postgres,chyt,ydb,mysql,greenplum,mssql,oracle,trino,appmetrica_api,metrika_api
+      #
+      AUTH__TYPE: ${AUTH_TYPE:-NATIVE}
+      AUTH__JWT_ALGORITHM: 'PS256'
+      AUTH__JWT_KEY: ${AUTH_TOKEN_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+HICDZMfimMIiGdd0dPr\n2N3zxHOJqiVXuvUj/aBBS7c8760rJUh4344sP/0Gid558yH/v1MtzZ0R9w09v6gb\nSNrSiNwIUNGPhbnm9Jf+kMezsI/rkcIdoVm3KJ8CFUYy6MRPzW7iJmIVRHBb82v1\nmAYCCQFU6IRtFIa9hQ8wedWwxqXZekSNS+6NB37dmmQB9kz2E3MY+KRLigOh4i3p\nCZ1ti3HVvMa9Rlgk9FmoWExzub5ECChqwm+vn8yFXjYW7kUSClcV2xx4nbQWqjrR\nyyLk6W2BNOuCFVvz0j+5XkpLAt7tljtVZc+572HBEKpF2mAdmAip5NzeDhKqucJ+\nZQIDAQAB\n-----END PUBLIC KEY-----}
+    networks:
+      - shared-network
+    depends_on:
+      - clickhouse
+  #
+  data-api:
+    container_name: datalens-data-api
+    image: ghcr.io/datalens-tech/datalens-data-api:0.2396.0
+    environment:
+      GUNICORN_WORKERS_COUNT: 5
+      RQE_FORCE_OFF: 1
+      CACHES_ON: 0
+      MUTATIONS_CACHES_ON: 0
+      RQE_SECRET_KEY: ""
+      #
+      DL_CRY_ACTUAL_KEY_ID: KEY
+      DL_CRY_KEY_VAL_ID_KEY: "${CONTROL_API_CRYPTO_KEY:-ZGF0YWxlbnN1bnNlY3VyZWZlcm5ldGNyeXB0b2tleQo=}"
+      #
+      BI_COMPENG_PG_ON: 1
+      BI_COMPENG_PG_URL: "postgres://${POSTGRES_USER:-pg-user}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB_COMPENG:-pg-compeng-db}${POSTGRES_ARGS:-}"
+      #
+      US_HOST: http://us:8080
+      #
+      US_MASTER_TOKEN: ${US_MASTER_TOKEN:-us-master-token}
+      #
+      AUTH__TYPE: ${AUTH_TYPE:-NATIVE}
+      AUTH__JWT_ALGORITHM: 'PS256'
+      AUTH__JWT_KEY: ${AUTH_TOKEN_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+HICDZMfimMIiGdd0dPr\n2N3zxHOJqiVXuvUj/aBBS7c8760rJUh4344sP/0Gid558yH/v1MtzZ0R9w09v6gb\nSNrSiNwIUNGPhbnm9Jf+kMezsI/rkcIdoVm3KJ8CFUYy6MRPzW7iJmIVRHBb82v1\nmAYCCQFU6IRtFIa9hQ8wedWwxqXZekSNS+6NB37dmmQB9kz2E3MY+KRLigOh4i3p\nCZ1ti3HVvMa9Rlgk9FmoWExzub5ECChqwm+vn8yFXjYW7kUSClcV2xx4nbQWqjrR\nyyLk6W2BNOuCFVvz0j+5XkpLAt7tljtVZc+572HBEKpF2mAdmAip5NzeDhKqucJ+\nZQIDAQAB\n-----END PUBLIC KEY-----}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: []
+    networks:
+      - shared-network
+  #
+  us:
+    container_name: datalens-us
+    image: ghcr.io/datalens-tech/datalens-us:0.413.0
+    environment:
+      APP_INSTALLATION: opensource
+      APP_ENV: prod
+      APP_PORT: 8080
+      #
+      AUTH_ENDPOINT: http://auth:8080
+      #
+      MASTER_TOKEN: ${US_MASTER_TOKEN:-us-master-token}
+      AUTH_MASTER_TOKEN: ${AUTH_MASTER_TOKEN:-auth-master-token}
+      #
+      POSTGRES_DSN_LIST: "postgres://${POSTGRES_USER:-pg-user}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB_US:-pg-us-db}${POSTGRES_ARGS:-}"
+      US_SURPRESS_DB_STATUS_LOGS: 'true'
+      #
+      SKIP_INSTALL_DB_EXTENSIONS: 1
+      USE_DEMO_DATA: 0
+      #
+      HC: ${HC:-0}
+      #
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      AUTH_TOKEN_PUBLIC_KEY: ${AUTH_TOKEN_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+HICDZMfimMIiGdd0dPr\n2N3zxHOJqiVXuvUj/aBBS7c8760rJUh4344sP/0Gid558yH/v1MtzZ0R9w09v6gb\nSNrSiNwIUNGPhbnm9Jf+kMezsI/rkcIdoVm3KJ8CFUYy6MRPzW7iJmIVRHBb82v1\nmAYCCQFU6IRtFIa9hQ8wedWwxqXZekSNS+6NB37dmmQB9kz2E3MY+KRLigOh4i3p\nCZ1ti3HVvMa9Rlgk9FmoWExzub5ECChqwm+vn8yFXjYW7kUSClcV2xx4nbQWqjrR\nyyLk6W2BNOuCFVvz0j+5XkpLAt7tljtVZc+572HBEKpF2mAdmAip5NzeDhKqucJ+\nZQIDAQAB\n-----END PUBLIC KEY-----}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: []
+    networks:
+      - shared-network
+  #
+  ui-api:
+    container_name: datalens-ui-api
+    image: ghcr.io/datalens-tech/datalens-ui:0.3498.0
+    environment:
+      APP_MODE: api
+      APP_ENV: production
+      APP_INSTALLATION: opensource
+      #
+      US_ENDPOINT: http://us:8080
+      BI_API_ENDPOINT: http://control-api:8080
+    depends_on:
+      - us
+    networks:
+      - shared-network
+  #
+  meta-manager:
+    container_name: datalens-meta-manager
+    image: ghcr.io/datalens-tech/datalens-meta-manager:0.50.0
+    environment:
+      APP_INSTALLATION: opensource
+      APP_ENV: prod
+      APP_PORT: 8080
+      #
+      US_MASTER_TOKEN: ${US_MASTER_TOKEN:-us-master-token}
+      EXPORT_DATA_VERIFICATION_KEY: ${EXPORT_DATA_VERIFICATION_KEY:-export-data-verification-key}
+      #
+      POSTGRES_DSN_LIST: "postgres://${POSTGRES_USER:-pg-user}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB_META_MANAGER:-pg-meta-manager-db}${POSTGRES_ARGS:-}"
+      #
+      US_ENDPOINT: http://us:8080
+      UI_API_ENDPOINT: http://ui-api:8080
+      #
+      TEMPORAL_ENDPOINT: temporal:7233
+      TEMPORAL_AUTH_ENABLED: ${TEMPORAL_AUTH_ENABLED:-true}
+      TEMPORAL_AUTH_PRIVATE_KEY: ${TEMPORAL_AUTH_PRIVATE_KEY:------BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAqHLHK4aK5RGhTqbk5SYUeNtJDdP2wNR7e45Q+fKAdnR51rxC\nXIJdg11d4UkkkzwmwblFEzCQt0dFHrnsHNso3YU3bM4xPsxKRdJ4L4+nH7fcj4lH\nKpl1PosNBi/py7dtJLGOFktEhZ4YvtB9Fqq6o/kF0hPhuTm1mzyoYAN4Aisch3ZY\nw8WjPFYZPUqLqi+OEUyuYU8j36I7uxybpw55pSvnCHCtxuxSuX1er14fCplX8yik\nnc2ePY7dOwTM9iS1aMcWoobQOuyda3Vp2opznassgcnXkgAj+1e1vosDahc98nXb\nExyMRDzJglLUmF+wb1/jaNClK48bX+CihRxOKQIDAQABAoIBADk06cE1axxKdX7R\nnTDZUuCMkG3ay5VHVDxs48FPAyO3gN1ViDAEsh936PcmsP4z0nG+KuBOgQdNdALw\nX2iZYXKB2IXiLMVH+f1mchys67QQ7B3vIDUucqvv61drlDn0LGPmzPtzSm0aeQrs\noV6+Uq53Vuu2htUx7SQwYHpjEzGgx03WDwwPze7rf/jsVZAILpW3z2Na/514rOtO\n7Kd5c4U+3YDcfQuQyp4PTW4h6VQm/TBalvR26bYKdcdB5UR0s1tply0zUxPmA/Rm\nseJpKhfnUipKvQMPdaEvEGVJO3GeHiCc2ssULWXDPc/cpg4V66w3zP939NRsWaG9\n47H6fJECgYEA2qvCkj30yl7LbjgW1O/eYUH9BXQrialYLGx8sO275cocV+dGfDLg\na2PHzYUWDhEXYM/sBCR19p/agcG9TPDkHTSheuNoDxIz8Q8BuCB9C5FA51flL6vd\neyKcdnq0KlL0qSGMAD3twuGDh2p54dWcUM3lUPhcq6FCfnsE5TZY6t0CgYEAxTQ3\nq5VqCtVQEQy4hZNW+fjdBKoT9cM4TsZ9IqFrkkt/+JVBLP0G8bYYz+pB6E2GsFPP\n89EdnRecu/qQxfXLQ8oKpBOP4o7tVMTEgQatmbmPuzxycABmiVLf65tfrcxvRKCS\nH9hzHVPyn6BQOZfZeL/id5Q5ioqkayKhLYLdfb0CgYEAgmQfLqMBH9csyPlrK+go\nm6gEn0bpWzn+mObL55irDVfaVNRU5GRWC9NA5h0wzIyGezUgkEvJh5lEa1FCdunB\nrGSg0a1edHYvQNPo+4lr5wTjRc/UmvuJow49bCy41/AFcgDOAarr5uQgURQ9v1tn\nzYso7YJbiAAtrUvf3Gnu1YUCgYAW0U7rtJMbg8kK3/ztv7mdnNT9+CvtENSQENlj\ny2el+sRo3+Q1r2VBTH+cdw9/MJE4D8qM/JI/nf7NpVVhAmqtglAu4fCRF1aQq1/N\nSheGJPljgcAAA5vZodQ077pnYrMxLp8ZvjK7nv4AyEzgDRjlptYuXeE2jYout0gM\n+wpjxQKBgAkaphyQPD0hsv9Q3+CRXzmFX9XL3NEcQtNUv/h5Iq3DgctgGkG0qeJP\ns4qhnarh6IFQZf53j35AUuIp45A6C26xkvS0NoTi/J9Q4xNkgl4aaPQ6h/t9aqIH\nGofbNqb4LSXato4Kxh4BEGCv6X6kbi//xGCQ2JMkZgt1bOmM6r+e\n-----END RSA PRIVATE KEY-----}
+      #
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      AUTH_TOKEN_PUBLIC_KEY: ${AUTH_TOKEN_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+HICDZMfimMIiGdd0dPr\n2N3zxHOJqiVXuvUj/aBBS7c8760rJUh4344sP/0Gid558yH/v1MtzZ0R9w09v6gb\nSNrSiNwIUNGPhbnm9Jf+kMezsI/rkcIdoVm3KJ8CFUYy6MRPzW7iJmIVRHBb82v1\nmAYCCQFU6IRtFIa9hQ8wedWwxqXZekSNS+6NB37dmmQB9kz2E3MY+KRLigOh4i3p\nCZ1ti3HVvMa9Rlgk9FmoWExzub5ECChqwm+vn8yFXjYW7kUSClcV2xx4nbQWqjrR\nyyLk6W2BNOuCFVvz0j+5XkpLAt7tljtVZc+572HBEKpF2mAdmAip5NzeDhKqucJ+\nZQIDAQAB\n-----END PUBLIC KEY-----}
+    depends_on:
+      temporal:
+        condition: service_healthy
+      ui-api:
+        condition: service_started
+    volumes: []
+    networks:
+      - shared-network
+  #
+  auth:
+    container_name: datalens-auth
+    image: ghcr.io/datalens-tech/datalens-auth:0.24.0
+    environment:
+      APP_INSTALLATION: opensource
+      APP_ENV: prod
+      #
+      MASTER_TOKEN: ${AUTH_MASTER_TOKEN:-auth-master-token}
+      US_MASTER_TOKEN: ${US_MASTER_TOKEN:-us-master-token}
+      #
+      POSTGRES_DSN_LIST: "postgres://${POSTGRES_USER:-pg-user}:${POSTGRES_PASSWORD:-postgres}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB_AUTH:-pg-auth-db}${POSTGRES_ARGS:-}"
+      US_SURPRESS_DB_STATUS_LOGS: 'true'
+      #
+      SKIP_INSTALL_DB_EXTENSIONS: 1
+      #
+      TOKEN_PRIVATE_KEY: ${AUTH_TOKEN_PRIVATE_KEY:------BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQD4cgINkx+KYwiI\nZ13R0+vY3fPEc4mqJVe69SP9oEFLtzzvrSslSHjfjiw//QaJ3nnzIf+/Uy3NnRH3\nDT2/qBtI2tKI3AhQ0Y+Fueb0l/6Qx7Owj+uRwh2hWbconwIVRjLoxE/NbuImYhVE\ncFvza/WYBgIJAVTohG0Uhr2FDzB51bDGpdl6RI1L7o0Hft2aZAH2TPYTcxj4pEuK\nA6HiLekJnW2LcdW8xr1GWCT0WahYTHO5vkQIKGrCb6+fzIVeNhbuRRIKVxXbHHid\ntBaqOtHLIuTpbYE064IVW/PSP7leSksC3u2WO1Vlz7nvYcEQqkXaYB2YCKnk3N4O\nEqq5wn5lAgMBAAECggEAKxtE5ewP/efe9CPTMHPvqOohwIU3bpEaHrMn8nqaubNq\nXD+Ui9x+NHOrk9KoDsXOLPRKNn0NJm7JTi869oUJbuOgweRDgRpLJ62wt+GjZqVv\ntQPToK+oinVRhTfJmb1bWe2t1vwVOwmrnPtNyPeDXkQ0mDFl9Q39CyGxwmN3SrwE\ncwKM9vFXxiH60T2UHok7/BW7Usb+4WJA4ov/bEoYAzkDQUnnRzjJO1RXFWjC8//M\nXjuI0NZsQXK3LV9yukSONInevoc1MnoGHwe9UZ67tDnJigY9rd4fT6B1yiKuzLDv\noiDPdpm3plh/JnPLM16nOm7zJkmsbKG2RwfzUmLNxQKBgQD827lAPp3ePUrmRQQb\nXwqb4zNQZgDUBQc0bU6F1BxWQtx5LTafnjOYmqqhakpZrMDh69T/TwH8kbDutXcR\nMWAO96yZ1IYRqsrorz4i4bCww1wDTpn7Aqz0xPkJqAucrfkUYoELf/Fl4P1dq4bs\n4OkuMLtHefI2qd/3utQOhEnauwKBgQD7iD94k9RHpHL0vb4n4Jb2EC4I/se3J1Ls\n0F37veMCQXOFKuWrka81DsqdRxu/wqZI4fkMnIe7NjGro2FFZg8MA3i4I6v3KRv9\nRyTrLNXspIESjZ2oAkuVT9npRf86whvZa2H3n4bIowJHwak3lF63xq6jnVZlCkQL\nTEhlRMFJXwKBgAmMlrtpYfbho7F8i8Io3bKzat2vbHqVUgdV1XBSaVuMnNzqqzRt\n+g7aUHVWGUa3snUVve6CYlXSfrcVHVEF51XJXrhUgVerdoxBCfyxP0X9qrzpPAFx\nwWxg//KwaPfazhxJ+AuiIlCxpX/jGW5atBOtfXUektojojSt1pJRxqQ/AoGAPcXd\nSKCNjratYLvEmoiGqpGYrK7dn3Zx4CTgH/YnbSNj2n2JgBQ8QjyKuAuBnhuQuO9+\nOYGrt+d8VVm/hsqkwV+M4zQnhIC9FfvF7lfJhd90r3jGEj/WDipZKvf80ZJgQooj\nuiucb2PRKIxAIZ03kcyikR4P3KqjwV6PnQdArOMCgYBwBq8mBNlJwYUuLruQ1RM7\n5LbP1e8C/YZ75N3CLPA14kDoW8qYC6X+KCQQgPXlQGDvTzAxg382NV53704H4ZAh\nPVuwnoZzVs9VgOHduu8nUHHzh8+ukl+fX9dyzq/wjulx8fXcRewTXh9I892EjcJy\nBG41O8RqoSHlssbZaJnugw==\n-----END PRIVATE KEY-----}
+      TOKEN_PUBLIC_KEY: ${AUTH_TOKEN_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+HICDZMfimMIiGdd0dPr\n2N3zxHOJqiVXuvUj/aBBS7c8760rJUh4344sP/0Gid558yH/v1MtzZ0R9w09v6gb\nSNrSiNwIUNGPhbnm9Jf+kMezsI/rkcIdoVm3KJ8CFUYy6MRPzW7iJmIVRHBb82v1\nmAYCCQFU6IRtFIa9hQ8wedWwxqXZekSNS+6NB37dmmQB9kz2E3MY+KRLigOh4i3p\nCZ1ti3HVvMa9Rlgk9FmoWExzub5ECChqwm+vn8yFXjYW7kUSClcV2xx4nbQWqjrR\nyyLk6W2BNOuCFVvz0j+5XkpLAt7tljtVZc+572HBEKpF2mAdmAip5NzeDhKqucJ+\nZQIDAQAB\n-----END PUBLIC KEY-----}
+      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-admin}
+      AUTH_SIGNUP_DISABLED: ${AUTH_SIGNUP_DISABLED:-false}
+      #
+      UI_APP_ENDPOINT: ${UI_APP_ENDPOINT:-}
+      #
+      DISABLE_WILDCARD_COOKIE: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: []
+    networks:
+      - shared-network
+  #
+  ui:
+    container_name: datalens-ui
+    image: ghcr.io/datalens-tech/datalens-ui:0.3498.0
+    environment:
+      APP_MODE: full
+      APP_ENV: production
+      APP_INSTALLATION: opensource
+      #
+      AUTH_POLICY: disabled
+      #
+      US_ENDPOINT: http://us:8080
+      AUTH_ENDPOINT: http://auth:8080
+      BI_API_ENDPOINT: http://control-api:8080
+      BI_DATA_ENDPOINT: http://data-api:8080
+      META_MANAGER_ENDPOINT: http://meta-manager:8080
+      #
+      US_MASTER_TOKEN: ${US_MASTER_TOKEN:-us-master-token}
+      #
+      RELEASE_VERSION: '2.7.0'
+      #
+      HC: ${HC:-0}
+      HC_ENDPOINT: ${HC_ENDPOINT:-}
+      HC_PROTOCOL: ${HC_PROTOCOL:-}
+      HC_MODULES: ${HC_MODULES:-}
+      #
+      YANDEX_MAP_ENABLED: ${YANDEX_MAP_ENABLED:-0}
+      YANDEX_MAP_TOKEN: ${YANDEX_MAP_TOKEN:-}
+      #
+      EXPORT_WORKBOOK_ENABLED: ${EXPORT_WORKBOOK_ENABLED:-true}
+      #
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      AUTH_MASTER_TOKEN: ${AUTH_MASTER_TOKEN:-auth-master-token}
+      AUTH_TOKEN_PUBLIC_KEY: ${AUTH_TOKEN_PUBLIC_KEY:------BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+HICDZMfimMIiGdd0dPr\n2N3zxHOJqiVXuvUj/aBBS7c8760rJUh4344sP/0Gid558yH/v1MtzZ0R9w09v6gb\nSNrSiNwIUNGPhbnm9Jf+kMezsI/rkcIdoVm3KJ8CFUYy6MRPzW7iJmIVRHBb82v1\nmAYCCQFU6IRtFIa9hQ8wedWwxqXZekSNS+6NB37dmmQB9kz2E3MY+KRLigOh4i3p\nCZ1ti3HVvMa9Rlgk9FmoWExzub5ECChqwm+vn8yFXjYW7kUSClcV2xx4nbQWqjrR\nyyLk6W2BNOuCFVvz0j+5XkpLAt7tljtVZc+572HBEKpF2mAdmAip5NzeDhKqucJ+\nZQIDAQAB\n-----END PUBLIC KEY-----}
+      AUTH_SIGNUP_DISABLED: ${AUTH_SIGNUP_DISABLED:-false}
+    depends_on:
+      - us 
+      - clickhouse
+    ports:
+      - ${UI_PORT:-8080}:8080
+    networks:
+      - shared-network
+#
+  # ===== Fast API =====
+  fastapi:
+    build: ./fastapi
+    container_name: fastapi
+    working_dir: /app
+    volumes:
+      - ./fastapi:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    networks:
+      - shared-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource,marcusolsson-treemap-panel,ae3e-plotly-panel
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - shared-network
+      # ===== TradingView Charts App =====
+  charts-app:
+    build: ./charts-app
+    container_name: charts_app
+    depends_on:
+      - greenplum-db
+      - clickhouse
+    networks:
+      - shared-network
+    ports:
+      - "5000:5000"  # Этот порт оставляем открытым только для внутреннего использования
+    volumes:
+      - ./charts-app:/app
+      - /app/node_modules
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+
+  hl-tradingview:
+    build: ./HLTradingViewTest
+    container_name: hl_tradingview_test
+    working_dir: /app
+    volumes:
+      - ./HLTradingViewTest:/app
+    command: sh -c "ls -la /app && npm install && npm start"
+    ports:
+      - "3001:3000"
+      - "8181:8080"
+    networks:
+      - shared-network
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - certbot-certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    networks:
+      - shared-network
+
+  nginx-reverse-proxy:
+    build: ./Nginx
+    container_name: nginx_reverse_proxy
+    depends_on:
+      - charts-app
+      - hl-tradingview
+      - litellm
+    ports:
+      - "5002:5002"
+      - "80:80"
+      - "5443:5443"
+      - "8979:8979"
+      - "8124:8124"
+      - "6089:6089"
+      - "8083:8083"
+      - "11435:11435"
+      - "11436:11436"
+      - "4001:4001"
+      - "4002:4002"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    networks:
+      - shared-network
+    restart: unless-stopped
+
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ██╗      ██╗      ███╗   ███╗    ███████╗███╗   ██╗ ██████╗ ██╗
+  # ██║      ██║      ████╗ ████║    ██╔════╝████╗  ██║██╔════╝ ██║
+  # ██║      ██║      ██╔████╔██║    █████╗  ██╔██╗ ██║██║  ███╗██║
+  # ██║      ██║      ██║╚██╔╝██║    ██╔══╝  ██║╚██╗██║██║   ██║╚═╝
+  # ███████╗ ███████╗ ██║ ╚═╝ ██║    ███████╗██║ ╚████║╚██████╔╝██╗
+  # ╚══════╝ ╚══════╝ ╚═╝     ╚═╝    ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝
+  # LOCAL AI — OLLAMA + OPEN-WEBUI + AUTO-PULL MODELS
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────────────────────────────────────────────
+  # OLLAMA — движок для запуска локальных LLM
+  #
+  # Доступ:
+  #   API:    http://ollama:11434  (внутри docker сети)
+  #   Прямой: http://localhost:11434
+  #
+  # Для NVIDIA GPU: раскомментировать блок `deploy` ниже.
+  # Для CPU-only: оставить как есть (медленнее, но работает).
+  # ─────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    hostname: ollama
+    networks:
+      shared-network:
+        aliases:
+          - ollama
+    ports:
+      - "11434:11434"     # Ollama API — доступен снаружи
+    volumes:
+      - ollama-data:/root/.ollama          # модели хранятся здесь (~20-100GB)
+    environment:
+      - OLLAMA_HOST=0.0.0.0                # слушать на всех интерфейсах
+      - OLLAMA_ORIGINS=*                   # CORS для Open WebUI
+      - OLLAMA_KEEP_ALIVE=24h              # держать модель в памяти 24 часа
+      - OLLAMA_NUM_PARALLEL=2              # параллельные запросы
+      - OLLAMA_MAX_LOADED_MODELS=2         # макс. моделей в RAM одновременно
+    restart: unless-stopped
+
+    # ── РАСКОММЕНТИРОВАТЬ ДЛЯ NVIDIA GPU ──────────────────────────
+    # Требуется: nvidia-container-toolkit установлен на хосте
+    # Установка: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+    #
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all          # все GPU, или count: 1 для одной
+    #           capabilities: [gpu]
+    #
+    # ── ДЛЯ AMD GPU (ROCm) ─────────────────────────────────────────
+    # image: ollama/ollama:rocm
+    # devices:
+    #   - /dev/kfd
+    #   - /dev/dri
+    # group_add:
+    #   - video
+    # ──────────────────────────────────────────────────────────────
+
+  # ─────────────────────────────────────────────────────────────────
+  # OLLAMA MODEL PULLER
+  # Автоматически скачивает выбранные модели при первом запуске.
+  # Запускается один раз, потом завершается (restart: no).
+  #
+  # 🔧 НАСТРОЙТЕ СПИСОК МОДЕЛЕЙ ПОД ВАШЕ ЖЕЛЕЗО:
+  #    Раскомментируйте нужные строки в команде ниже.
+  # ─────────────────────────────────────────────────────────────────
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: ollama_pull
+    depends_on:
+      - ollama
+    networks:
+      - shared-network
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: /bin/bash
+    restart: "no"    # запустить один раз и выйти
+    command:
+      - -c
+      - |
+        echo "═══════════════════════════════════════════════════"
+        echo "  Ollama Model Puller — ожидание запуска сервера..."
+        echo "═══════════════════════════════════════════════════"
+
+        # Ждём пока Ollama полностью запустится
+        until curl -sf http://ollama:11434/api/tags > /dev/null 2>&1; do
+          echo "  Waiting for Ollama API..."
+          sleep 3
+        done
+        echo "  ✅ Ollama API ready!"
+        echo ""
+
+        # ──────────────────────────────────────────────────────────
+        # СПИСОК МОДЕЛЕЙ ДЛЯ СКАЧИВАНИЯ
+        # Раскомментируйте нужные. Каждая модель скачивается один раз
+        # и хранится в volume ollama-data.
+        #
+        # ⚡ БЫСТРЫЙ СТАРТ (минимум RAM):
+        # ──────────────────────────────────────────────────────────
+
+        echo "  [1/4] Скачиваем Qwen2.5 Coder 7B (лучший для JS кода, 4.7GB)..."
+        ollama pull qwen2.5-coder:7b
+        echo "  ✅ qwen2.5-coder:7b готов"
+        echo ""
+
+        echo "  [2/4] Скачиваем DeepSeek-R1 8B (рассуждения + код, 4.9GB)..."
+        ollama pull deepseek-r1:8b
+        echo "  ✅ deepseek-r1:8b готов"
+        echo ""
+
+        echo "  [3/4] Скачиваем Llama 3.1 8B (универсальный, 4.7GB)..."
+        ollama pull llama3.1:8b
+        echo "  ✅ llama3.1:8b готов"
+        echo ""
+
+        echo "  [4/4] Скачиваем Phi-4 14B (Microsoft, мощный, 8.9GB)..."
+        ollama pull phi4
+        echo "  ✅ phi4 готов"
+        echo ""
+
+        # ──────────────────────────────────────────────────────────
+        # МОЩНЫЕ МОДЕЛИ (раскомментировать при наличии ресурсов)
+        # ──────────────────────────────────────────────────────────
+
+        # 16+ GB RAM — рекомендованные для трейдинга:
+        echo "  Скачиваем DeepSeek-R1 14B (рассуждения, топ, 9GB)..."
+        ollama pull deepseek-r1:14b
+
+        # echo "  Скачиваем Qwen2.5-Coder 14B (лучший для кода, 9GB)..."
+        # ollama pull qwen2.5-coder:14b
+
+        # 24+ GB RAM — продвинутый уровень:
+        echo "  Скачиваем DeepSeek-R1 32B (reasoning, 20GB)..."
+        ollama pull deepseek-r1:32b
+
+        echo "  Скачиваем Qwen2.5-Coder 32B (топ кодер, 20GB)..."
+        ollama pull qwen2.5-coder:32b
+
+        # 48+ GB RAM или GPU — максимальное качество:
+        echo "  Скачиваем Llama 3.3 70B (флагман Meta, 43GB)..."
+        ollama pull llama3.3
+
+        echo "  Скачиваем DeepSeek-R1 70B (лучшие рассуждения, 43GB)..."
+        ollama pull deepseek-r1:70b
+
+        echo "  Скачиваем Qwen2.5 72B (лучший универсал, 47GB)..."
+        ollama pull qwen2.5:72b
+
+        # ──────────────────────────────────────────────────────────
+
+        echo "═══════════════════════════════════════════════════"
+        echo "  ✅ Все модели готовы!"
+        echo ""
+        echo "  Доступные модели:"
+        curl -s http://ollama:11434/api/tags | grep -o '"name":"[^"]*"' | sed 's/"name":"//;s/"//' | sort | while read m; do
+          echo "    • $m"
+        done
+        echo ""
+        echo "  Настройте в ⚙️ LLM → Ollama → http://ollama:11434"
+        echo "═══════════════════════════════════════════════════"
+
+  # ─────────────────────────────────────────────────────────────────
+  # OPEN WEBUI — красивый веб-интерфейс для Ollama
+  #
+  # Доступ: http://localhost:6089  (или через nginx)
+  # При первом входе создайте аккаунт администратора.
+  #
+  # Возможности:
+  #   • Чат с любой моделью через браузер
+  #   • Загрузка документов (RAG)
+  #   • Создание кастомных ассистентов
+  #   • История разговоров
+  #   • Управление моделями через UI
+  # ─────────────────────────────────────────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open_webui
+    hostname: open-webui
+    depends_on:
+      - ollama
+    networks:
+      - shared-network
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434    # Ollama внутри docker сети
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-change_this_secret_key_in_env}
+      - WEBUI_NAME=Trading AI Assistant
+      - WEBUI_URL=http://localhost:6089
+      - DEFAULT_MODELS=qwen2.5-coder:7b       # модель по умолчанию при входе
+      - ENABLE_SIGNUP=true                     # разрешить регистрацию
+      - ENABLE_LOGIN_FORM=true
+      # RAG настройки
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=nomic-embed-text   # модель для embeddings
+      # Производительность
+      - AIOHTTP_CLIENT_TIMEOUT=300
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────
+  # LITELLM — прокси-сервер: единый OpenAI-совместимый API
+  # для ВСЕХ провайдеров (Ollama + облачные ключи)
+  #
+  # Доступ:  http://localhost:4000
+  # Swagger: http://localhost:4000/docs
+  #
+  # Позволяет переключать модели без изменения кода приложения:
+  #   POST http://litellm:4000/v1/chat/completions
+  #   { "model": "ollama/qwen2.5-coder:7b", ... }
+  #   { "model": "gpt-4o", ... }            ← если задан OPENAI_API_KEY
+  #   { "model": "claude-opus-4-6", ... }   ← если задан ANTHROPIC_API_KEY
+  # ─────────────────────────────────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm
+    hostname: litellm
+    depends_on:
+      - ollama
+    networks:
+      - shared-network
+    ports:
+      - "4000:4000"     # LiteLLM API → http://localhost:4000
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      # Облачные ключи (опционально — добавьте в .env)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # LiteLLM мастер-ключ для API
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-trading-platform-master}
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    restart: unless-stopped
+
+volumes:
+  clickhouse-data:
+  cloudbeaver-data:
+  db-postgres:
+  grafana-storage:
+  certbot-certs:
+  certbot-webroot:
+  ollama-data:        # ← хранит скачанные модели (может быть 20-100GB)
+  open-webui-data:    # ← данные Open WebUI (история, настройки)
+
+networks:
+  default:
+    enable_ipv6: ${IS_IPV6:-false}
+  shared-network:
+    driver: bridge

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="theme-styles.css">
+    <link rel="stylesheet" href="code-panel-hotfix.css"> 
+    <script src="charting_library/charting_library/charting_library.standalone.js"></script>
+</head>
+<body class="dark-theme">
+    <div class="app-container" id="appContainer" style="display:none" >
+        <!-- Top Navigation Bar -->
+        <div class="top-navbar">
+            <div class="navbar-left">
+                <a href = "/">
+                    <div class="app-logo">📊 Анализ трейдинга</div>
+                </a>
+            </div>
+            <!--
+            <div class="navbar-center">
+                <div class="symbol-info">
+                    <span class="symbol-name" id="symbolName">EURUSD</span>
+                </div>
+            </div>
+            -->
+            <div class="navbar-right">
+                <button class="nav-btn theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+                    🌙
+                </button>
+                <button class="nav-btn" onclick="settingsPanel.open()" title="Settings">
+                    ⚙️ Settings
+                </button>
+                <div class="user-menu">
+                    <span id="username">Guest</span>
+                    <button class="nav-btn" onclick="app.logout()">Logout</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Chart Container -->
+            <div class="chart-container">
+                <div id="tv_chart_container"></div>
+            </div>
+
+            <!-- Code Panel Toggle Strip (visible when panel is hidden) -->
+            <div class="code-panel-strip" id="codePanelStrip" onclick="toggleCodePanel()" title="Открыть панель кода">
+                <span class="code-panel-strip-arrow">&#8592;</span>
+            </div>
+
+            <!-- Code Editor Container -->
+            <div class="code-panel-container" id="codePanelContainer">
+                <!-- Close button -->
+                <button class="code-panel-close" id="codePanelCloseBtn" onclick="toggleCodePanel()" title="Скрыть панель">&#10005;</button>
+                <!-- Tabs Header -->
+                <div class="code-panel-header">
+                    <div class="code-panel-tabs">
+                        <button class="code-tab active" data-tab="javascript">
+                            <span class="tab-icon">⚡</span>
+                            <span>JavaScript</span>
+                        </button>
+                        <button class="code-tab" data-tab="pinescript">
+                            <span class="tab-icon">📊</span>
+                            <span>PineScript</span>
+                        </button>
+                        <button class="code-tab" data-tab="pine6">
+                            <span class="tab-icon">📊</span> 
+                            <span>PineScript6</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pine Script Tab Content -->
+                <div class="code-tab-content" id="pinescript-tab">
+                    <div class="code-toolbar">
+                        <select class="code-select" id="pineExamples">
+                            <option value="">📚 Select Example...</option>
+                        </select>
+                        <button class="code-btn code-btn-save" id="pineSaveBtn">💾 Save</button>
+                        <button class="code-btn code-btn-clear" id="pineClearBtn">Clear</button>
+                    </div>
+
+                    <div class="code-editor-wrapper">
+                        <textarea class="code-editor" id="pineEditor" placeholder="//@version=5
+indicator(&quot;My Indicator&quot;, overlay=true)
+length = input.int(20, &quot;Period&quot;)
+sma = ta.sma(close, length)
+plot(sma, &quot;SMA&quot;, color.blue)">//@version=5
+indicator("Bollinger Bands", overlay=true)
+length = input.int(20, "Length")
+mult = input.float(2.0, "Multiplier")
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upper = basis + dev
+lower = basis - dev
+plot(basis, "Basis", color=color.blue, linewidth=2)
+p1 = plot(upper, "Upper", color=color.red, linewidth=1)
+p2 = plot(lower, "Lower", color=color.green, linewidth=1)
+fill(p1, p2, color=color.new(color.blue, 90))</textarea>
+                    </div>
+
+                    <div class="code-actions">
+                        <button class="code-btn code-btn-run" id="pineRunBtn">
+                            <span>▶</span> Run Pine Script
+                        </button>
+                    </div>
+
+                    <div class="code-console" id="pineConsole">
+                        <div class="console-header">
+                            <span>Console Output</span>
+                            <button class="console-clear-btn" id="pineConsoleClear">Clear</button>
+                        </div>
+                        <div class="console-body" id="pineConsoleBody">
+                            <div class="console-line console-success">✓ Pine Script Editor ready</div>
+                        </div>
+                    </div>
+
+                    <div class="active-scripts" id="pineScripts">
+                        <div class="scripts-header">Active Indicators</div>
+                        <div class="scripts-list" id="pineScriptsList">
+                            <div class="no-scripts">No active indicators</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pine Script 6 Tab Content -->
+                <div class="code-tab-content" id="pine6-tab">
+                    <div class="code-toolbar">
+                        <select class="code-select" id="pine6Examples">
+                            <option value="">📚 Select Example...</option>
+                        </select>
+                        <button class="code-btn code-btn-save" id="pine6SaveBtn">💾 Save</button>
+                        <button class="code-btn code-btn-clear" id="pine6ClearBtn">Clear</button>
+                    </div>
+
+                    <div class="code-editor-wrapper">
+                        <textarea class="code-editor" id="pine6Editor" placeholder="//@version=6
+indicator(&quot;My Pine 6 Indicator&quot;, overlay=true)
+length = input.int(20, &quot;Period&quot;)
+sma = ta.sma(close, length)
+plot(sma, &quot;SMA&quot;, color.blue)">//@version=6
+indicator("Bollinger Bands", overlay=true)
+length = input.int(20, "Length")
+mult = input.float(2.0, "Multiplier")
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upper = basis + dev
+lower = basis - dev
+plot(basis, "Basis", color=color.blue, linewidth=2)
+p1 = plot(upper, "Upper", color=color.red, linewidth=1)
+p2 = plot(lower, "Lower", color=color.green, linewidth=1)
+fill(p1, p2, color=color.new(color.blue, 90))</textarea>
+                    </div>
+
+                    <div class="code-actions">
+                        <button class="code-btn code-btn-run" id="pine6RunBtn">
+                            <span>▶</span> Run Pine Script 6
+                        </button>
+                    </div>
+
+                    <div class="code-console" id="pine6Console">
+                        <div class="console-header">
+                            <span>Console Output</span>
+                            <button class="console-clear-btn" id="pine6ConsoleClear">Clear</button>
+                        </div>
+                        <div class="console-body" id="pine6ConsoleBody">
+                            <div class="console-line console-success">✓ Pine Script 6 Editor ready</div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- JavaScript Tab Content -->
+                <div class="code-tab-content active" id="javascript-tab">
+                    <div class="code-toolbar">
+                        <select class="code-select" id="jsExamples">
+                            <option value="">📚 Select Example...</option>
+                        </select>
+                        <button class="code-btn code-btn-save" id="jsSaveBtn">💾 Save</button>
+                        <button class="code-btn code-btn-clear" id="jsClearBtn">Clear</button>
+                    </div>
+
+                    <div class="code-editor-wrapper">
+                        <textarea class="code-editor" id="jsEditor" placeholder="// JavaScript code to modify chart
+// Access widget: window.app.widget">// Example: Create a study
+const chart = window.app.widget.activeChart();
+chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
+                    </div>
+
+                    <div class="code-actions">
+                        <button class="code-btn code-btn-run" id="jsRunBtn">
+                            <span>▶</span> Execute JavaScript
+                        </button>
+                    </div>
+
+                    <div class="code-console" id="jsConsole">
+                        <div class="console-header">
+                            <span>Console Output</span>
+                            <button class="console-clear-btn" id="jsConsoleClear">Clear</button>
+                        </div>
+                        <div class="console-body" id="jsConsoleBody">
+                            <div class="console-line console-success">✓ JavaScript API ready</div>
+                        </div>
+                    </div>
+
+                    <div class="api-reference">
+                        <div class="api-header">Quick Reference</div>
+                        <div class="api-list">
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Container -->
+    <div class="auth-container" id="authContainer">
+        <div id="loginForm">
+            <h2>Login</h2>
+            <div class="error-message" id="loginError"></div>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="loginUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="btn">Login</button>
+            </form>
+        </div>
+
+        <div id="registerForm" style="display: none;">
+            <h2>Register</h2>
+            <div class="error-message" id="registerError"></div>
+            <form onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="registerUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="registerEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="registerPassword" required minlength="6">
+                </div>
+                <button type="submit" class="btn">Register</button>
+            </form>
+            <div class="toggle-auth" onclick="toggleAuthForm()">
+                Already have an account? Login
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading TradingView Chart...</div>
+    </div>
+    
+    <!-- SCRIPTS - ПРАВИЛЬНЫЙ ПОРЯДОК ЗАГРУЗКИ -->
+    
+    <!-- 1. Theme Manager FIRST -->
+    <script src="theme-manager.js"></script>
+    
+    <!-- 2. API Client -->
+    <script src="api-client.js"></script>
+    
+    <!-- 3. Datafeed -->
+    <script src="datafeed-integrated-v3.js"></script>
+    
+    <!-- 4. Settings Manager -->
+    <script src="settings-manager.js"></script>
+    
+    <!-- 5. Main App -->
+    <script src="app.js"></script>
+    
+    <!-- 6. UI Components -->
+    <script src="currency-selector.js"></script>
+    <script src="layout-manager.js"></script>
+    <script src="script-manager-ui.js"></script>
+    <script src="indicator-manager-ui.js"></script>
+    <script src="indicators-menu-integration.js"></script>
+    <script src="settings-panel.js"></script>
+    <script src="code-panel-manager.js"></script>
+    <script src="code-panel-hotfix.js"></script>
+    <script src="interval-selector.js"></script>
+    <script src="recent-layouts.js"></script>
+    
+    <script src="data-table.js"></script>
+    <script src="date-guard.js"></script>
+    <script src="setups-backtest.js"></script>  
+    <script src="backtest-player.js"></script>
+    <script src="setups-backtest-ext.js"></script>
+
+    <script src="layout-state-sync.js"></script>
+
+    <script src="walkforward-ui.js"></script>
+    <script src="ai-ui.js"></script>
+    <script src="alert-ui.js"></script>
+    <script src="correlation-ui.js"></script>
+    <script src="alpha-decay-ui.js"></script>
+    <script src="temporal-heatmap-ui.js"></script>
+    <script src="multifactor-ui.js"></script>
+    
+    <script src="tick-analytics.js"></script>
+    <script src="neural-ui.js"></script>
+    <script src="llm-settings-ui.js"></script>
+    <script src="ai-code-analyzer.js"></script>
+    
+    
+<script>
+    // Переключение вкладок Code Panel
+    document.addEventListener('DOMContentLoaded', function() {
+        const codeTabs = document.querySelectorAll('.code-tab');
+        const codeTabContents = document.querySelectorAll('.code-tab-content');
+        
+        codeTabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.dataset.tab;
+                
+                // Убираем active у всех кнопок
+                codeTabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Скрываем все контенты
+                codeTabContents.forEach(content => content.classList.remove('active'));
+                
+                // Показываем нужный контент
+                const targetContent = document.getElementById(tabName + '-tab');
+                if (targetContent) {
+                    targetContent.classList.add('active');
+                }
+            });
+        });
+
+
+        const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
+        document.querySelector('body').classList = currentTheme + "-theme";
+
+        const saveLoadMenu = document.querySelector('[data-name="save-load-menu"]');
+
+        if (saveLoadMenu) {
+            // Добавляем обработчик события клика для добавления истории ранее использованных лэйоутов
+            saveLoadMenu.addEventListener('click', () => {
+                setTimeout(() => {
+                    console.log("Обработано событие клика!");
+                }, 300); // Задержка 300 миллисекунд
+            });
+        }
+    });
+
+
+        // ========== CODE PANEL TOGGLE ==========
+        function toggleCodePanel() {
+            const panel = document.getElementById('codePanelContainer');
+            const strip = document.getElementById('codePanelStrip');
+            if (!panel) return;
+
+            const isHidden = panel.classList.toggle('code-panel-hidden');
+            if (strip) strip.classList.toggle('code-panel-strip-visible', isHidden);
+
+            localStorage.setItem('codePanelVisible', isHidden ? '0' : '1');
+
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 310);
+        }
+
+        // Восстанавливаем состояние панели при загрузке
+        (function restoreCodePanelState() {
+            const saved = localStorage.getItem('codePanelVisible');
+            if (saved === '0') {
+                const panel = document.getElementById('codePanelContainer');
+                const strip = document.getElementById('codePanelStrip');
+                if (panel) panel.classList.add('code-panel-hidden');
+                if (strip) strip.classList.add('code-panel-strip-visible');
+            }
+        })();
+    </script>
+</body>
+</html>
