@@ -18,11 +18,26 @@ class DatabaseIntegratedDatafeed {
         this.subscribers = new Map();
         this.loadedRanges = new Map();
         
-        // Инициализируем activedata
+        // Инициализируем activedata — НЕ затираем если уже есть кэш из localStorage
         if (!window.app) window.app = {};
-        window.app.activedata = [];
-        window.app._activeDataKey = null;
-        window.app._activeDataIndex = new Set();
+        if (!Array.isArray(window.app.activedata)) window.app.activedata = [];
+
+        let _activedata = localStorage.getItem("activedata")
+        if(_activedata){
+            _activedata = JSON.parse(_activedata)
+            if(_activedata){
+                window.app.activedata = _activedata
+            }
+        }
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("window.app.activedata", window.app.activedata)
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        if (!window.app._activeDataKey) window.app._activeDataKey = null;
+        if (!window.app._activeDataIndex) window.app._activeDataIndex = new Set();
         
         console.log('📡 DatabaseIntegratedDatafeed V2 created');
     }
@@ -156,30 +171,75 @@ class DatabaseIntegratedDatafeed {
     /**
      * Инициализация/сброс activedata при смене символа или интервала
      */
-    initActiveData(symbol, resolution) {
-        const key = `${symbol}_${resolution}`;
+    // СТАЛО:
+initActiveData(symbol, resolution) {
+    const key = `${symbol}_${resolution}`;
 
-        if (window.app._activeDataKey !== key) {
-            const prevKey = window.app._activeDataKey || 'none';
-            console.log(`🔄 activedata RESET: [${prevKey}] → [${key}]`);
+    // Ключ не изменился — ничего не делаем
 
-            window.app.activedata = [];
-            window.app._activeDataKey = key;
-            window.app._activeDataIndex = new Set();
-        }
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData", key, '----', window.app._activeDataKey, "!!!!!!")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    window.app._key = key
+    if(!window.app._activeDataKey){
+        window.app._activeDataKey = localStorage.getItem("_activeDataKey")
+        
     }
+    localStorage.setItem("_activeDataKey", key)
+    console.log("iAD", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
+    if (window.app._activeDataKey === key) return;
+
+
+    console.log("iAD___222222", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
+
+    const prevKey = window.app._activeDataKey; // null при первом запуске
+
+    // Первый запуск после загрузки страницы (prevKey === null).
+    // Если activedata уже содержит данные — они восстановлены из localStorage.
+    // Сбрасывать нельзя — просто принимаем ключ и перестраиваем индекс.
+    if (prevKey === null && window.app.activedata.length > 0) {
+        console.log(`🔄 activedata INIT: keeping ${window.app.activedata.length} cached bars, key → [${key}]`);
+        window.app._activeDataKey = key;
+        // Перестраиваем индекс из существующих данных
+        window.app._activeDataIndex = new Set(
+            window.app.activedata.map(item => item.timestamp)
+        );
+        return;
+    }
+
+    // Настоящая смена символа или интервала — сбрасываем
+    console.log(`🔄 activedata RESET: [${prevKey ?? 'none'}] → [${key}]`);
+    window.app.activedata = [];
+    window.app._activeDataKey = key;
+    window.app._activeDataIndex = new Set();
+}
 
     /**
      * Добавление новых сырых записей в activedata (без дублей)
      * Данные сохраняются точно в том виде как пришли с сервера
      */
     appendActiveData(rawItems) {
+        //window.app._activeDataKey
+        console.log("window.app._key___", window.app._key, window.app.activedata)
         if (!rawItems || rawItems.length === 0) return 0;
 
         if (!window.app.activedata) {
+            console.log("NEW window.app.activedata", window.app.activedata)
             window.app.activedata = [];
             window.app._activeDataIndex = new Set();
-        }
+        } 
 
         // Восстанавливаем индекс если он пустой но данные есть
         if (window.app._activeDataIndex.size === 0 && window.app.activedata.length > 0) {
@@ -197,7 +257,10 @@ class DatabaseIntegratedDatafeed {
             if (!window.app._activeDataIndex.has(ts)) {
                 window.app._activeDataIndex.add(ts);
                 // Сохраняем объект КАК ЕСТЬ — без каких-либо преобразований
-                window.app.activedata.push(item);
+                if(window.app._key != window.app._activeDataKey || rawItems.length > window.app.activedata.length){
+                    window.app.activedata.push(item);
+                    console.log("add__window.app.activedata", window.app._key, window.app._activeDataKey, rawItems.length, window.app.activedata.length)
+                }
                 added++;
             }
         });

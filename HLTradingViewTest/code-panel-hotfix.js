@@ -219,6 +219,7 @@
                         console.log('Error during result processing:', e);
                     }
 
+                    console.log("app.activedata", app.activedata)
                     let act = JSON.stringify(app.activedata)
                     localStorage.setItem("activedata", act)
 
