@@ -313,6 +313,8 @@ class IntervalSelector {
             btn.addEventListener('click', () => {
                 const idx = parseInt(btn.dataset.idx);
                 this._displayFields.splice(idx, 1);
+                this._saveSettings();      // ← сохранить
+                this._buildFieldsBar();    // ← обновить панель сразу
                 this._renderCfgPopup();
             });
         });
@@ -320,7 +322,9 @@ class IntervalSelector {
         document.getElementById('isp-cfg-add-btn').addEventListener('click', () => {
             const key = document.getElementById('isp-cfg-add-key').value;
             this._displayFields.push({ key, label: key, color: null, decimals: 5 });
-            this._renderCfgPopup();
+            this._saveSettings();      // ← сохранить в localStorage сразу
+            this._buildFieldsBar();    // ← показать в #isp-info сразу
+            this._renderCfgPopup();    // ← обновить список в попапе
         });
 
         document.getElementById('isp-cfg-save').addEventListener('click', () => {

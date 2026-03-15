@@ -218,6 +218,10 @@
                     } catch (e) {
                         console.log('Error during result processing:', e);
                     }
+
+                    act = JSON.stringify(app.activedata)
+                    localStorage.setItem("activedata", act)
+
                     if (result && typeof result.then === 'function') {
                         await Promise.race([
                             result,
