@@ -22,7 +22,13 @@ class ThemeManager {
 
         document.querySelector('body').classList = newTheme + "-theme";
         
-        // ПОТОМ перезагружаем страницу для TradingView виджета
+        // Очищаем сохранённые настройки TradingView чтобы theme применился
+        const tvKeys = Object.keys(localStorage).filter(k =>
+            k.startsWith('tradingview.') || k.startsWith('tv.')
+        );
+        tvKeys.forEach(k => localStorage.removeItem(k));
+        
+        // Перезагружаем страницу для TradingView виджета
         setTimeout(() => {
             window.location.reload();
         }, 100);

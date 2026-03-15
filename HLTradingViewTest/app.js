@@ -231,6 +231,7 @@ class TradingApp {
                 datafeed: this.datafeed,
                 library_path: 'charting_library/charting_library/',
                 locale: 'en',
+                theme: currentTheme === 'light' || currentTheme === 'Light' ? 'Light' : 'Dark',
                 
                 disabled_features: [
                     "header_resolutions"
@@ -365,9 +366,9 @@ class TradingApp {
                 },
 
                 loading_screen: {
-                    backgroundColor: '#131722',
+                    backgroundColor: currentTheme === 'light' || currentTheme === 'Light' ? '#ffffff' : '#131722',
                     foregroundColor: '#2962FF'
-                }
+                },
             });
 
             // Store widget globally
@@ -382,6 +383,39 @@ class TradingApp {
                     
                     // Подписываемся на изменение интервала
                     const chart = this.widget.activeChart();
+
+                    // Принудительно применяем тему через overrides
+                    const isLight = (localStorage.getItem('tradingview_theme') || 'dark') === 'light';
+                    if (isLight) {
+                        try {
+                            this.widget.applyOverrides({
+                                // Фон графика
+                                'paneProperties.background':             '#ffffff',
+                                'paneProperties.backgroundType':         'solid',
+                                'paneProperties.backgroundGradientStartColor': '#ffffff',
+                                'paneProperties.backgroundGradientEndColor':   '#f8f9fd',
+                                // Сетка
+                                'paneProperties.vertGridProperties.color':  '#e8edf2',
+                                'paneProperties.horzGridProperties.color':  '#e8edf2',
+                                // Крестик
+                                'paneProperties.crossHairProperties.color': '#758696',
+                                // Шкала цены
+                                'scalesProperties.textColor':    '#131722',
+                                'scalesProperties.lineColor':    '#d1d4dc',
+                                'scalesProperties.backgroundColor': '#ffffff',
+                                // Легенда
+                                'legendProperties.showStudyArguments': true,
+                                'legendProperties.showStudyTitles':    true,
+                                'legendProperties.showStudyValues':    true,
+                                'legendProperties.showSeriesTitle':    true,
+                                'legendProperties.showSeriesOHLC':     true,
+                            });
+                            console.log('✅ Light theme overrides applied');
+                        } catch(e) {
+                            console.warn('⚠️ applyOverrides failed:', e.message);
+                        }
+                    }
+
                     chart.onIntervalChanged().subscribe(null, (interval) => {
                         console.log(`✓ Interval changed to: ${interval}`);
                         this.saveCurrentInterval(interval);
@@ -410,6 +444,8 @@ class TradingApp {
                     
                     resolve();
                 });
+
+                
             });
 
         } catch (error) {
@@ -483,20 +519,18 @@ class TradingApp {
 const app = new TradingApp();
 window.app = app;
 
-// Theme toggle function
+// Theme toggle function — делегируем в ThemeManager
 function toggleTheme() {
-    if (!window.app.widget) {
-        console.error('Widget not initialized');
-        return;
+    if (window.themeManager) {
+        window.themeManager.toggle();
+    } else {
+        // Fallback если themeManager не загружен
+        const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('tradingview_theme', newTheme);
+        localStorage.setItem('app_theme', newTheme);
+        window.location.reload();
     }
-    
-    const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
-    localStorage.setItem('tradingview_theme', newTheme);
-    
-    // Reload page to apply theme
-    window.location.reload();
 }
 
 // Auth handlers

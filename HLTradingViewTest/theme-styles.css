@@ -395,3 +395,712 @@ body.light-theme .script-name,
 body.light-theme .api-item code {
     color: #00796b;
 }
+
+/* =====================================================
+   PATCH 6 — light-theme-bottom-panel.css
+   
+   Добавить в конец theme-styles.css
+   или подключить как отдельный файл в index.html
+   
+   Исправляет все проблемы нижней панели видимые на скриншоте:
+   - Data Table: заголовки колонок, тулбар, строки, фильтры, кнопки
+   - Tab bar: DATA / SETUPS / BACKTEST и все дочерние вкладки
+   - Filter row: поля ввода фильтров в шапке таблицы
+   - Popups: Group, Columns, Chart marker menus
+   ===================================================== */
+
+/* ══════════════════════════════════════════════════════
+   DATA TABLE — #dt-panel
+   ══════════════════════════════════════════════════════ */
+
+/* Тулбар верхней части панели */
+body.light-theme #dt-panel          { background: #fff; border-top-color: #e0e3eb; }
+body.light-theme #dt-toolbar        { background: #f8f9fd; border-bottom-color: #e0e3eb; }
+body.light-theme #dt-title          { color: #131722; font-weight: 700; }
+body.light-theme #dt-cnt            { color: #787b86; }
+
+/* Кнопки тулбара: Columns / Group / Filters / Chart / ✕ */
+body.light-theme .dt-btn            { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .dt-btn:hover      { background: #e0e3ef; border-color: #b0b3bb; color: #131722; }
+body.light-theme .dt-btn-apply      { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+body.light-theme .dt-btn-auto       { background: #fff8e1; border-color: #f5a623; color: #e67e00; }
+body.light-theme .dt-btn-viz        { border-color: #2962FF66; color: #2962FF; }
+
+/* ── ИСПРАВЛЕНИЕ: заголовки колонок были #d1d4dc (невидимы) ── */
+body.light-theme .dt-th             { background: #f0f3fa; color: #131722; border-color: #e0e3eb; }
+body.light-theme .dt-th:hover       { background: #e4e8f5; color: #131722; }
+body.light-theme .dt-th-filtered,
+body.light-theme .dt-th-f           { color: #2962FF !important; }
+
+/* Строка фильтров под заголовками */
+body.light-theme .dt-fth            { background: #f8f9fd; border-color: #e0e3eb; }
+body.light-theme .dt-fi             { background: #fff; border-color: #d0d3db; color: #131722; }
+body.light-theme .dt-fi:focus       { border-color: #2962FF; color: #131722; }
+body.light-theme .dt-fi::placeholder { color: #b0b3bb; }
+body.light-theme .dt-fi.dt-fi-adv   { border-color: #f5a62366; color: #e67e00; background: #fffbf0; }
+body.light-theme .dt-fi-adv-btn     { color: #b0b3bb; }
+body.light-theme .dt-fi-adv-btn:hover,
+body.light-theme .dt-fi-adv-btn.active { color: #f5a623; background: #f5a62322; }
+
+/* Строки таблицы */
+body.light-theme .dt-td             { color: #555; border-color: #f0f3fa; }
+body.light-theme .dt-td:first-child { color: #131722; }
+body.light-theme .dt-row:hover .dt-td { background: #f0f3fa; }
+body.light-theme .dt-row.dt-bull .dt-td:nth-child(5) { color: #00796b; }
+body.light-theme .dt-row.dt-bear .dt-td:nth-child(5) { color: #c62828; }
+body.light-theme .dt-row.dt-hl .dt-td  { background: #eef2ff !important; color: #131722 !important; }
+body.light-theme .dt-bool-t         { color: #00796b; }
+body.light-theme .dt-bool-f         { color: #c62828; }
+
+/* Менеджер колонок */
+body.light-theme #dt-colmgr         { background: #f8f9fd; border-bottom-color: #e0e3eb; }
+body.light-theme .dt-cm-hdr         { color: #131722; border-color: #e0e3eb; }
+body.light-theme .dt-cm-note        { color: #787b86; }
+body.light-theme .dt-cm-row         { border-color: #e0e3eb; }
+body.light-theme .dt-cm-row:hover   { background: #f0f3fa; }
+body.light-theme .dt-cm-drag        { color: #b0b3bb; }
+body.light-theme .dt-cm-lbl         { color: #131722; }
+body.light-theme .dt-cm-lbl:focus   { background: #fff; border-color: #2962FF; color: #131722; }
+body.light-theme .dt-cm-type        { color: #787b86; }
+
+/* Viz manager */
+body.light-theme #dt-vizmgr         { background: #f8f9fd; border-bottom-color: #e0e3eb; }
+
+/* Popup меню (Group / Columns dropdown) */
+body.light-theme .dt-popup          { background: #fff; border-color: #d0d3db;
+                                      box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+body.light-theme .dt-pp-hdr         { background: #f3f3f3; color: #aaa; }
+body.light-theme .dt-pp-item        { color: #555; }
+body.light-theme .dt-pp-item:hover  { background: #f0f3fa; color: #131722; }
+body.light-theme .dt-pp-act         { color: #2962FF; }
+
+/* Resizer */
+body.light-theme #dt-resizer        { background: #e0e3eb; }
+body.light-theme #dt-resizer:hover  { background: #2962FF; }
+
+/* Advanced filter popup */
+body.light-theme .dt-adv-pop        { background: #fff; border-color: #d0d3db;
+                                      box-shadow: 0 8px 32px rgba(0,0,0,.15); }
+body.light-theme .dt-adv-hdr        { background: #f3f3f3; border-color: #e0e3eb; }
+body.light-theme .dt-adv-hdr strong { color: #131722; }
+body.light-theme .dt-adv-rng        { color: #787b86; }
+body.light-theme .dt-adv-x          { color: #787b86; }
+body.light-theme .dt-adv-rules      { background: #fff; }
+body.light-theme .dt-adv-where      { color: #787b86; }
+body.light-theme .dt-adv-logic,
+body.light-theme .dt-adv-op,
+body.light-theme .dt-adv-val        { background: #f8f9fd; border-color: #d0d3db; color: #131722; }
+body.light-theme .dt-adv-and        { color: #aaa; }
+body.light-theme .dt-adv-del        { color: #aaa; }
+body.light-theme .dt-adv-del:hover  { color: #c62828; }
+body.light-theme .dt-adv-add        { border-color: #d0d3db; color: #aaa; }
+body.light-theme .dt-adv-add:hover  { border-color: #2962FF; color: #2962FF; }
+body.light-theme .dt-adv-foot       { background: #f3f3f3; border-color: #e0e3eb; }
+body.light-theme .dt-adv-cnt        { color: #131722; }
+body.light-theme .dt-adv-btn        { background: #e9ecf2; border-color: #d0d3db; color: #555; }
+body.light-theme .dt-adv-btn:hover  { background: #d0d3db; color: #131722; }
+body.light-theme .dt-adv-ok         { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+body.light-theme .dt-adv-clr        { border-color: #c6282844; color: #c62828; }
+
+/* Presets */
+body.light-theme .dt-preset-row     { border-color: #e0e3eb; }
+body.light-theme .dt-preset-load    { color: #555; }
+body.light-theme .dt-preset-load:hover { color: #2962FF; }
+body.light-theme .dt-preset-del     { color: #bbb; }
+body.light-theme .dt-preset-del:hover { color: #c62828; }
+
+/* Viz filter tabs */
+body.light-theme .vz-ftab           { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .vz-ftab.vz-fon    { background: #2962FF22; border-color: #2962FF; color: #2962FF; }
+body.light-theme .vz-ftable-hint    { color: #131722; }
+
+
+/* ══════════════════════════════════════════════════════
+   SETUPS / BACKTEST TAB BAR — #sb-tabbar
+   ══════════════════════════════════════════════════════ */
+
+/* ── ИСПРАВЛЕНИЕ: фон таб-бара и тело были #080a12 ── */
+body.light-theme #sb-tabbar         { background: #f0f3fa; border-bottom-color: #d0d3db; }
+body.light-theme #sb-tab-body       { background: #f8f9fd; }
+
+/* Текст табов */
+body.light-theme .sb-tab            { color: #787b86; }
+body.light-theme .sb-tab:hover      { color: #131722; }
+body.light-theme .sb-tab-data.sb-tab-active  { color: #131722; border-bottom-color: #131722; }
+body.light-theme .sb-tab-setup.sb-tab-active { color: #e67e00; border-bottom-color: #e67e00; }
+body.light-theme .sb-tab-bt.sb-tab-active    { color: #2e7d32; border-bottom-color: #2e7d32; }
+/* Дополнительные вкладки (WF/MC, AI, Strategy и т.д.) */
+body.light-theme .sb-tab-wfmc.sb-tab-active  { color: #2962FF; border-bottom-color: #2962FF; }
+body.light-theme .sb-tab-ai.sb-tab-active    { color: #ff9800; border-bottom-color: #ff9800; }
+body.light-theme .sb-tab-strat.sb-tab-active { color: #2e7d32; border-bottom-color: #2e7d32; }
+
+/* Toolbar внутри setups/backtest */
+body.light-theme .sb-toolbar        { background: #f0f3fa; border-bottom-color: #d0d3db; }
+body.light-theme .sb-title          { color: #131722; }
+body.light-theme .sb-cnt            { color: #787b86; }
+body.light-theme .sb-hint           { color: #f5a62399; }
+body.light-theme .sb-warn           { color: #e67e00; border-color: #f5a62333; }
+
+/* Кнопки внутри setups/backtest */
+body.light-theme .sb-btn            { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .sb-btn:hover      { border-color: #2962FF66; color: #131722; }
+body.light-theme .sb-btn-run        { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+body.light-theme .sb-btn-run:hover  { background: #d0ecd4; }
+body.light-theme .sb-btn-ok         { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+
+/* Конфиг панель слева (Backtest) */
+body.light-theme .sb-cfg            { background: #eef1fa; border-right-color: #d0d3db; }
+body.light-theme .sb-cfg-h          { color: #787b86; }
+body.light-theme .sb-inp,
+body.light-theme .sb-sel            { background: #fff; border-color: #d0d3db; color: #131722; }
+body.light-theme .sb-lbl            { color: #787b86; }
+
+/* Таблица сигналов (Setups tab) */
+body.light-theme .sb-tbl th         { background: #e0e3ef; color: #787b86; border-color: #d0d3db; }
+body.light-theme .sb-tbl td         { color: #555; border-color: #e8ebf5; }
+body.light-theme .sb-tbl tr:hover td { background: #f0f3fa; }
+
+/* Статус-чипы */
+body.light-theme .sb-st-entry       { background: #e3f2fd; color: #1565c0; border-color: #1565c033; }
+body.light-theme .sb-st-hold        { background: #fff8e1; color: #e67e00; border-color: #f5a62333; }
+body.light-theme .sb-st-exit        { background: #fce4ec; color: #b71c1c; border-color: #ef535033; }
+
+/* Setup signal card */
+body.light-theme .sb-scard          { background: #f8f9fd; border-color: #d0d3db; }
+body.light-theme .sb-stats          { background: #e0e3ef; color: #131722; }
+
+/* Backtest result cards */
+body.light-theme .sb-modal-box,
+body.light-theme .sb-dlg-box        { background: #fff; border-color: #d0d3db; }
+body.light-theme .sb-float-foot     { border-top-color: #d0d3db; }
+
+/* Filter bar (ext) */
+body.light-theme #sb-ext-filterbar  { background: #eef1fa!important; border-bottom-color: #d0d3db!important; }
+
+/* Ext filter bar */
+body.light-theme .sb-ext-filterbar span { color: #aaa; }
+
+/* Pagination */
+body.light-theme .sb-page-btn       { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .sb-page-btn:hover { background: #e0e3ef; }
+body.light-theme .sb-page-cur       { color: #787b86; }
+
+/* =====================================================
+   PATCH 7 — light-theme-all-panels.css
+   
+   Добавить в конец theme-styles.css
+   
+   Покрывает все оставшиеся тёмные модули видимые на скриншотах:
+   - WF / MC (walkforward-ui.js)
+   - AI / Bayesian Opt (ai-ui.js)
+   - Neural AI (neural-ui.js)
+   - PORTFOLIO / Correlation (correlation-ui.js)
+   - LLM Settings (llm-settings-ui.js)
+   - Общий паттерн: .xxx-root, .xxx-sidebar, .xxx-main
+   ===================================================== */
+
+/* ══════════════════════════════════════════════════════
+   ОБЩИЙ ПАТТЕРН для всех модульных панелей
+   Все они используют background:#080a12 / #0b0d16
+   ══════════════════════════════════════════════════════ */
+
+   body.light-theme .wf-root,
+   body.light-theme .ai-root,
+   body.light-theme .ns-root,
+   body.light-theme .alr-root       { background: #f8f9fd; color: #131722; }
+   
+   body.light-theme .wf-sidebar,
+   body.light-theme .ai-sidebar,
+   body.light-theme .ns-sidebar      { background: #f0f3fa; border-right-color: #d0d3db; }
+   
+   body.light-theme .wf-main,
+   body.light-theme .ai-main,
+   body.light-theme .ns-main         { background: #f8f9fd; }
+   
+   
+   /* ══════════════════════════════════════════════════════
+      WF / MC — walkforward-ui.js
+      ══════════════════════════════════════════════════════ */
+   
+   body.light-theme .wf-sb-logo      { color: #7b4fff; border-bottom-color: #d0d3db; }
+   body.light-theme .wf-sb-h,
+   body.light-theme .wf-sb-h2        { color: #aaa; }
+   body.light-theme .wf-sb-lbl       { color: #787b86; }
+   body.light-theme .wf-sb-inp,
+   body.light-theme .wf-sb-sel       { background: #fff; border-color: #d0d3db; color: #131722; }
+   body.light-theme .wf-sb-inp:focus { border-color: #7b4fff; }
+   body.light-theme .wf-sb-chk       { color: #555; }
+   body.light-theme .wf-sb-div       { background: #d0d3db; }
+   body.light-theme .wf-hint         { color: #aaa; }
+   body.light-theme .wf-pmsg         { color: #aaa; }
+   body.light-theme .wf-pbar         { background: #e0e3eb; }
+   body.light-theme .wf-run-btn      { background: #ede8ff; border-color: #7b4fff; color: #5b2fff; }
+   
+   /* Empty state */
+   body.light-theme .wf-empty-t      { color: #787b86; }
+   body.light-theme .wf-empty-s      { color: #aaa; }
+   
+   /* Blocks / Cards */
+   body.light-theme .wf-block        { background: #fff; border-color: #d0d3db; }
+   body.light-theme .wf-bh           { background: #f3f3f3; border-bottom-color: #e0e3eb; }
+   body.light-theme .wf-bt           { color: #131722; }
+   body.light-theme .wf-bt-sub       { color: #aaa; }
+   body.light-theme .wf-kpi          { background: #fff; }
+   body.light-theme .wf-kpi-l        { color: #aaa; }
+   body.light-theme .wf-kpi-v        { color: #131722; }
+   body.light-theme .wf-kpi-h        { color: #aaa; }
+   
+   /* Tab buttons */
+   body.light-theme .wf-tbtn         { border-color: #d0d3db; color: #787b86; }
+   body.light-theme .wf-tbtn:hover   { color: #131722; }
+   body.light-theme .wf-tbtn-a       { background: #f0eaff; color: #7b4fff; border-color: #7b4fff; }
+   
+   /* KPI grids */
+   body.light-theme .wf-kpi4,
+   body.light-theme .wf-kpi5,
+   body.light-theme .wf-kpi6         { background: #e0e3eb; }
+   
+   /* Risk cards */
+   body.light-theme .wf-risk-card    { background: #fff; border-color: #d0d3db; }
+   body.light-theme .wf-risk-l       { color: #787b86; }
+   body.light-theme .wf-risk-h       { color: #aaa; }
+   
+   /* Interpretation list */
+   body.light-theme .wf-ig           { background: rgba(0,121,107,.08); color: #00796b; }
+   body.light-theme .wf-iw           { background: rgba(245,124,0,.08); color: #f57c00; }
+   body.light-theme .wf-ib           { background: rgba(198,40,40,.08); color: #c62828; }
+   
+   /* Chart legend */
+   body.light-theme .wf-leg          { color: #787b86; }
+   body.light-theme .wf-hist-t       { color: #aaa; }
+   
+   /* Section headers */
+   body.light-theme .wf-p5-hdr       { color: #555; }
+   body.light-theme .wf-interp-t     { color: #aaa; }
+   
+   
+   /* ══════════════════════════════════════════════════════
+      AI / Bayesian Opt — ai-ui.js
+      ══════════════════════════════════════════════════════ */
+   
+   body.light-theme .ai-logo         { color: #ff9800; border-bottom-color: #d0d3db; }
+   body.light-theme .ai-vtab         { color: #aaa; }
+   body.light-theme .ai-vtab:hover   { color: #131722; background: rgba(0,0,0,.03); }
+   body.light-theme .ai-vtab-a       { color: #ff9800; border-left-color: #ff9800;
+                                       background: rgba(255,152,0,.06); }
+   body.light-theme .ai-sb-h         { color: #aaa; }
+   body.light-theme .ai-sb-sect      { border-bottom-color: #e0e3eb; }
+   body.light-theme .ai-sb-chk       { color: #555; }
+   
+   /* Range inputs */
+   body.light-theme .ai-range-row input,
+   body.light-theme .ai-sb-inp       { background: #fff; border-color: #d0d3db; color: #131722; }
+   
+   /* Empty / main area */
+   body.light-theme .ai-empty-t      { color: #787b86; }
+   body.light-theme .ai-empty-s      { color: #aaa; }
+   
+   /* KPI grids */
+   body.light-theme .ai-kpi5         { background: #e0e3eb; }
+   body.light-theme .ai-kpi          { background: #fff; }
+   body.light-theme .ai-kpi-l        { color: #aaa; }
+   body.light-theme .ai-kpi-v        { color: #131722; }
+   
+   /* Tables */
+   body.light-theme .ai-tbl th       { color: #aaa; border-bottom-color: #e0e3eb; }
+   body.light-theme .ai-tbl td       { border-bottom-color: rgba(0,0,0,.04); color: #555; }
+   body.light-theme .ai-tbl tr:hover td { background: rgba(0,0,0,.02); }
+   body.light-theme .ai-best td      { background: rgba(41,98,255,.05); }
+   
+   /* Param cards */
+   body.light-theme .ai-param-card   { background: #f3f3f3; border-color: #d0d3db; }
+   body.light-theme .ai-param-lbl    { color: #aaa; }
+   body.light-theme .ai-param-tag    { color: #aaa; }
+   
+   /* Section headers */
+   body.light-theme .ai-sect-hdr     { color: #aaa; }
+   
+   /* Current regime block */
+   body.light-theme .ai-cur-regime   { background: #f8f9fd; }
+   
+   /* Run button */
+   body.light-theme .ai-run-btn      { background: #fff3e0; border-color: #ff9800; color: #e65100; }
+   
+   
+   /* ══════════════════════════════════════════════════════
+      NEURAL AI — neural-ui.js
+      ══════════════════════════════════════════════════════ */
+   
+   body.light-theme .ns-logo         { color: #a78bfa; border-bottom-color: #d0d3db; }
+   body.light-theme .ns-nav-btn      { color: #787b86; }
+   body.light-theme .ns-nav-btn:hover { background: rgba(0,0,0,.04); color: #131722; }
+   body.light-theme .ns-nav-a        { background: rgba(167,139,250,.08);
+                                       border-left-color: #a78bfa; color: #7c3aed; }
+   
+   body.light-theme .ns-sb-status    { border-top-color: #e0e3eb; }
+   body.light-theme .ns-sb-h         { color: #aaa; }
+   body.light-theme .ns-status-row   { color: #555; }
+   
+   /* Interval buttons */
+   body.light-theme .ns-iv-btn       { background: #f0f3fa; border-color: #d0d3db; color: #787b86; }
+   body.light-theme .ns-iv-btn:hover { border-color: #a78bfa; color: #7c3aed; }
+   body.light-theme .ns-iv-active    { background: rgba(167,139,250,.1) !important;
+                                       border-color: #a78bfa !important; color: #7c3aed !important; }
+   
+   /* Ticker input */
+   body.light-theme .ns-inp,
+   body.light-theme .ns-sb-inp       { background: #fff; border-color: #d0d3db; color: #131722; }
+   body.light-theme .ns-btn-ico      { background: #f0f3fa; border-color: #d0d3db; color: #787b86; }
+   body.light-theme .ns-btn-ico:hover { border-color: #a78bfa; color: #7c3aed; }
+   
+   /* Dashboard page */
+   body.light-theme .ns-page         { background: #f8f9fd; }
+   body.light-theme .ns-page-title   { color: #131722; }
+   body.light-theme .ns-page-hdr     { border-bottom-color: #e0e3eb; }
+   
+   /* Context tags */
+   body.light-theme .ns-ctx-ticker   { background: rgba(41,98,255,.08); color: #2962FF; }
+   body.light-theme .ns-ctx-iv       { background: rgba(0,184,212,.08); color: #00838f; }
+   body.light-theme .ns-ctx-llm      { background: rgba(0,121,107,.08); color: #00796b; }
+   body.light-theme .ns-ctx-llm-off  { background: rgba(198,40,40,.08); color: #c62828; }
+   
+   /* Cards / sections */
+   body.light-theme .ns-section      { background: #fff; border-color: #d0d3db; }
+   body.light-theme .ns-section-hdr  { color: #131722; border-bottom-color: #e0e3eb; }
+   body.light-theme .ns-cards5       { background: #e0e3eb; }
+   body.light-theme .ns-stat-card    { background: #fff; }
+   body.light-theme .ns-stat-l       { color: #aaa; }
+   body.light-theme .ns-stat-v       { color: #131722; }
+   
+   /* Welcome screen */
+   body.light-theme .ns-welcome      { background: #f8f9fd; }
+   body.light-theme .ns-welcome-title { color: #131722; }
+   body.light-theme .ns-welcome-sub  { color: #787b86; }
+   body.light-theme .ns-feature-card { background: #fff; border-color: #d0d3db; }
+   body.light-theme .ns-feature-title { color: #131722; }
+   body.light-theme .ns-feature-desc { color: #787b86; }
+   
+   /* LLM status */
+   body.light-theme .ns-sb-llm       { border-top-color: #e0e3eb; }
+   body.light-theme .ns-llm-warn     { color: #c62828; }
+   
+   /* Empty states */
+   body.light-theme .ns-empty        { color: #787b86; }
+   body.light-theme .ns-empty-sm     { color: #787b86; }
+   body.light-theme .ns-empty-big    { color: #787b86; }
+   
+   /* Buttons */
+   body.light-theme .ns-btn          { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+   body.light-theme .ns-btn:hover    { background: #e0e3ef; }
+   body.light-theme .ns-btn-primary  { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+   body.light-theme .ns-btn-primary:hover { background: #6d28d9; }
+   
+   
+   /* ══════════════════════════════════════════════════════
+      PORTFOLIO / CORRELATION — correlation-ui.js и др.
+      ══════════════════════════════════════════════════════ */
+   
+   /* Общий корень панели */
+   body.light-theme [class$="-root"]:not(.wf-root):not(.ai-root):not(.ns-root):not(.alr-root) {
+       background: #f8f9fd;
+       color: #131722;
+   }
+   
+   /* Конкретные классы correlation / portfolio */
+   body.light-theme .cr-root,
+   body.light-theme .pf-root,
+   body.light-theme .ah-root,
+   body.light-theme .th-root,
+   body.light-theme .mf-root         { background: #f8f9fd; color: #131722; }
+   
+   body.light-theme .cr-sidebar,
+   body.light-theme .pf-sidebar,
+   body.light-theme .ah-sidebar,
+   body.light-theme .th-sidebar,
+   body.light-theme .mf-sidebar      { background: #f0f3fa; border-right-color: #d0d3db; }
+   
+   body.light-theme .cr-main,
+   body.light-theme .pf-main,
+   body.light-theme .ah-main,
+   body.light-theme .th-main,
+   body.light-theme .mf-main         { background: #f8f9fd; }
+   
+   /* Logos */
+   body.light-theme .cr-logo,
+   body.light-theme .pf-logo,
+   body.light-theme .ah-logo,
+   body.light-theme .th-logo,
+   body.light-theme .mf-logo         { border-bottom-color: #d0d3db; }
+   
+   /* Sidebar headers */
+   body.light-theme .cr-sb-h,
+   body.light-theme .pf-sb-h,
+   body.light-theme .ah-sb-h,
+   body.light-theme .th-sb-h,
+   body.light-theme .mf-sb-h         { color: #aaa; }
+   
+   /* Sidebar labels */
+   body.light-theme .cr-sb-lbl,
+   body.light-theme .pf-sb-lbl,
+   body.light-theme .ah-sb-lbl,
+   body.light-theme .th-sb-lbl,
+   body.light-theme .mf-sb-lbl       { color: #787b86; }
+   
+   /* Sidebar inputs */
+   body.light-theme .cr-sb-inp,
+   body.light-theme .pf-sb-inp,
+   body.light-theme .ah-sb-inp,
+   body.light-theme .th-sb-inp,
+   body.light-theme .mf-sb-inp,
+   body.light-theme .cr-sb-sel,
+   body.light-theme .pf-sb-sel       { background: #fff; border-color: #d0d3db; color: #131722; }
+   
+   /* Nav buttons (vertical sidebar tabs) */
+   body.light-theme .cr-nav-btn,
+   body.light-theme .pf-nav-btn      { color: #787b86; }
+   body.light-theme .cr-nav-btn:hover,
+   body.light-theme .pf-nav-btn:hover { background: rgba(0,0,0,.04); color: #131722; }
+   body.light-theme .cr-nav-a,
+   body.light-theme .pf-nav-a        { color: #2962FF; border-left-color: #2962FF;
+                                       background: rgba(41,98,255,.06); }
+   
+   /* Empty states */
+   body.light-theme .cr-empty,
+   body.light-theme .pf-empty        { color: #787b86; }
+   body.light-theme [class$="-empty-t"] { color: #787b86; }
+   body.light-theme [class$="-empty-s"] { color: #aaa; }
+   
+   /* Run buttons */
+   body.light-theme .cr-run-btn,
+   body.light-theme .pf-run-btn      { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+   
+   
+   /* ══════════════════════════════════════════════════════
+      LLM SETTINGS — llm-settings-ui.js
+      ══════════════════════════════════════════════════════ */
+   
+   body.light-theme .llm-root        { background: #f8f9fd; color: #131722; }
+   body.light-theme .llm-sidebar     { background: #f0f3fa; border-right-color: #d0d3db; }
+   body.light-theme .llm-main        { background: #f8f9fd; }
+   body.light-theme .llm-logo        { border-bottom-color: #d0d3db; }
+   body.light-theme .llm-sb-sect     { border-bottom-color: #e0e3eb; }
+   body.light-theme .llm-sb-h        { color: #aaa; }
+   body.light-theme .llm-provider-btn { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+   body.light-theme .llm-provider-btn:hover { background: #e0e3ef; border-color: #b0b0b0; }
+   body.light-theme .llm-provider-active    { background: #e8f0ff; border-color: #2962FF; color: #2962FF; }
+   
+   /* Provider card */
+   body.light-theme .llm-card        { background: #fff; border-color: #d0d3db;
+                                       border-left-color: #f5a623; }
+   body.light-theme .llm-card-title  { color: #131722; }
+   body.light-theme .llm-card-desc   { color: #787b86; }
+   body.light-theme .llm-lbl         { color: #787b86; }
+   body.light-theme .llm-inp         { background: #fff; border-color: #d0d3db; color: #131722; }
+   body.light-theme .llm-inp:focus   { border-color: #2962FF; }
+   body.light-theme .llm-hint        { color: #aaa; }
+   body.light-theme .llm-save-btn    { background: #2962FF; border-color: #2962FF; color: #fff; }
+   body.light-theme .llm-save-btn:hover { background: #1e4fcc; }
+   body.light-theme .llm-models-sect { border-top-color: #e0e3eb; }
+   body.light-theme .llm-model-row   { border-bottom-color: #e0e3eb; color: #555; }
+   body.light-theme .llm-model-row:hover { background: #f0f3fa; }
+   body.light-theme .llm-model-active { color: #2962FF; font-weight: 700; }
+   body.light-theme .llm-status-ok   { color: #00796b; }
+   body.light-theme .llm-status-err  { color: #c62828; }
+   
+   /* API key badge */
+   body.light-theme .llm-active-badge { background: rgba(41,98,255,.1); border-color: #2962FF;
+                                        color: #2962FF; }
+/* =====================================================
+   PATCH 9 — light-theme-llm-and-aca.css
+   
+   Добавить в конец theme-styles.css
+   
+   Покрывает три проблемы с последних скриншотов:
+   1. LLM Settings — левая панель (активный провайдер, секции, карточки)
+   2. AI Code Analyzer модалка (#aca-modal, #aca-overlay)
+   3. AI Refactor (Доработка) модалка — тот же компонент
+   ===================================================== */
+
+
+/* ══════════════════════════════════════════════════════
+   1. LLM SETTINGS — полный light-theme
+   ══════════════════════════════════════════════════════ */
+
+/* Корень */
+body.light-theme .llm-root         { background: #f8f9fd; color: #131722; }
+body.light-theme .llm-layout       { background: #f8f9fd; }
+
+/* Левая панель (список провайдеров) */
+body.light-theme .llm-left         { background: #f0f3fa; border-right-color: #d0d3db; }
+body.light-theme .llm-panel-hdr    { border-bottom-color: #d0d3db; }
+body.light-theme .llm-panel-title  { color: #131722; }
+body.light-theme .llm-no-badge     { color: #c62828; }
+
+/* Секции */
+body.light-theme .llm-sect-lbl     { color: #aaa; }
+
+/* Карточки провайдеров */
+body.light-theme .llm-card         { border-bottom-color: #e8eaf0;
+                                     color: #555; }
+body.light-theme .llm-card:hover   { background: rgba(0,0,0,.03); color: #131722; }
+body.light-theme .llm-card-name    { color: #787b86; }
+body.light-theme .llm-card-sel .llm-card-name { color: #131722; }
+
+/* ── ИСПРАВЛЕНИЕ: активный провайдер был тёмным (#0b0d16 из JS inline стиля) ── 
+   Переопределяем inline-стиль через !important                                 */
+body.light-theme .llm-card.llm-card-active {
+    background: rgba(167,139,250,.06) !important;
+    border-left-color: #a78bfa;
+}
+body.light-theme .llm-card.llm-card-sel {
+    background: rgba(41,98,255,.04) !important;
+}
+
+/* FREE TIER badge */
+body.light-theme .llm-free-tag     { background: rgba(0,121,107,.1); color: #00796b; }
+
+/* Правая панель (форма) */
+body.light-theme .llm-right        { background: #f8f9fd; }
+body.light-theme .llm-placeholder  { color: #aaa; }
+
+/* Форма провайдера */
+body.light-theme .llm-form-hdr     { background: #f3f3f3; }
+body.light-theme .llm-form-name    { color: #131722; }
+body.light-theme .llm-form-desc    { color: #787b86; }
+
+/* Поля */
+body.light-theme .llm-lbl          { color: #787b86; }
+body.light-theme .llm-get-key      { color: #2962FF; }
+body.light-theme .llm-inp,
+body.light-theme .llm-sel          { background: #fff; border-color: #d0d3db; color: #131722; }
+body.light-theme .llm-inp:focus    { border-color: #2962FF; }
+body.light-theme .llm-hint         { color: #aaa; }
+body.light-theme .llm-refresh-btn  { background: #f0f3fa; border-color: #d0d3db; color: #787b86; }
+body.light-theme .llm-refresh-btn:hover { border-color: #a78bfa; color: #7c3aed; }
+
+/* Кнопки действий */
+body.light-theme .llm-btn-test     { background: #f0f3fa; color: #555; border-color: #d0d3db; }
+body.light-theme .llm-btn-test:hover { border-color: #22d3ee; color: #0891b2; }
+/* Save & Activate — фиолетовый, оставляем как есть (хорошо читается) */
+
+/* Результат теста */
+body.light-theme .llm-ok           { background: rgba(0,121,107,.06); border-color: rgba(0,121,107,.25); color: #00796b; }
+body.light-theme .llm-err          { background: rgba(198,40,40,.06); border-color: rgba(198,40,40,.25); color: #c62828; }
+
+/* Free info block */
+body.light-theme .llm-free-info    { background: rgba(0,121,107,.04); border-color: rgba(0,121,107,.15);
+                                     color: #787b86; }
+
+/* ── ИСПРАВЛЕНИЕ: LOCAL секция с тёмным фоном через style="" в renderMain() ──
+   Эти inline-стили нельзя убрать без изменения JS, но можно перекрыть          
+   через специфику body.light-theme на родительских элементах                   */
+body.light-theme .llm-left * {
+    /* Сбрасываем возможные тёмные inline background на дочерних элементах */
+}
+/* Секция Local — добавлен margin-top:16px inline, это нормально.
+   Проблема только в background самой .llm-left, уже решена выше.               */
+
+
+/* ══════════════════════════════════════════════════════
+   2 & 3. AI CODE ANALYZER — #aca-modal и #aca-refactor-view
+   Обе модалки (Анализ кода + Доработка) — один и тот же компонент
+   ══════════════════════════════════════════════════════ */
+
+/* Оверлей — затемнение фона, оставляем тёмным для контраста */
+/* body.light-theme #aca-overlay — НЕ меняем, blur-backdrop OK */
+
+/* Само окно модалки */
+body.light-theme #aca-modal        { background: #ffffff; border-color: #d0d3db;
+                                     box-shadow: 0 32px 96px rgba(0,0,0,.2); }
+
+/* Хедер */
+body.light-theme #aca-header       { background: #f3f3f3; border-bottom-color: #e0e3eb; }
+body.light-theme #aca-title        { color: #131722; }
+body.light-theme #aca-badge        { background: rgba(41,98,255,.08); color: #2962FF;
+                                     padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+body.light-theme .aca-ghost-btn    { background: transparent; border: 1px solid #d0d3db;
+                                     color: #787b86; border-radius: 4px; padding: 3px 10px;
+                                     cursor: pointer; font-size: 12px; }
+body.light-theme .aca-ghost-btn:hover { border-color: #2962FF; color: #2962FF; }
+body.light-theme #aca-close-btn    { background: transparent; border: none; color: #787b86;
+                                     font-size: 18px; cursor: pointer; }
+body.light-theme #aca-close-btn:hover { color: #c62828; }
+
+/* Заголовки панелей */
+body.light-theme .aca-panel-title  { color: #2962FF; background: #f8f9fd;
+                                     border-bottom-color: #e0e3eb; font-size: 11px;
+                                     font-weight: 700; padding: 8px 14px;
+                                     text-transform: uppercase; letter-spacing: .04em; }
+
+/* Левая панель (анализ / текущий код) */
+body.light-theme #aca-left         { background: #ffffff; border-right-color: #e0e3eb; }
+body.light-theme #aca-analysis-wrap { background: #ffffff; }
+body.light-theme #aca-analysis-section { color: #131722; }
+
+/* Блок предложенного кода */
+body.light-theme #aca-code-block   { background: #f8f9fd; }
+body.light-theme #aca-suggested-code { color: #0d47a1; }
+
+/* Apply кнопка */
+body.light-theme #aca-apply-btn    { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+body.light-theme #aca-apply-btn:hover { background: #c8e6c9; }
+
+/* Loading state */
+body.light-theme .aca-loading      { color: #787b86; }
+body.light-theme .aca-spinner      { border-color: #e0e3eb; border-top-color: #2962FF; }
+body.light-theme .aca-error        { color: #c62828; }
+
+/* Правая панель (чат) */
+body.light-theme #aca-right        { background: #f8f9fd; border-left-color: #e0e3eb; }
+body.light-theme #aca-chat-messages { background: #f8f9fd; }
+body.light-theme .aca-chat-empty   { color: #aaa; }
+body.light-theme .aca-chat-hint    { color: #ccc; }
+
+/* Сообщения чата */
+body.light-theme .aca-msg-user .aca-msg-label     { color: #2962FF; }
+body.light-theme .aca-msg-assistant .aca-msg-label { color: #2e7d32; }
+body.light-theme .aca-msg-content  { background: #f0f3fa; color: #131722; }
+body.light-theme .aca-msg-user .aca-msg-content   { background: #e8f0ff; }
+
+/* Code блоки внутри чата */
+body.light-theme .aca-code-block-inline { background: #f3f3f3; color: #0d47a1; }
+body.light-theme .aca-code-tag          { background: #f3f3f3; color: #0d47a1; }
+
+/* Футер чата */
+body.light-theme #aca-chat-footer  { background: #f3f3f3; border-top-color: #e0e3eb; }
+body.light-theme #aca-chat-input   { background: #fff; border-color: #d0d3db; color: #131722; }
+body.light-theme #aca-chat-input:focus    { border-color: #2962FF; }
+body.light-theme #aca-chat-input::placeholder { color: #b0b3bb; }
+body.light-theme #aca-send-btn     { background: #2962FF; }
+body.light-theme #aca-send-btn:hover { background: #1e4fcc; }
+
+/* ── REFACTOR VIEW (Доработка) ── */
+body.light-theme #aca-refactor-left   { background: #ffffff; border-right-color: #e0e3eb; }
+body.light-theme #aca-current-code-wrap { background: #f8f9fd; }
+body.light-theme #aca-current-pre     { background: #f8f9fd; }
+body.light-theme #aca-current-code    { color: #546e7a; }
+
+body.light-theme #aca-refactor-right  { background: #f8f9fd; border-left-color: #e0e3eb; }
+body.light-theme #aca-refactor-task-lbl { color: #2962FF; font-weight: 700; }
+body.light-theme #aca-refactor-task   { background: #fff; border-color: #d0d3db; color: #131722; }
+body.light-theme #aca-refactor-task::placeholder { color: #b0b3bb; }
+body.light-theme #aca-refactor-btn    { background: linear-gradient(135deg, #2e7d32, #43a047);
+                                        border-color: #43a047; color: #fff; }
+body.light-theme #aca-refactor-result-lbl { color: #2962FF; font-weight: 700; }
+body.light-theme #aca-refactor-result { background: #f8f9fd; color: #555; }
+body.light-theme #aca-refactor-code-block { background: #f3f3f3; color: #0d47a1; }
+body.light-theme #aca-refactor-apply-btn  { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+
+/* Scrollbars внутри модалки */
+body.light-theme #aca-analysis-wrap::-webkit-scrollbar-thumb,
+body.light-theme #aca-code-block::-webkit-scrollbar-thumb,
+body.light-theme #aca-chat-messages::-webkit-scrollbar-thumb,
+body.light-theme #aca-current-code-wrap::-webkit-scrollbar-thumb,
+body.light-theme #aca-refactor-code-block::-webkit-scrollbar-thumb,
+body.light-theme #aca-refactor-result::-webkit-scrollbar-thumb { background: #d0d3db; }
+
+/* Toast внутри модалки */
+body.light-theme #aca-toast        { background: #f3f3f3; border-color: #e0e3eb; color: #555; }
+
+
+

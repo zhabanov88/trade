@@ -738,7 +738,7 @@ class IntervalSelector {
     transition: background .12s, color .12s;
 }
 .isb:hover  { background:#2a2e39; color:#d1d4dc; }
-.isb.active { background:#2962FF; color:#fff; }
+.isb.active { background:#9fb4ee; color:#fff; }
 .isb.active:hover { background:#1e4fcc; }
 
 /* ── Разделитель ──────────────────────────────────────────── */
@@ -917,6 +917,12 @@ class IntervalSelector {
 .isp-cfg-add-row select {
     flex:1; background:#2a2e39; border:1px solid #3a3e4e;
     border-radius:4px; color:#d1d4dc; font-size:11px; padding:4px 6px;
+}
+.light-theme .isp-cfg-add-row select {
+    background: #ffffff;
+}
+.light-theme #isp-cfg-add-btn {
+    background:#ffffff;color: #787b86;
 }
 #isp-cfg-add-btn {
     padding:4px 10px; background:#2a2e39; border:1px solid #3a3e4e;
