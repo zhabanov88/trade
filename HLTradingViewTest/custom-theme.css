@@ -18,16 +18,58 @@
             transform: scale(1.1);
         }
 
-        /* Светлая тема */
-        body.light-theme {
-            --bg-color: #ffffff;
-            --text-color: #131722;
-            --border-color: #e0e3eb;
-        }
+        /* =====================================================
+   PATCH 5: custom-theme.css — устранение конфликта CSS-переменных
 
-        /* Тёмная тема */
-        body.dark-theme {
-            --bg-color: #131722;
-            --text-color: #d1d4dc;
-            --border-color: #2a2e39;
-        }
+   ПРОБЛЕМА: custom-theme.css определяет --bg-color, --text-color, --border-color
+   параллельно с theme-styles.css, который использует --bg-primary, --text-primary.
+   Это два несвязанных набора переменных для одной и той же цели.
+
+   РЕШЕНИЕ: удалить дублирующиеся переменные из custom-theme.css и
+   заменить их алиасами на переменные из theme-styles.css.
+   ===================================================== */
+
+/* ── Кнопка переключения темы ── */
+.theme-toggle-button {
+    position: fixed;
+    top: 20px;
+    right: 100px;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 20px;
+    transition: all 0.3s;
+}
+
+.theme-toggle-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+body.light-theme .theme-toggle-button {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .theme-toggle-button:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* ── Алиасы: сводим старые переменные к основному набору ──
+   Это сохраняет обратную совместимость с любым кодом,
+   который использует var(--bg-color) / var(--text-color) / var(--border-color)
+   ── */
+body.dark-theme {
+    --bg-color:     var(--bg-primary);      /* алиас → #131722 */
+    --text-color:   var(--text-primary);    /* алиас → #d1d4dc */
+    --border-color: var(--border-color);    /* совпадает по имени, нет конфликта */
+}
+
+body.light-theme {
+    --bg-color:     var(--bg-primary);      /* алиас → #ffffff */
+    --text-color:   var(--text-primary);    /* алиас → #1e1e1e */
+    --border-color: var(--border-color);    /* совпадает по имени, нет конфликта */
+}

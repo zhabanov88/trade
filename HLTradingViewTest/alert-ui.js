@@ -997,12 +997,71 @@ if (window._alertUILoaded) {} else { window._alertUILoaded = true; (function () 
     .alr-footer-dismiss:hover { color:#ef5350; border-color:#ef5350 }
     
     /* Light theme */
-    body.light-theme .alr-root     { background:#f8f9fd }
-    body.light-theme .alr-sidebar  { background:#f0f3fa; border-color:#d0d3db }
-    body.light-theme .alr-logo     { border-color:#d0d3db }
-    body.light-theme .alr-inp,.alr-sel { background:#fff; border-color:#d0d3db; color:#131722 }
-    body.light-theme .alr-card     { background:#fff; border-color:#d0d3db }
+    /* Light theme */
+    body.light-theme .alr-root          { background:#f8f9fd; color:#131722 }
+    body.light-theme .alr-sidebar       { background:#f0f3fa; border-color:#d0d3db }
+    body.light-theme .alr-main          { background:#f8f9fd }
+    body.light-theme .alr-logo          { color:#f5a623; border-color:#d0d3db }
+    body.light-theme .alr-sb-sect       { border-color:#d0d3db }
+    body.light-theme .alr-sb-h          { color:#999 }
+    body.light-theme .alr-lbl           { color:#787b86 }
+    body.light-theme .alr-loading       { color:#787b86 }
+
+    /* ИСПРАВЛЕНО: оба селектора с body.light-theme */
+    body.light-theme .alr-inp,
+    body.light-theme .alr-sel           { background:#fff; border-color:#d0d3db; color:#131722 }
+    body.light-theme .alr-inp:focus     { border-color:#f5a623 }
+
+    body.light-theme .alr-ctx-btn       { background:#fff3e0; border-color:#f5a623; color:#e67e00 }
+    body.light-theme .alr-hint          { color:#aaa }
+    body.light-theme .alr-replay-status { background:rgba(0,0,0,.05) }
+    body.light-theme .alr-hist-item     { border-color:#e0e3eb }
+    body.light-theme .alr-hist-name     { color:#131722 }
+    body.light-theme .alr-hist-ts,
+    body.light-theme .alr-hist-price    { color:#787b86 }
+
+    /* Alert cards */
+    body.light-theme .alr-card          { background:#fff; border-color:#d0d3db }
+    body.light-theme .alr-card-name     { color:#131722 }
+    body.light-theme .alr-card-meta     { color:#787b86 }
+    body.light-theme .alr-cond-val      { color:#131722 }
+    body.light-theme .alr-show-ctx-btn  { background:#f0f3fa; border-color:#d0d3db; color:#787b86 }
+    body.light-theme .alr-show-ctx-btn:hover { color:#131722 }
+    body.light-theme .alr-init-btn      { background:#f0f3fa; border-color:#d0d3db; color:#555 }
+
+    /* Price level indicators */
+    body.light-theme .alr-price-line    { background:#d0d3db }
+    body.light-theme .alr-price-badge   { background:#fff3e0; color:#e67e00 }
+    body.light-theme .alr-summary-line  { color:#555 }
+    body.light-theme .alr-card-summary  { background:#f8f9fd; border-color:#e0e3eb }
+
+    /* Footer buttons */
+    body.light-theme .alr-footer-btn    { background:#f0f3fa; border-color:#d0d3db; color:#131722 }
+    body.light-theme .alr-footer-btn:hover { background:#e0e3eb }
+    body.light-theme .alr-footer-dismiss { color:#aaa }
+    body.light-theme .alr-card-footer   { border-color:#e0e3eb }
+
+    /* Context card overlay */
+    body.light-theme .alr-card-inner    { background:#fff; border-color:#d0d3db;
+                                          box-shadow:0 20px 60px rgba(0,0,0,.25) }
     body.light-theme #alr-ctx-card .alr-card-inner { background:#fff; border-color:#d0d3db }
+    body.light-theme .alr-card-hdr      { background:#f3f3f3; border-color:#e0e3eb }
+    body.light-theme .alr-card-htitle   { color:#131722 }
+    body.light-theme .alr-card-time     { color:#aaa }
+    body.light-theme .alr-card-close    { color:#aaa }
+    body.light-theme .alr-card-close:hover { color:#ef5350 }
+    body.light-theme .alr-card-body     { background:#e8eaf0 }
+    body.light-theme .alr-ctx-section   { background:#fff }
+    body.light-theme .alr-ctx-rec       { background:#f8f9fd }
+    body.light-theme .alr-ctx-sec-hdr   { color:#aaa }
+    body.light-theme .alr-no-data       { color:#ccc }
+    body.light-theme .alr-level-row     { border-color:#e0e3eb }
+    body.light-theme .alr-level-type    { color:#787b86 }
+    body.light-theme .alr-level-val     { color:#131722 }
+
+    /* Empty state */
+    body.light-theme .alr-empty-t       { color:#787b86 }
+    body.light-theme .alr-empty-s       { color:#aaa }
     `;
         document.head.appendChild(s);
     }

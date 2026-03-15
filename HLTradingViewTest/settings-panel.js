@@ -394,6 +394,143 @@ class SettingsPanel {
                 background: #424242;
                 border-radius: 4px;
             }
+
+            /* ── Основная оболочка модалки ── */
+            body.light-theme .settings-panel-content {
+                background: #ffffff;
+                box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            }
+
+            /* ── Хедер ── */
+            body.light-theme .settings-panel-header {
+                background: #f3f3f3;
+                border-bottom-color: #d0d0d0;
+            }
+
+            body.light-theme .settings-panel-header h2 {
+                color: #1e1e1e;
+            }
+
+            body.light-theme .settings-panel-close {
+                color: #616161;
+            }
+
+            body.light-theme .settings-panel-close:hover {
+                color: #1e1e1e;
+            }
+
+            /* ── Сайдбар ── */
+            body.light-theme .settings-sidebar {
+                background: #f3f3f3;
+                border-right-color: #d0d0d0;
+            }
+
+            body.light-theme .settings-menu-title {
+                color: #9e9e9e;
+            }
+
+            body.light-theme .settings-menu-item {
+                color: #1e1e1e;
+            }
+
+            body.light-theme .settings-menu-item:hover {
+                background: #e8e8e8;
+                color: #1e1e1e;
+            }
+
+            body.light-theme .settings-menu-item.active {
+                background: #e8e8e8;
+                border-left-color: #2962FF;
+                color: #2962FF;
+            }
+
+            /* ── Контент область ── */
+            body.light-theme .settings-content {
+                background: #ffffff;
+            }
+
+            body.light-theme .settings-loading {
+                color: #616161;
+            }
+
+            /* ── Заголовки секций ── */
+            body.light-theme .settings-section-title {
+                color: #1e1e1e;
+            }
+
+            body.light-theme .settings-section-desc {
+                color: #616161;
+            }
+
+            /* ── Карточки ── */
+            body.light-theme .settings-card {
+                background: #f3f3f3;
+                border-color: #d0d0d0;
+            }
+
+            body.light-theme .settings-card-title {
+                color: #00796b;
+            }
+
+            /* ── Строки настроек ── */
+            body.light-theme .settings-row {
+                border-bottom-color: #d0d0d0;
+            }
+
+            body.light-theme .settings-row-label {
+                color: #1e1e1e;
+            }
+
+            body.light-theme .settings-row-value {
+                color: #616161;
+            }
+
+            /* ── Кнопки ── */
+            body.light-theme .settings-btn-secondary {
+                background: #e8e8e8;
+                color: #1e1e1e;
+                border-color: #d0d0d0;
+            }
+
+            body.light-theme .settings-btn-secondary:hover {
+                background: #d0d0d0;
+            }
+
+            /* ── Таблицы ── */
+            body.light-theme .settings-table thead {
+                background: #e8e8e8;
+            }
+
+            body.light-theme .settings-table th {
+                color: #616161;
+            }
+
+            body.light-theme .settings-table td {
+                color: #1e1e1e;
+                border-bottom-color: #e0e0e0;
+            }
+
+            body.light-theme .settings-table tr:hover {
+                background: #f3f3f3;
+            }
+
+            body.light-theme .settings-table code {
+                background: #e8e8e8;
+                color: #1e1e1e;
+                padding: 2px 5px;
+                border-radius: 3px;
+            }
+
+            /* ── Скроллбары внутри панели ── */
+            body.light-theme .settings-sidebar::-webkit-scrollbar-track,
+            body.light-theme .settings-content::-webkit-scrollbar-track {
+                background: #f3f3f3;
+            }
+
+            body.light-theme .settings-sidebar::-webkit-scrollbar-thumb,
+            body.light-theme .settings-content::-webkit-scrollbar-thumb {
+                background: #c0c0c0;
+            }
             </style>
         `;
 

@@ -1215,3 +1215,72 @@ body.light-theme .lm-menu-divider { background: #e0e3eb; }
     gap: 6px;
     margin-bottom: 6px;
 }
+
+/* =====================================================
+   PATCH 2: styles.css — Light Theme для code-panel-strip
+   
+   Добавить в конец styles.css
+   (или в секцию LIGHT THEME в theme-styles.css)
+   ===================================================== */
+
+/* ── Code Panel Strip (полоска-триггер когда панель скрыта) ── */
+body.light-theme .code-panel-strip {
+    background: #f3f3f3;
+    border-left-color: #d0d0d0;
+}
+
+body.light-theme .code-panel-strip:hover {
+    background: #e8e8e8;
+}
+
+body.light-theme .code-panel-strip:hover .code-panel-strip-arrow {
+    color: #1e1e1e;
+}
+
+/* ── Code Panel Close button ── */
+body.light-theme .code-panel-close {
+    color: #616161;
+}
+
+body.light-theme .code-panel-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: #b0b0b0;
+    color: #1e1e1e;
+}
+
+/* ── Nav Buttons в светлой теме (styles.css дублирует theme-styles.css) ── */
+body.light-theme .nav-btn {
+    background: #e8e8e8;
+    border-color: #d0d0d0;
+    color: #1e1e1e;
+}
+
+body.light-theme .nav-btn:hover {
+    background: #e0e0e0;
+    border-color: #b0b0b0;
+}
+
+body.light-theme .nav-btn.nav-btn-active {
+    background: #dce8ff;
+    border-color: #2962FF;
+    color: #2962FF;
+}
+
+/* ── Loading overlay ── */
+body.light-theme .loading-overlay {
+    background: #ffffff;
+}
+
+body.light-theme .loading-spinner {
+    border-color: #e0e0e0;
+    border-top-color: #2962FF;
+}
+
+body.light-theme .loading-text {
+    color: #1e1e1e;
+}
+
+/* ── Chart container background ── */
+body.light-theme .chart-container {
+    background: #ffffff;
+}

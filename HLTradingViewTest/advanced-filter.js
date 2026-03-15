@@ -820,13 +820,49 @@ if (window._afv2Loaded) {} else { window._afv2Loaded = true; (function () {
     .af-no-p{font-size:11px;color:#555}
     
     /* Light theme */
-    body.light-theme #af-popup{background:#f8f9fd;border-color:#e0e3eb}
-    body.light-theme .af-hdr,.body.light-theme .af-foot{background:#fff;border-color:#e0e3eb}
-    body.light-theme .af-grp{background:#fff;border-color:#e0e3eb}
-    body.light-theme .af-tab{background:#f0f3fa;border-color:#e0e3eb;color:#555}
-    body.light-theme .af-tab.on{background:#e0e3eb;color:#131722}
-    body.light-theme .af-s,.body.light-theme .af-v,.body.light-theme .af-fml{background:#fff;border-color:#d0d3db;color:#131722}
-    body.light-theme .af-lg{background:#fff;border-color:#d0d3db;color:#787b86}
+    /* Light theme */
+    body.light-theme #af-popup          { background:#f8f9fd; border-color:#e0e3eb }
+    /* ИСПРАВЛЕНО: убрана опечатка .body.light-theme */
+    body.light-theme .af-hdr,
+    body.light-theme .af-foot           { background:#fff; border-color:#e0e3eb }
+    body.light-theme .af-grp            { background:#fff; border-color:#e0e3eb }
+    body.light-theme .af-tab            { background:#f0f3fa; border-color:#e0e3eb; color:#555 }
+    body.light-theme .af-tab.on         { background:#e0e3eb; color:#131722 }
+    /* ИСПРАВЛЕНО: убраны две опечатки .body.light-theme */
+    body.light-theme .af-s,
+    body.light-theme .af-v,
+    body.light-theme .af-fml            { background:#fff; border-color:#d0d3db; color:#131722 }
+    body.light-theme .af-lg             { background:#fff; border-color:#d0d3db; color:#787b86 }
+    body.light-theme .af-lg.on          { background:#2962FF22; border-color:#2962FF; color:#2962FF }
+
+    /* Дополнительные элементы без адаптации */
+    body.light-theme #af-nav-btn        { color:#555; border-color:#d0d3db }
+    body.light-theme #af-nav-btn.af-on  { background:#f5a62322; color:#f5a623; border-color:#f5a62366 }
+    body.light-theme #af-body           { background:#f8f9fd }
+    body.light-theme .af-b              { background:#e9ecf2; border-color:#d0d3db; color:#555 }
+    body.light-theme .af-b:hover        { background:#d0d3db; color:#131722 }
+    body.light-theme .af-b-ok           { background:#e8f5e9; border-color:#4caf50; color:#2e7d32 }
+    body.light-theme .af-b-clr          { border-color:#ef535044; color:#ef5350; background:transparent }
+    body.light-theme .af-b-prev         { border-color:#2962FF44; color:#2962FF }
+    body.light-theme .af-cond-lbl       { color:#2962FF }
+    body.light-theme .af-and            { color:#aaa }
+    body.light-theme .af-hint           { color:#aaa }
+    body.light-theme .af-add-c          { color:#aaa }
+    body.light-theme .af-add-c:hover    { color:#2962FF }
+    body.light-theme .af-add-g          { border-color:#d0d3db; color:#aaa }
+    body.light-theme .af-add-g:hover    { border-color:#2962FF; color:#2962FF }
+    body.light-theme .af-grp-lbl        { color:#aaa }
+    body.light-theme .af-grp-logic-lbl  { color:#aaa }
+    body.light-theme .af-or-sep         { color:#f5a623 }
+    body.light-theme .af-chip           { background:#f0f3fa; border-color:#d0d3db; color:#555 }
+    body.light-theme .af-chip:hover     { border-color:#2962FF; color:#2962FF; background:#e8f0ff }
+    body.light-theme .af-ex             { background:#f0f3fa; color:#aaa }
+    body.light-theme .af-ex:hover       { color:#131722; background:#e0e3eb }
+    body.light-theme .af-pi             { background:#fff; border-color:#d0d3db; color:#131722 }
+    body.light-theme .af-pm             { color:#aaa }
+    body.light-theme .af-no-p           { color:#aaa }
+    body.light-theme .af-hlbl           { color:#aaa }
+    body.light-theme #af-match          { /* цвет задаётся динамически через JS */ }
     `;
         document.head.appendChild(s);
     }
