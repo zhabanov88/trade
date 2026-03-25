@@ -15,8 +15,8 @@ const { buildCorrelationMatrix, buildPortfolio, efficientFrontier, detectMarketM
 const app = express();
 
 // Middleware 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 
 // Session configuration 
@@ -846,7 +846,9 @@ app.delete('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
     const id = req.params.id;
     
     const checkResult = await greenplumPool.query(
-        'SELECT created_by FROM javascript_scripts WHERE id = $1',
+        `SELECT js.*, st.code AS type_code, js.inputs_schema, js.is_overlay
+        FROM javascript_scripts js
+        LEFT JOIN script_types st ON js.type_id = st.id WHERE js.id = $1`,
         [id]
     );
 
@@ -889,25 +891,25 @@ app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
     }
 
     const {
-        code, display_name, description, is_public, system_name
+        code, display_name, description, is_public, system_name, type_id
     } = req.body;
 
 
     console.log("PUT___api/javascript_scripts/:id", id)
     try {
         const result = await greenplumPool.query(
-            `UPDATE "javascript_scripts" SET
-                code = COALESCE($1, code),
-                description = COALESCE($2, description),
-                display_name = COALESCE($3, display_name),
-                is_public = COALESCE($4, is_public),
-                system_name = COALESCE($5, system_name),
-                updated_at = CURRENT_TIMESTAMP
-             WHERE id = $6
-             RETURNING *`,
-            [
-                code, description, display_name, is_public, system_name, id
-            ]
+            `UPDATE javascript_scripts SET
+                code          = COALESCE($1, code),
+                description   = COALESCE($2, description),
+                display_name  = COALESCE($3, display_name),
+                is_public     = COALESCE($4, is_public),
+                system_name   = COALESCE($5, system_name),
+                type_id       = COALESCE($6, type_id),
+                updated_at    = CURRENT_TIMESTAMP
+            WHERE id = $7
+            RETURNING *`,
+            [code, description, display_name, is_public, system_name,
+            type_id, id]
         );
 
         await logAction(req.session.userId, 'update_javascript_scripts', 'indicator', id, result.rows[0], req);
@@ -925,10 +927,17 @@ app.get('/api/javascript-scripts', requireAuth, async (req, res) => {
 
     try {
         const result = await greenplumPool.query(
-            `SELECT js.*, s.name as status_name,
-                    EXISTS(SELECT 1 FROM user_javascript_scripts ujs WHERE ujs.user_id = $1 AND ujs.script_id = js.id) as is_user_script
+            `SELECT js.*,
+                    st.code  AS type_code,
+                    st.display_name AS type_display_name,
+                    js.inputs_schema,
+                    js.is_overlay,
+                    s.name   AS status_name,
+                    EXISTS(SELECT 1 FROM user_javascript_scripts ujs
+                           WHERE ujs.user_id = $1 AND ujs.script_id = js.id) AS is_user_script
              FROM javascript_scripts js
-             LEFT JOIN statuses s ON js.status_id = s.id
+             LEFT JOIN statuses    s  ON js.status_id = s.id
+             LEFT JOIN script_types st ON js.type_id  = st.id
              WHERE (js.is_default = TRUE OR js.is_public = TRUE OR js.created_by = $1)
                AND s.code = 'active'
              ORDER BY js.sort_order ASC, js.display_name ASC`,
@@ -940,9 +949,16 @@ app.get('/api/javascript-scripts', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch scripts' });
     }
 });
+app.get('/api/script-types', requireAuth, async (req, res) => {
+    const result = await greenplumPool.query(
+        `SELECT * FROM script_types WHERE is_active = TRUE ORDER BY sort_order`
+    );
+    res.json(result.rows);
+});
 
 app.post('/api/javascript-scripts', requireAuth, async (req, res) => {
-    const { system_name, display_name, description, code, is_public } = req.body;
+    const { system_name, display_name, description, code,
+        is_public, type_id, inputs_schema, is_overlay } = req.body;
 
     try {
         const activeStatus = await greenplumPool.query(
@@ -950,10 +966,17 @@ app.post('/api/javascript-scripts', requireAuth, async (req, res) => {
         );
 
         const result = await greenplumPool.query(
-            `INSERT INTO javascript_scripts (status_id, created_by, system_name, display_name, description, code, is_public)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING *`,
-            [activeStatus.rows[0].id, req.session.userId, system_name, display_name, description, code, is_public]
+            `INSERT INTO javascript_scripts
+                (status_id, created_by, system_name, display_name,
+                description, code, is_public, type_id, inputs_schema, is_overlay)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,
+                    COALESCE($8, 1),
+                    COALESCE($9,'[]'::jsonb),
+                    COALESCE($10, true))
+            RETURNING *`,
+            [activeStatus.rows[0].id, req.session.userId,
+            system_name, display_name, description, code, is_public,
+            type_id, JSON.stringify(inputs_schema || []), is_overlay]
         );
 
         await logAction(req.session.userId, 'create_js_script', 'javascript_script', result.rows[0].id, result.rows[0], req);
@@ -1032,6 +1055,23 @@ app.get('/api/layouts', requireAuth, async (req, res) => {
 
 app.get('/api/layouts/:id', requireAuth, async (req, res) => {
     try {
+        if (layout_data && typeof layout_data === 'object') {
+            try {
+                if (Array.isArray(layout_data.charts)) {
+                    layout_data.charts.forEach(chart => {
+                        (chart.panes || []).forEach(pane => {
+                            (pane.sources || []).forEach(source => {
+                                if (source.state) {
+                                    delete source.state.data;
+                                    delete source.state.metaInfo;
+                                }
+                            });
+                        });
+                    });
+                }
+            } catch (_) {}
+        }
+
         const result = await greenplumPool.query(
             `SELECT * FROM chart_layouts WHERE id = $1 AND user_id = $2`,
             [req.params.id, req.session.userId]

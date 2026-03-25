@@ -19,6 +19,96 @@ class ScriptManagerUI {
         this.sortDir = 'desc';      // 'asc' | 'desc'
     }
 
+    async loadScriptTypes() {
+        try {
+            const types = await fetch('/api/script-types', { credentials: 'include' }).then(r => r.json());
+            const select = document.getElementById('scriptTypeId');
+            select.innerHTML = types.map(t =>
+                `<option value="${t.id}" data-code="${t.code}">${t.display_name}</option>`
+            ).join('');
+        } catch (e) {
+            console.error('Failed to load script types', e);
+        }
+    }
+    
+    onTypeChange() {
+        const select   = document.getElementById('scriptTypeId');
+        const selected = select.options[select.selectedIndex];
+        const code     = selected?.dataset?.code || 'default';
+        const isInstr  = code === 'instrument';
+    
+        //document.getElementById('overlayGroup').style.display       = isInstr ? '' : 'none';
+        //document.getElementById('inputsSchemaGroup').style.display  = isInstr ? '' : 'none';
+        //document.getElementById('outputsSchemaGroup').style.display = isInstr ? '' : 'none';
+    }
+    
+    addInputRow(data = {}) {
+        const container = document.getElementById('inputsSchemaRows');
+        const idx = container.children.length;
+        const row = document.createElement('div');
+        row.className = 'inputs-schema-row';
+        row.innerHTML = `
+            <input placeholder="id (e.g. length)"  value="${data.id     || ''}" class="inp-id">
+            <input placeholder="Название"           value="${data.name   || ''}" class="inp-name">
+            <select class="inp-type">
+                ${['integer','float','string','color','source','bool','select'].map(t =>
+                    `<option value="${t}" ${data.type===t?'selected':''}>${t}</option>`
+                ).join('')}
+            </select>
+            <input placeholder="По умолчанию" value="${data.defval ?? ''}" class="inp-defval">
+            <input placeholder="min"          value="${data.min    ?? ''}" class="inp-min" style="width:60px">
+            <input placeholder="max"          value="${data.max    ?? ''}" class="inp-max" style="width:60px">
+            <button type="button" onclick="this.closest('.inputs-schema-row').remove()">✕</button>
+        `;
+        container.appendChild(row);
+    }
+    
+    addOutputRow(data = {}) {
+        const container = document.getElementById('outputsSchemaRows');
+        const row = document.createElement('div');
+        row.className = 'outputs-schema-row';
+        row.innerHTML = `
+            <input placeholder="Название (e.g. Upper Band)" value="${data.name||''}" class="out-name">
+            <select class="out-plot-type">
+                ${['line','histogram','area','columns'].map(t =>
+                    `<option value="${t}" ${data.plot_type===t?'selected':''}>${t}</option>`
+                ).join('')}
+            </select>
+            <input type="color" value="${data.color||'#2962FF'}" class="out-color">
+            <input placeholder="ширина" value="${data.linewidth||2}" class="out-lw" style="width:50px">
+            <button type="button" onclick="this.closest('.outputs-schema-row').remove()">✕</button>
+        `;
+        container.appendChild(row);
+    }
+    
+    collectInputsSchema() {
+        return Array.from(document.querySelectorAll('.inputs-schema-row')).map(row => ({
+            id:     row.querySelector('.inp-id').value.trim(),
+            name:   row.querySelector('.inp-name').value.trim(),
+            type:   row.querySelector('.inp-type').value,
+            defval: this._parseVal(row.querySelector('.inp-defval').value),
+            min:    row.querySelector('.inp-min').value !== '' ? Number(row.querySelector('.inp-min').value) : undefined,
+            max:    row.querySelector('.inp-max').value !== '' ? Number(row.querySelector('.inp-max').value) : undefined,
+        })).filter(r => r.id && r.name);
+    }
+    
+    collectOutputsSchema() {
+        return Array.from(document.querySelectorAll('.outputs-schema-row')).map(row => ({
+            name:      row.querySelector('.out-name').value.trim(),
+            plot_type: row.querySelector('.out-plot-type').value,
+            color:     row.querySelector('.out-color').value,
+            linewidth: Number(row.querySelector('.out-lw').value) || 2,
+        })).filter(r => r.name);
+    }
+    
+    _parseVal(v) {
+        if (v === '') return 0;
+        if (!isNaN(Number(v))) return Number(v);
+        if (v === 'true') return true;
+        if (v === 'false') return false;
+        return v;
+    }
+
     /**
      * Initialize the manager
      */
@@ -31,6 +121,21 @@ class ScriptManagerUI {
         }
         
         this.createModal();
+
+
+        document.querySelectorAll('input[name="execMode"]').forEach(r => {
+            r.addEventListener('change', e => {
+                const hint    = document.getElementById('execModeHint');
+                const editor  = document.getElementById('scriptCode');
+                if (e.target.value === 'javascript') {
+                    hint.textContent = 'Доступны: bar, bars, index, inputs, sma(), ema(), stdev(), highest(), lowest(), history(), _cache';
+                    editor.value = jsTemplate;
+                } else {
+                    hint.textContent = 'Доступны: PineJS.Std.sma/ema/stdev/close/high/low, ctx, inputs.<name>';
+                    editor.value = pineJSTemplate;
+                }
+            });
+        });
     }
 
     /**
@@ -103,49 +208,102 @@ class ScriptManagerUI {
                     <div class="script-manager-body">
                         <form id="scriptForm" onsubmit="scriptManagerUI.handleSubmit(event)">
                             <input type="hidden" id="scriptFormId" value="">
-                            
-                            <div class="form-group">
-                                <label for="scriptSystemName">System Name *</label>
-                                <input type="text" id="scriptSystemName" required 
-                                       placeholder="e.g., my_custom_indicator" 
-                                       pattern="[a-z0-9_]+" 
-                                       title="Only lowercase letters, numbers, and underscores">
-                                <small>Used internally. Only lowercase letters, numbers, and underscores.</small>
+                        
+                            <div class="sm-form-row">
+                                <div class="sm-form-group">
+                                    <label for="scriptSystemName">System Name *</label>
+                                    <input type="text" id="scriptSystemName" required
+                                        placeholder="my_indicator"
+                                        pattern="[a-z0-9_]+"
+                                        title="Only lowercase, numbers, underscores">
+                                    <small>Уникальный идентификатор. Только строчные, цифры, _</small>
+                                </div>
+                                <div class="sm-form-group">
+                                    <label for="scriptDisplayName">Display Name *</label>
+                                    <input type="text" id="scriptDisplayName" required
+                                        placeholder="My Indicator">
+                                </div>
                             </div>
-
-                            <div class="form-group">
-                                <label for="scriptDisplayName">Display Name *</label>
-                                <input type="text" id="scriptDisplayName" required 
-                                       placeholder="e.g., My Custom Indicator">
-                            </div>
-
-                            <div class="form-group">
+                        
+                            <div class="sm-form-group">
                                 <label for="scriptDescription">Description</label>
-                                <textarea id="scriptDescription" rows="3" 
-                                          placeholder="Brief description of what this script does"></textarea>
+                                <textarea id="scriptDescription" rows="2"
+                                        placeholder="Описание скрипта..."></textarea>
                             </div>
-
-                            <div class="form-group">
+                        
+                            <div class="sm-form-group">
                                 <label for="scriptCode">Code *</label>
-                                <textarea id="scriptCode" rows="15" required 
-                                          placeholder="Enter your Pine Script or JavaScript code here..."
-                                          style="font-family: 'Consolas', 'Monaco', monospace; font-size: 13px;"></textarea>
+                                <textarea id="scriptCode" rows="10" required
+                                        placeholder="Enter your JavaScript code here..."
+                                        style="font-family: 'Consolas', 'Monaco', monospace; font-size: 13px;"></textarea>
                             </div>
-
-                            <div class="form-group">
-                                <label>
+                        
+                            <!-- Строка: public + тип -->
+                            <div class="sm-form-row sm-form-row-inline">
+                                <label class="sm-checkbox-label">
                                     <input type="checkbox" id="scriptIsPublic">
-                                    Make this script public (accessible to other users)
+                                    <span>Public (доступен всем)</span>
                                 </label>
+                        
+                                <div class="sm-form-group sm-form-group-inline">
+                                    <label for="scriptTypeId">Тип скрипта *</label>
+                                    <select id="scriptTypeId" onchange="scriptManagerUI.onTypeChange()">
+                                        <option value="1">Загрузка...</option>
+                                    </select>
+                                </div>
                             </div>
-
+                        
+                            <!-- Блок только для type=instrument -->
+                            <div id="instrumentBlock" style="display:none">
+                                <div class="sm-instrument-header">Настройки инструмента</div>
+                        
+                                <!-- Режим выполнения -->
+                                <div class="sm-form-group">
+                                    <label>Режим выполнения</label>
+                                    <div class="sm-radio-group">
+                                        <label class="sm-radio-label">
+                                            <input type="radio" name="execMode" value="javascript" checked
+                                                onchange="scriptManagerUI.onExecModeChange('javascript')">
+                                            <span>JavaScript</span>
+                                            <small>bar, bars, index, inputs, sma(), ema(), stdev()</small>
+                                        </label>
+                                        <label class="sm-radio-label">
+                                            <input type="radio" name="execMode" value="pinejs"
+                                                onchange="scriptManagerUI.onExecModeChange('pinejs')">
+                                            <span>PineJS</span>
+                                            <small>PineJS.Std.sma/ema/close(ctx)</small>
+                                        </label>
+                                    </div>
+                                </div>
+                        
+                                <!-- Overlay -->
+                                <label class="sm-checkbox-label" style="margin-bottom:16px">
+                                    <input type="checkbox" id="scriptIsOverlay" checked>
+                                    <span>Overlay — накладывать на основной график</span>
+                                </label>
+                        
+                                <!-- Inputs (параметры) -->
+                                <div class="sm-section-title">
+                                    <span>Параметры (Inputs)</span>
+                                    <button type="button" class="sm-add-btn" onclick="scriptManagerUI.addInputRow()">
+                                        + Добавить параметр
+                                    </button>
+                                </div>
+                                <div id="inputsSchemaRows" class="sm-schema-rows"></div>
+                        
+                                <!-- Outputs (линии) -->
+                                <div class="sm-section-title" style="margin-top:16px">
+                                    <span>Линии на графике (Outputs)</span>
+                                    <button type="button" class="sm-add-btn" onclick="scriptManagerUI.addOutputRow()">
+                                        + Добавить линию
+                                    </button>
+                                </div>
+                                <div id="outputsSchemaRows" class="sm-schema-rows"></div>
+                            </div>
+                        
                             <div class="form-actions">
-                                <button type="button" class="script-btn" onclick="scriptManagerUI.closeForm()">
-                                    Cancel
-                                </button>
-                                <button type="submit" class="script-btn script-btn-primary">
-                                    Save Script
-                                </button>
+                                <button type="button" class="script-btn" onclick="scriptManagerUI.closeForm()">Cancel</button>
+                                <button type="submit" class="script-btn script-btn-primary">Save Script</button>
                             </div>
                         </form>
                     </div>
@@ -362,22 +520,124 @@ class ScriptManagerUI {
         return script.created_by === this.currentUser.userId;
     }
 
+    /** Показать/скрыть блок инструмента */
+    onTypeChange() {
+        const sel  = document.getElementById('scriptTypeId');
+        const code = sel?.options[sel.selectedIndex]?.dataset?.code || 'default';
+        document.getElementById('instrumentBlock').style.display =
+            code === 'instrument' ? '' : 'none';
+    }
+
+    onExecModeChange(mode) {
+        // Можно подставлять шаблон в редактор
+        const hint = document.getElementById('execModeHint');
+        if (hint) hint.textContent = mode === 'javascript'
+            ? 'Доступны: bar, bars, index, inputs, sma(), ema(), stdev(), highest(), lowest(), history()'
+            : 'Доступны: PineJS, ctx, inputs.<name>, PineJS.Std.sma/ema/stdev/close';
+    }
+
+    addInputRow(data = {}) {
+        const c = document.getElementById('inputsSchemaRows');
+        const row = document.createElement('div');
+        row.className = 'sm-input-row';
+        row.innerHTML = `
+            <input class="inp-id"     placeholder="id (e.g. length)" value="${data.id    ||''}">
+            <input class="inp-name"   placeholder="Название"          value="${data.name  ||''}">
+            <select class="inp-type">
+                ${['integer','float','string','color','source','bool'].map(t =>
+                    `<option value="${t}" ${data.type===t?'selected':''}>${t}</option>`
+                ).join('')}
+            </select>
+            <input class="inp-defval" placeholder="По умолчанию" value="${data.defval??''}">
+            <input class="inp-min"    placeholder="min"           value="${data.min   ??''}">
+            <input class="inp-max"    placeholder="max"           value="${data.max   ??''}">
+            <button type="button" class="sm-row-del" onclick="this.closest('.sm-input-row').remove()">✕</button>
+        `;
+        c.appendChild(row);
+    }
+
+    addOutputRow(data = {}) {
+        const c = document.getElementById('outputsSchemaRows');
+        const row = document.createElement('div');
+        row.className = 'sm-output-row';
+        row.innerHTML = `
+            <input class="out-name"      placeholder="Название линии" value="${data.name||''}">
+            <select class="out-plot-type">
+                ${['line','histogram','area','columns'].map(t =>
+                    `<option value="${t}" ${data.plot_type===t?'selected':''}>${t}</option>`
+                ).join('')}
+            </select>
+            <input type="color" class="sm-color-pick out-color" value="${data.color||'#2962FF'}">
+            <input class="out-lw" placeholder="толщина" value="${data.linewidth||2}" type="number" min="1" max="6">
+            <button type="button" class="sm-row-del" onclick="this.closest('.sm-output-row').remove()">✕</button>
+        `;
+        c.appendChild(row);
+    }
+
+    collectInputsSchema() {
+        return Array.from(document.querySelectorAll('#inputsSchemaRows .sm-input-row'))
+            .map(row => {
+                const id     = row.querySelector('.inp-id').value.trim();
+                const name   = row.querySelector('.inp-name').value.trim();
+                const type   = row.querySelector('.inp-type').value;
+                const defRaw = row.querySelector('.inp-defval').value;
+                const minRaw = row.querySelector('.inp-min').value;
+                const maxRaw = row.querySelector('.inp-max').value;
+                if (!id || !name) return null;
+                const obj = { id, name, type, defval: this._parseVal(defRaw, type) };
+                if (minRaw !== '') obj.min = Number(minRaw);
+                if (maxRaw !== '') obj.max = Number(maxRaw);
+                return obj;
+            })
+            .filter(Boolean);
+    }
+
+    collectOutputsSchema() {
+        return Array.from(document.querySelectorAll('#outputsSchemaRows .sm-output-row'))
+            .map(row => {
+                const name = row.querySelector('.out-name').value.trim();
+                if (!name) return null;
+                return {
+                    name,
+                    plot_type:  row.querySelector('.out-plot-type').value,
+                    color:      row.querySelector('.out-color').value,
+                    linewidth:  Number(row.querySelector('.out-lw').value) || 2,
+                };
+            })
+            .filter(Boolean);
+    }
+
+    _parseVal(v, type) {
+        if (v === '') return type === 'integer' ? 0 : type === 'float' ? 0.0 : '';
+        if (type === 'integer') return parseInt(v)  || 0;
+        if (type === 'float')   return parseFloat(v)|| 0;
+        if (v === 'true')  return true;
+        if (v === 'false') return false;
+        return v;
+    }
+
     /**
      * Open create form
      */
     openCreateForm() {
-        document.getElementById('scriptFormTitle').textContent = 
+        document.getElementById('scriptFormTitle').textContent =
             `Create ${this.currentType === 'pine' ? 'Pine Script' : 'JavaScript Script'}`;
-        document.getElementById('scriptFormId').value = '';
-        document.getElementById('scriptSystemName').value = '';
+        document.getElementById('scriptFormId').value      = '';
+        document.getElementById('scriptSystemName').value  = '';
         document.getElementById('scriptDisplayName').value = '';
         document.getElementById('scriptDescription').value = '';
-        document.getElementById('scriptCode').value = '';
-        document.getElementById('scriptIsPublic').checked = false;
-        
-        // Enable system name field for new scripts
+        document.getElementById('scriptCode').value        = '';
+        document.getElementById('scriptIsPublic').checked  = false;
         document.getElementById('scriptSystemName').disabled = false;
-
+        // Сбросить instrument-блок
+        document.getElementById('instrumentBlock').style.display = 'none';
+        document.getElementById('inputsSchemaRows').innerHTML  = '';
+        document.getElementById('outputsSchemaRows').innerHTML = '';
+        const overlay = document.getElementById('scriptIsOverlay');
+        if (overlay) overlay.checked = true;
+        document.querySelector('input[name="execMode"][value="javascript"]').checked = true;
+    
+        this.loadScriptTypes();
         document.getElementById('scriptFormModal').style.display = 'flex';
     }
 
@@ -400,6 +660,8 @@ class ScriptManagerUI {
         // Disable system name field for existing scripts
         document.getElementById('scriptSystemName').disabled = true;
 
+        this.loadScriptTypes();
+
         document.getElementById('scriptFormModal').style.display = 'flex';
     }
 
@@ -415,46 +677,50 @@ class ScriptManagerUI {
      */
     async handleSubmit(event) {
         event.preventDefault();
-
-        const scriptId = document.getElementById('scriptFormId').value;
+    
+        const scriptId  = document.getElementById('scriptFormId').value;
+        const typeSelect = document.getElementById('scriptTypeId');
+        const typeId     = parseInt(typeSelect?.value) || 1;
+        const typeCode   = typeSelect?.options[typeSelect.selectedIndex]?.dataset?.code || 'default';
+        const isInstr    = typeCode === 'instrument';
+        const execMode   = document.querySelector('input[name="execMode"]:checked')?.value || 'javascript';
+    
         const data = {
-            system_name: document.getElementById('scriptSystemName').value,
-            display_name: document.getElementById('scriptDisplayName').value,
-            description: document.getElementById('scriptDescription').value,
-            code: document.getElementById('scriptCode').value,
-            is_public: document.getElementById('scriptIsPublic').checked
+            system_name:    document.getElementById('scriptSystemName').value.trim(),
+            display_name:   document.getElementById('scriptDisplayName').value.trim(),
+            description:    document.getElementById('scriptDescription').value.trim(),
+            code:           document.getElementById('scriptCode').value,
+            is_public:      document.getElementById('scriptIsPublic').checked,
+            type_id:        typeId,
+            is_overlay:     document.getElementById('scriptIsOverlay')?.checked ?? true,
+            execution_mode: execMode,
+            inputs_schema:  isInstr ? this.collectInputsSchema()  : [],
+            outputs_schema: isInstr ? this.collectOutputsSchema() : [],
         };
-
+    
+        if (!data.system_name || !data.display_name || !data.code) {
+            alert('Заполните обязательные поля: System Name, Display Name, Code');
+            return;
+        }
+    
         try {
             if (scriptId) {
-                // Update existing
-                if (this.currentType === 'pine') {
-                    await apiClient.updatePineScript(scriptId, data);
-                } else {
-                    await apiClient.updateJavaScriptScript(scriptId, data);
-                }
-                alert('Script updated successfully!');
+                this.currentType === 'pine'
+                    ? await apiClient.updatePineScript(scriptId, data)
+                    : await apiClient.updateJavaScriptScript(scriptId, data);
+                alert('Скрипт обновлён!');
             } else {
-                // Create new
-                if (this.currentType === 'pine') {
-                    await apiClient.createPineScript(data);
-                } else {
-                    await apiClient.createJavaScriptScript(data);
-                }
-                alert('Script created successfully!');
+                this.currentType === 'pine'
+                    ? await apiClient.createPineScript(data)
+                    : await apiClient.createJavaScriptScript(data);
+                alert('Скрипт создан!');
             }
-
             this.closeForm();
             await this.loadScripts();
-            
-            // Reload examples in code panel
-            if (window.codePanelManager) {
-                await window.codePanelManager.loadExamplesFromDatabase();
-            }
-
+            if (window.codePanelManager) await window.codePanelManager.loadExamplesFromDatabase();
         } catch (error) {
-            console.error('Failed to save script:', error);
-            alert('Failed to save script: ' + error.message);
+            console.error('Save error:', error);
+            alert('Ошибка сохранения: ' + error.message);
         }
     }
 

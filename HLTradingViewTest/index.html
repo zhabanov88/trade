@@ -30,6 +30,9 @@
                 <button class="nav-btn theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
                     🌙
                 </button>
+                <button class="nav-btn" onclick="window.scriptManagerUI.open('javascript')" title="Settings">
+                    ⚙️ Manage Scripts
+                </button>
                 <button class="nav-btn" onclick="settingsPanel.open()" title="Settings">
                     ⚙️ Settings
                 </button>
@@ -49,13 +52,13 @@
 
             <!-- Code Panel Toggle Strip (visible when panel is hidden) -->
             <div class="code-panel-strip" id="codePanelStrip" onclick="toggleCodePanel()" title="Открыть панель кода">
-                <span class="code-panel-strip-arrow">&#8592;</span>
+                <span class="code-panel-strip-arrow">➟</span>
             </div>
 
             <!-- Code Editor Container -->
             <div class="code-panel-container" id="codePanelContainer">
                 <!-- Close button -->
-                <button class="code-panel-close" id="codePanelCloseBtn" onclick="toggleCodePanel()" title="Скрыть панель">&#10005;</button>
+                <button class="code-panel-close" id="codePanelCloseBtn" onclick="toggleCodePanel()" title="Скрыть панель">➟</button>
                 <!-- Tabs Header -->
                 <div class="code-panel-header">
                     <div class="code-panel-tabs">
@@ -81,7 +84,6 @@
                             <option value="">📚 Select Example...</option>
                         </select>
                         <button class="code-btn code-btn-save" id="pineSaveBtn">💾 Save</button>
-                        <button class="code-btn code-btn-clear" id="pineClearBtn">Clear</button>
                     </div>
 
                     <div class="code-editor-wrapper">
@@ -112,7 +114,6 @@ fill(p1, p2, color=color.new(color.blue, 90))</textarea>
                     <div class="code-console" id="pineConsole">
                         <div class="console-header">
                             <span>Console Output</span>
-                            <button class="console-clear-btn" id="pineConsoleClear">Clear</button>
                         </div>
                         <div class="console-body" id="pineConsoleBody">
                             <div class="console-line console-success">✓ Pine Script Editor ready</div>
@@ -134,7 +135,6 @@ fill(p1, p2, color=color.new(color.blue, 90))</textarea>
                             <option value="">📚 Select Example...</option>
                         </select>
                         <button class="code-btn code-btn-save" id="pine6SaveBtn">💾 Save</button>
-                        <button class="code-btn code-btn-clear" id="pine6ClearBtn">Clear</button>
                     </div>
 
                     <div class="code-editor-wrapper">
@@ -165,7 +165,6 @@ fill(p1, p2, color=color.new(color.blue, 90))</textarea>
                     <div class="code-console" id="pine6Console">
                         <div class="console-header">
                             <span>Console Output</span>
-                            <button class="console-clear-btn" id="pine6ConsoleClear">Clear</button>
                         </div>
                         <div class="console-body" id="pine6ConsoleBody">
                             <div class="console-line console-success">✓ Pine Script 6 Editor ready</div>
@@ -181,7 +180,6 @@ fill(p1, p2, color=color.new(color.blue, 90))</textarea>
                             <option value="">📚 Select Example...</option>
                         </select>
                         <button class="code-btn code-btn-save" id="jsSaveBtn">💾 Save</button>
-                        <button class="code-btn code-btn-clear" id="jsClearBtn">Clear</button>
                     </div>
 
                     <div class="code-editor-wrapper">
@@ -195,12 +193,16 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
                         <button class="code-btn code-btn-run" id="jsRunBtn">
                             <span>▶</span> Execute JavaScript
                         </button>
+                        <!--
+                        <button class="code-btn code-btn-run" id="jsRunAsStudyBtn" style="background:#0d6b3e">
+                            <span>📊</span> Add to Chart (Study)
+                        </button>
+                        -->
                     </div>
 
                     <div class="code-console" id="jsConsole">
                         <div class="console-header">
                             <span>Console Output</span>
-                            <button class="console-clear-btn" id="jsConsoleClear">Clear</button>
                         </div>
                         <div class="console-body" id="jsConsoleBody">
                             <div class="console-line console-success">✓ JavaScript API ready</div>
@@ -282,6 +284,12 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
     <script src="settings-manager.js"></script>
     
     <!-- 5. Main App -->
+    <!-- FVG Detector Indicator -->
+    <!--
+
+<script src="fvg-indicator.js"></script>
+    -->
+    <script src="tv-indicator-engine.js"></script>
     <script src="app.js"></script>
     
     <!-- 6. UI Components -->
@@ -296,13 +304,14 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
     <script src="interval-selector.js"></script>
     <script src="recent-layouts.js"></script>
     
-    <script src="data-table.js"></script>
+    <!--<script src="data-table.js"></script>-->
     <script src="date-guard.js"></script>
     <script src="setups-backtest.js"></script>  
     <script src="backtest-player.js"></script>
     <script src="setups-backtest-ext.js"></script>
 
     <script src="layout-state-sync.js"></script>
+    
 
     <script src="walkforward-ui.js"></script>
     <script src="ai-ui.js"></script>
@@ -315,7 +324,12 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
     <script src="tick-analytics.js"></script>
     <script src="neural-ui.js"></script>
     <script src="llm-settings-ui.js"></script>
-    <script src="ai-code-analyzer.js"></script>
+
+    
+    <script src="session-script-runner.js"></script>
+    <script src="chart-autosave.js"></script>
+    
+    <!--<script src="ai-code-analyzer.js"></script>-->
     
     
 <script>

@@ -1,0 +1,331 @@
+/**
+ * tv-indicator-engine.js  v10
+ * Подключить в index.html ДО app.js
+ */
+(function () {
+    'use strict';
+
+    if (!window._tve) window._tve = {};
+    if (!window._tveRegistry) window._tveRegistry = {};
+
+    function _chart() {
+        try { return window.app.widget.activeChart(); } catch (e) { return null; }
+    }
+
+    function _chartReady() {
+        try {
+            var c = window.app && window.app.widget && window.app.widget.activeChart();
+            return !!(c && c.symbol());
+        } catch (e) { return false; }
+    }
+
+    function _getBars() {
+        var raw = window.app && window.app.activedata;
+        if (!raw || raw.length < 3) return [];
+        var bars = [];
+        for (var i = 0; i < raw.length; i++) {
+            var b = raw[i];
+            var t  = Math.floor(new Date(b.timestamp).getTime() / 1000);
+            var h  = parseFloat(b.high), l = parseFloat(b.low);
+            var cl = parseFloat(b.close), op = parseFloat(b.open);
+            if (!isNaN(h) && !isNaN(l)) bars.push({ t:t, h:h, l:l, c:cl, o:op, v:parseFloat(b.volume)||0 });
+        }
+        bars.sort(function (a, b) { return a.t - b.t; });
+        return bars;
+    }
+
+    // ── Shapes ───────────────────────────────────────────────────
+    function _clearShapes(key) {
+        var st = window._tve[key]; if (!st) return;
+        var c = _chart();
+        if (c) for (var i = 0; i < st.shapeIds.length; i++) {
+            try { c.removeEntity(st.shapeIds[i]); } catch (e) {}
+        }
+        st.shapeIds = [];
+    }
+
+    function _drawBatch(key, list, idx, batchId) {
+        var st = window._tve[key];
+        if (!st || st._hidden || st._batchId !== batchId) return;
+        if (!_chartReady()) { setTimeout(function () { _drawBatch(key, list, idx, batchId); }, 500); return; }
+        var c = _chart(); if (!c) return;
+        var end = Math.min(idx + 30, list.length);
+        var ok = true;
+        for (var i = idx; i < end && ok; i++) {
+            var s = list[i];
+            try {
+                var r = c.createMultipointShape(s.points, {
+                    shape:            s.shape || 'rectangle',
+                    lock:             true,
+                    disableSelection: true,
+                    disableSave:      true,   // НЕ сохранять в layout → не появятся после F5
+                    disableUndo:      true,   // НЕ попадать в undo stack
+                    zOrder:           s.zOrder || 'bottom',
+                    overrides: {
+                        backgroundColor: s.color,
+                        color:           s.color,
+                        linewidth:       s.linewidth !== undefined ? s.linewidth : 0,
+                        fillBackground:  true,
+                        transparency:    0,
+                        showLabel:       !!s.label,
+                        text:            s.label || '',
+                    }
+                });
+                if (r && typeof r.then==='function') {
+                    (function(ids,p){p.then(function(id){if(id!=null)ids.push(id);});})(st.shapeIds,r);
+                } else if (r!=null) { st.shapeIds.push(r); }
+            } catch(e) {
+                if (e.message && e.message.indexOf('Cannot create')!==-1) {
+                    setTimeout(function(){ if(window._tve[key]&&window._tve[key]._batchId===batchId) _scheduleRedraw(key,1000); },100);
+                    ok = false;
+                }
+            }
+        }
+        if (ok && end < list.length) { setTimeout(function(){ _drawBatch(key,list,end,batchId); }, 16); }
+        else if (ok) { console.log('[TVEngine:'+key+'] ✅ drawn='+list.length+' bars='+_getBars().length); }
+    }
+
+    function _drawShapes(key, list) {
+        var st = window._tve[key];
+        if (!st || st._hidden) return;
+        _clearShapes(key);
+        if (!list.length) return;
+        st._batchId = (st._batchId||0) + 1;
+        _drawBatch(key, list, 0, st._batchId);
+    }
+
+    function _redraw(key) {
+        var st = window._tve[key];
+        if (!st || st._hidden || !st.def || !st.cfg) return;
+        if (!_chartReady()) { _scheduleRedraw(key, 800); return; }
+        var bars = _getBars();
+        if (bars.length < 3) { _scheduleRedraw(key, 500); return; }
+        var shapes = [];
+        try { shapes = st.def.analyze(bars, st.cfg) || []; }
+        catch(e) { console.error('[TVEngine] analyze err:', e); return; }
+        _drawShapes(key, shapes);
+    }
+
+    function _scheduleRedraw(key, ms) {
+        var st = window._tve[key]; if (!st || st._hidden) return;
+        clearTimeout(st.debTimer);
+        st.debTimer = setTimeout(function(){ _redraw(key); }, ms!==undefined ? ms : 300);
+    }
+
+    // ── Мониторинг ────────────────────────────────────────────────
+    function _startMonitor(key, studyId) {
+        var iv = setInterval(function() {
+            var st = window._tve[key]; if (!st) { clearInterval(iv); return; }
+            var c = _chart(); if (!c) return;
+            var studies; try { studies = c.getAllStudies(); } catch(e) { return; }
+            var found = null;
+            for (var i=0; i<studies.length; i++) {
+                if (String(studies[i].id)===String(studyId)||String(studies[i].entityId)===String(studyId)) {
+                    found=studies[i]; break;
+                }
+            }
+            if (!found) { clearInterval(iv); _destroy(key); return; }
+            var vis = true;
+            try {
+                var entity = c.getStudyById(found.entityId||found.id);
+                if (entity && typeof entity.isVisible==='function') vis = entity.isVisible();
+            } catch(e) {}
+            if (!vis && !st._hidden) { st._hidden=true; _clearShapes(key); }
+            else if (vis && st._hidden) { st._hidden=false; _scheduleRedraw(key,50); }
+        }, 500);
+        var st = window._tve[key]; if (st) st._iv = iv;
+    }
+
+    // ── ГЛАВНЫЙ ТРИГГЕР: hook на getBars datafeed ─────────────────
+    // appendActiveData вызывается внутри getBars, но из-за бага в datafeed
+    // старые бары при скролле не добавляются.
+    // Поэтому вешаем hook напрямую на getBars — он вызывается ВСЕГДА при скролле.
+    function _installGetBarsHook() {
+        var df = window.app && window.app.datafeed;
+        if (!df || typeof df.getBars !== 'function' || df._tveGetBarsHook) return;
+
+        var origGetBars = df.getBars.bind(df);
+        df._tveGetBarsHook = true;
+
+        df.getBars = function(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
+            // Оборачиваем onHistoryCallback чтобы поймать момент получения данных
+            var wrappedCallback = function(bars, meta) {
+                onHistoryCallback(bars, meta);
+                // После того как TV получил бары — перерисовываем индикаторы
+                // с небольшой задержкой чтобы activedata успел обновиться
+                if (bars && bars.length > 0) {
+                    setTimeout(function() {
+                        var keys = Object.keys(window._tve);
+                        for (var i=0; i<keys.length; i++) {
+                            var st = window._tve[keys[i]];
+                            if (st && !st._hidden && st.cfg) _scheduleRedraw(keys[i], 300);
+                        }
+                    }, 100);
+                }
+            };
+            return origGetBars(symbolInfo, resolution, periodParams, wrappedCallback, onErrorCallback);
+        };
+
+        console.log('[TVEngine] getBars hook installed');
+    }
+
+    function _installHook() {
+        var df = window.app && window.app.datafeed;
+        if (!df || typeof df.appendActiveData !== 'function' || df._tveHook) return;
+        var orig = df.appendActiveData.bind(df);
+        df._tveOrig = orig; df._tveHook = true;
+        df.appendActiveData = function(data) {
+            orig(data);
+            if (!data || !data.length) return;
+            var keys = Object.keys(window._tve);
+            for (var i=0; i<keys.length; i++) {
+                var st = window._tve[keys[i]];
+                if (st && !st._hidden && st.cfg) _scheduleRedraw(keys[i], 500);
+            }
+        };
+        console.log('[TVEngine] appendActiveData hook installed');
+    }
+
+    function _tryInstallHooks() {
+        var n = 0, t = setInterval(function() {
+            n++;
+            var df = window.app && window.app.datafeed;
+            if (df) {
+                if (typeof df.appendActiveData === 'function' && !df._tveHook) _installHook();
+                if (typeof df.getBars === 'function' && !df._tveGetBarsHook) _installGetBarsHook();
+                if (df._tveHook && df._tveGetBarsHook) { clearInterval(t); return; }
+            }
+            if (n > 50) clearInterval(t);
+        }, 200);
+    }
+
+    function _destroy(key) {
+        var st = window._tve[key];
+        if (st) {
+            clearTimeout(st.debTimer);
+            if (st._iv) clearInterval(st._iv);
+            _clearShapes(key);
+            if (st.tvId) delete window._tveRegistry[st.tvId];
+        }
+        delete window._tve[key];
+        console.log('[TVEngine] destroyed:', key);
+    }
+
+
+    // ── Очистка "призрачных" shapes от предыдущих сессий ─────────────────
+    var _ghostCleanDone = false;
+    function _cleanGhostShapes() {
+        if (_ghostCleanDone) return;
+        var c = _chart(); if (!c) return;
+        var allShapes;
+        try { allShapes = c.getAllShapes ? c.getAllShapes() : []; } catch(e) { return; }
+        if (!allShapes || allShapes.length === 0) { _ghostCleanDone = true; return; }
+        var removed = 0;
+        for (var i = 0; i < allShapes.length; i++) {
+            var sh = allShapes[i];
+            var shName = (sh.name || '').toLowerCase();
+            if (shName === 'rectangle' || shName === 'rect') {
+                try { c.removeEntity(sh.id); removed++; } catch(e) {}
+            }
+        }
+        _ghostCleanDone = true;
+        if (removed > 0) console.log('[TVEngine] cleaned ' + removed + ' ghost shapes');
+    }
+
+    function _initInstance(def, studyName, studyDesc, tvId) {
+        if (window._tveRegistry[tvId] && window._tve[window._tveRegistry[tvId]]) {
+            return window._tveRegistry[tvId];
+        }
+        var key = 'tve_' + Date.now();
+        window._tve[key] = { shapeIds:[], _hidden:false, def:def, cfg:null,
+                             debTimer:null, _iv:null, _batchId:0, tvId:tvId };
+        window._tveRegistry[tvId] = key;
+        _cleanGhostShapes();
+        _tryInstallHooks();
+
+        var attempts = 0, t = setInterval(function() {
+            attempts++;
+            var c = _chart(); if (!c) return;
+            var studies; try { studies = c.getAllStudies(); } catch(e) { return; }
+            var found = null;
+            for (var i=studies.length-1; i>=0; i--) {
+                var sn = studies[i].name||'';
+                if (sn===studyDesc||sn===studyName||(studyDesc&&sn.indexOf(studyDesc.substring(0,12))!==-1))
+                    { found=studies[i]; break; }
+            }
+            if (!found && attempts<30) return;
+            clearInterval(t);
+            var sid = found ? String(found.id||found.entityId) : key;
+            var st = window._tve[key]; if (!st) return;
+            st.studyId = sid;
+            console.log('[TVEngine] init key='+key+' sid='+sid+' name="'+studyName+'"');
+            _startMonitor(key, sid);
+            if (st.cfg) _scheduleRedraw(key, 300);
+        }, 100);
+
+        return key;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    function define(def) {
+        var name    = def.name        || 'Custom Indicator';
+        var tvId    = def.id          || (name.toLowerCase().replace(/\W+/g,'_')+'@tv-basicstudies-1');
+        var desc    = def.description || name;
+        var overlay = def.overlay !== undefined ? def.overlay : true;
+        var inputs  = def.inputs       || [];
+        var defInps = def.defaultInputs || {};
+
+        var tvObj = {
+            name: name,
+            metainfo: {
+                _metainfoVersion:53, id:tvId, description:desc,
+                shortDescription:name.substring(0,24),
+                is_price_study:overlay, isCustomIndicator:true,
+                plots:[{id:'p0',type:'line'}],
+                format:{type:overlay?'inherit':'price'},
+                defaults:{
+                    styles:{p0:{linestyle:0,linewidth:0,plottype:0,
+                        trackPrice:false,transparency:100,visible:false,color:'rgba(0,0,0,0)'}},
+                    inputs:defInps,
+                },
+                styles:{p0:{title:'',histogramBase:0}},
+                inputs:inputs,
+            },
+            constructor: function() {
+                var _key = null;
+                this.main = function(ctx, inp) {
+                    if (!_key || !window._tve[_key]) {
+                        _key = _initInstance(def, name, desc, tvId);
+                    }
+                    var st = window._tve[_key]; if (!st) return [NaN];
+                    var cfg={};
+                    try { cfg = def.buildCfg ? def.buildCfg(inp) : {}; } catch(e) {}
+                    st.cfg = cfg;
+                    clearTimeout(st.debTimer);
+                    st.debTimer = setTimeout(function(){ _redraw(_key); }, 300);
+                    return [NaN];
+                };
+            }
+        };
+
+        window.customPineIndicators = window.customPineIndicators || [];
+        for (var di=window.customPineIndicators.length-1; di>=0; di--) {
+            if (window.customPineIndicators[di].name===name) window.customPineIndicators.splice(di,1);
+        }
+        window.customPineIndicators.push(tvObj);
+        return tvObj;
+    }
+
+    window.TVEngine = {
+        define:    define,
+        instances: function(){ return Object.keys(window._tve); },
+        registry:  function(){ return window._tveRegistry; },
+        redraw:    function(key){ _scheduleRedraw(key,0); },
+        redrawAll: function(){ Object.keys(window._tve).forEach(function(k){ _scheduleRedraw(k,0); }); },
+        destroy:   function(key){ _destroy(key); },
+        clearAll:  function(){ Object.keys(window._tve).forEach(function(k){ _destroy(k); }); },
+        state:     function(key){ return window._tve[key]; },
+    };
+
+    console.log('[TVEngine] v10 loaded ✅');
+})();

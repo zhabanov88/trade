@@ -100,7 +100,7 @@ class DatabaseIntegratedDatafeed {
             timezone: 'Etc/UTC',
             exchange: instrument.provider_name || 'CLICKHOUSE',
             minmov: 1,
-            pricescale: 100000000,
+            pricescale: 10000,
             has_intraday: true,
             has_weekly_and_monthly: true,
             has_seconds: true,
@@ -132,7 +132,7 @@ class DatabaseIntegratedDatafeed {
                 timezone: 'Etc/UTC',
                 exchange: 'CLICKHOUSE',
                 minmov: 1,
-                pricescale: 100000000,
+                pricescale: 10000,
                 has_intraday: true,
                 has_weekly_and_monthly: true,
                 has_seconds: true,
@@ -231,52 +231,33 @@ initActiveData(symbol, resolution) {
      * Данные сохраняются точно в том виде как пришли с сервера
      */
     appendActiveData(rawItems) {
-        //window.app._activeDataKey
-        console.log("window.app._key___", window.app._key, window.app.activedata)
         if (!rawItems || rawItems.length === 0) return 0;
-
+     
         if (!window.app.activedata) {
-            console.log("NEW window.app.activedata", window.app.activedata)
             window.app.activedata = [];
             window.app._activeDataIndex = new Set();
-        } 
-
+        }
+     
         // Восстанавливаем индекс если он пустой но данные есть
         if (window.app._activeDataIndex.size === 0 && window.app.activedata.length > 0) {
             window.app.activedata.forEach(item => {
                 window.app._activeDataIndex.add(item.timestamp);
             });
         }
-
+     
         let added = 0;
-
         rawItems.forEach(item => {
-            // Используем timestamp как уникальный ключ
             const ts = item.timestamp;
-
             if (!window.app._activeDataIndex.has(ts)) {
                 window.app._activeDataIndex.add(ts);
-                // Сохраняем объект КАК ЕСТЬ — без каких-либо преобразований
-                if(window.app._key != window.app._activeDataKey || rawItems.length > window.app.activedata.length){
-                    window.app.activedata.push(item);
-                    console.log("add__window.app.activedata", window.app._key, window.app._activeDataKey, rawItems.length, window.app.activedata.length)
-                }
+                window.app.activedata.push(item);  // ← БЕЗ лишнего условия
                 added++;
             }
         });
-
+     
         if (added > 0) {
-            // Сортируем по времени (старые → новые)
-            window.app.activedata.sort((a, b) =>
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-
-            console.log(`📦 activedata: +${added} new | total: ${window.app.activedata.length} | ` +
-                `range: ${window.app.activedata[0].timestamp} → ` +
-                `${window.app.activedata[window.app.activedata.length - 1].timestamp}`
-            );
+            console.log(`📦 activedata: +${added} new | total: ${window.app.activedata.length}`);
         }
-
         return added;
     }
 
@@ -352,7 +333,7 @@ initActiveData(symbol, resolution) {
                     timezone: 'Etc/UTC',
                     exchange: 'CLICKHOUSE',
                     minmov: 1,
-                    pricescale: 100000000,
+                    pricescale: 10000,
                     has_intraday: true,
                     has_weekly_and_monthly: true,
                     supported_resolutions: this.supportedResolutions,

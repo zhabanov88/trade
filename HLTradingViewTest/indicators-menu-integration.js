@@ -375,14 +375,17 @@ class IndicatorsMenuIntegration {
     /**
      * Render categories
      */
-    renderCategories() {
+    renderCategories(searchTerm = '') {
+        const q = searchTerm.toLowerCase().trim();
         const categories = {};
-        
         this.indicators.forEach(indicator => {
-            const categoryName = indicator.category_name || 'Other';
-            if (!categories[categoryName]) {
-                categories[categoryName] = [];
+            if (q) {
+                const nameMatch = (indicator.display_name || '').toLowerCase().includes(q);
+                const sysMatch  = (indicator.system_name  || '').toLowerCase().includes(q);
+                if (!nameMatch && !sysMatch) return;
             }
+            const categoryName = indicator.category_name || 'Other';
+            if (!categories[categoryName]) categories[categoryName] = [];
             categories[categoryName].push(indicator);
         });
 

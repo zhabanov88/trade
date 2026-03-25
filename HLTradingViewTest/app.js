@@ -248,8 +248,180 @@ class TradingApp {
                 theme: currentTheme, // Используем тему из localStorage 
                 timezone: 'America/New_York',
                 
-                custom_indicators_getter: function(PineJS) {
-                    return Promise.resolve([]);
+                //custom_indicators_getter: function(PineJS) {
+                //    return Promise.resolve([]);
+                //},
+
+                custom_indicators_getter: async function (PineJS) {
+                    window.PineJS = PineJS;
+                 
+                    // ── Загружаем скрипты из БД ──────────────────────────────────────────
+                    let dbScripts = [];
+                    try {
+                        const resp = await fetch('/api/javascript-scripts', { credentials: 'include' });
+                        if (resp.ok) {
+                            const all = await resp.json();
+                            dbScripts = all.filter(s => (s.type_code === 'indicator' || s.type_code === 'instrument'));
+                            console.log(`[CIG] ${dbScripts.length} индикаторов из БД`);
+                        }
+                    } catch (e) {
+                        console.error('[CIG] Fetch error:', e);
+                    }
+                 
+                    // ── Хелперы для парсинга inputs ──────────────────────────────────────
+                    function parseInputs(script) {
+                        // default_inputs может быть строкой JSON или объектом
+                        let raw = script.default_inputs || script.inputs_schema || {};
+                        if (typeof raw === 'string') {
+                            try { raw = JSON.parse(raw); } catch (_) { raw = {}; }
+                        }
+                 
+                        // Поддерживаем два формата:
+                        // 1. Массив: [{id, name, type, defval, ...}]
+                        // 2. Объект: { length: 14, source: "close" }
+                        if (Array.isArray(raw)) return raw;
+                 
+                        return Object.entries(raw).map(([key, val], i) => ({
+                            id:     `in_${i}`,
+                            name:   key,
+                            defval: val,
+                            type:   typeof val === 'number'
+                                        ? (Number.isInteger(val) ? 'integer' : 'float')
+                                        : typeof val === 'boolean'
+                                            ? 'bool'
+                                            : 'text',
+                        }));
+                    }
+                 
+                    function buildDefaultInputs(inputsArr) {
+                        const obj = {};
+                        inputsArr.forEach(inp => { obj[inp.id] = inp.defval; });
+                        return obj;
+                    }
+                 
+                    // ── Строим определения ───────────────────────────────────────────────
+                    const result = [];
+                 
+                    for (const script of dbScripts) {
+                        const id      = script.system_name   || `indicator_${script.id}`;
+                        const name    = script.display_name  || id;
+                        const desc    = script.description   || name;
+                        const overlay = !!(script.is_overlay);
+                        const inputs  = parseInputs(script);
+                        const tvId    = `${id}@tv-basicstudies-1`;
+                 
+                        // ── Попытка 1: код скрипта возвращает готовый TV-объект ───────────
+                        if (script.code && script.code.trim()) {
+                            if (script.code && script.code.trim()) {
+                                try {
+                                    // Выполняем код напрямую: new Function('PineJS', code)(PineJS)
+                                    // Код должен содержать return { name, metainfo, constructor }
+                                    // БЕЗ лишней IIFE обёртки
+                                    const factory = new Function('PineJS', script.code);
+                                    const built = factory(PineJS);
+                                    if (built && built.metainfo && built.constructor) {
+                                        built.metainfo.id                = tvId;
+                                        built.metainfo.isCustomIndicator = true;
+                                        result.push(built);
+                                        console.log(`[CIG] ✅ "${name}" — из кода`);
+                                        continue;
+                                    }
+                                } catch (e) {
+                                    console.warn(`[CIG] Ошибка кода "${name}":`, e.message);
+                                }
+                            }
+                        }
+                 
+                        // ── Попытка 2: минимальная заглушка с параметрами из БД ──────────
+                        // КРИТИЧНО: компилируем функцию main ОДИН РАЗ, не на каждом баре!
+                        let mainFn;
+                        if (script.code && script.code.trim()) {
+                            try {
+                                // Код скрипта может быть телом функции main(ctx, inputCallback)
+                                // Компилируем один раз здесь
+                                // eslint-disable-next-line no-new-func
+                                mainFn = new Function('PineJS', 'ctx', 'inputCallback', `
+                                    "use strict";
+                                    try {
+                                        ${script.code}
+                                    } catch(e) {
+                                        return [0];
+                                    }
+                                `).bind(null, PineJS);
+                            } catch (_) {
+                                mainFn = null;
+                            }
+                        }
+                 
+                        const capturedMainFn = mainFn; // замыкание
+                 
+                        result.push({
+                            name: name,
+                            metainfo: {
+                                _metainfoVersion: 53,
+                                id:               tvId,
+                                description:      desc,
+                                shortDescription: name.substring(0, 24),
+                                is_price_study:   overlay,
+                                isCustomIndicator: true,
+                                format: { type: overlay ? 'inherit' : 'price', precision: 4 },
+                 
+                                // ── Параметры из БД ──────────────────────────────────────
+                                inputs: inputs.map(inp => ({
+                                    id:     inp.id,
+                                    name:   inp.name    || inp.id,
+                                    defval: inp.defval  !== undefined ? inp.defval : 0,
+                                    type:   inp.type    || 'integer',
+                                    ...(inp.min  !== undefined ? { min: inp.min }  : {}),
+                                    ...(inp.max  !== undefined ? { max: inp.max }  : {}),
+                                    ...(inp.step !== undefined ? { step: inp.step }: {}),
+                                    ...(inp.options        ? { options: inp.options }       : {}),
+                                    ...(inp.tooltip        ? { tooltip: inp.tooltip }       : {}),
+                                })),
+                 
+                                plots: [{ id: 'plot_0', type: 'line' }],
+                 
+                                defaults: {
+                                    styles: {
+                                        plot_0: {
+                                            linestyle:    0,
+                                            linewidth:    2,
+                                            plottype:     0,
+                                            trackPrice:   false,
+                                            transparency: 0,
+                                            visible:      true,
+                                            color:        '#2962FF',
+                                        },
+                                    },
+                                    precision: 4,
+                                    inputs:    buildDefaultInputs(inputs),
+                                },
+                 
+                                styles: { plot_0: { title: 'Value', histogramBase: 0 } },
+                            },
+                 
+                            constructor: function () {
+                                this.main = function (ctx, inputCallback) {
+                                    if (capturedMainFn) {
+                                        try {
+                                            const r = capturedMainFn(ctx, inputCallback);
+                                            if (Array.isArray(r)) return r;
+                                            if (typeof r === 'number') return [r];
+                                        } catch (_) {}
+                                    }
+                                    return [0];
+                                };
+                            },
+                        });
+                 
+                        console.log(`[CIG] ⚙️ "${name}" — заглушка, inputs: ${inputs.length}`);
+                    }
+                 
+                    // Добавляем то что добавили через Pine Editor
+                    const fromRegistry = (window.customPineIndicators || []).filter(Boolean);
+                    const all = [...result, ...fromRegistry];
+                    console.log(`[CIG] Итого индикаторов для TV: ${all.length}`);
+                    return all;
                 },
                 
                 save_load_adapter: {
@@ -342,8 +514,8 @@ class TradingApp {
                                     window.layoutManager._renderRecentMenu();
                                 }
                             }
-                    
-                            return data;
+                            return typeof data === 'string' ? data : JSON.stringify(data);
+                            //return data;
                         } catch (error) {
                             console.error('Failed to get chart content:', error);
                             return null;
@@ -442,6 +614,63 @@ class TradingApp {
                         appContainer.style.visibility = 'visible';
                     }
                     
+                    window.indicatorHelpers = {
+                        // Найти study по имени (частичное совпадение)
+                        findByName(name) {
+                            const chart = window.app?.widget?.activeChart();
+                            if (!chart) return [];
+                            try {
+                                return chart.getAllStudies().filter(s =>
+                                    s.name?.toLowerCase().includes(name.toLowerCase())
+                                );
+                            } catch (_) { return []; }
+                        },
+                 
+                        // Скрыть индикатор
+                        hideByName(name) {
+                            const chart = window.app?.widget?.activeChart();
+                            if (!chart) return;
+                            this.findByName(name).forEach(s => {
+                                try {
+                                    const entity = chart.getStudyById(s.entityId);
+                                    entity?.setVisible(false);
+                                } catch (_) {
+                                    try { chart.setEntityVisibility(s.entityId, false); } catch (__) {}
+                                }
+                            });
+                        },
+                 
+                        // Показать индикатор
+                        showByName(name) {
+                            const chart = window.app?.widget?.activeChart();
+                            if (!chart) return;
+                            this.findByName(name).forEach(s => {
+                                try {
+                                    const entity = chart.getStudyById(s.entityId);
+                                    entity?.setVisible(true);
+                                } catch (_) {
+                                    try { chart.setEntityVisibility(s.entityId, true); } catch (__) {}
+                                }
+                            });
+                        },
+                 
+                        // Удалить индикатор с графика
+                        removeByName(name) {
+                            const chart = window.app?.widget?.activeChart();
+                            if (!chart) return;
+                            this.findByName(name).forEach(s => {
+                                try { chart.removeStudy(s.entityId); } catch (_) {}
+                            });
+                        },
+                 
+                        // Список всех активных индикаторов
+                        listAll() {
+                            const chart = window.app?.widget?.activeChart();
+                            if (!chart) return [];
+                            try { return chart.getAllStudies(); } catch (_) { return []; }
+                        },
+                    };
+
                     resolve();
                 });
 

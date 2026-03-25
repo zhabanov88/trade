@@ -714,8 +714,8 @@ class IntervalSelector {
 .interval-selector-panel {
     display: flex;
     align-items: center;
-    height: 34px;
-    min-height: 34px;
+    flex-wrap: wrap;         
+    min-height: 34px;        
     padding: 0 8px;
     gap: 0;
     background: var(--bg-primary, #131722);
@@ -728,7 +728,7 @@ class IntervalSelector {
 }
 
 /* ── Кнопки интервалов ────────────────────────────────────── */
-.isb-group { display:flex; align-items:center; gap:1px; flex-shrink:0; }
+.isb-group { display:flex; align-items:center; gap:1px; flex-shrink:0; flex-wrap:wrap; }
 .isb {
     padding: 3px 8px;
     background: transparent;
@@ -847,11 +847,14 @@ class IntervalSelector {
     display:flex; align-items:center; gap:0;
     font-size:12px; flex:1; min-width:0;
     overflow:hidden; white-space:nowrap;
+    /* flex-basis: 100%;    занимает всю ширину → переносится на новую строку */
+    order: 2;
+    padding 8px;
 }
 .isp-info.isp-current .isp-k { color:#2962FF; }
 .isp-field { display:inline-flex; align-items:baseline; gap:4px; flex-shrink:0; }
 .isp-k {
-    font-size:10px; font-weight:700;
+    font-weight:700;
     text-transform:uppercase; letter-spacing:.3px;
     color:#4a4f5e;
 }

@@ -1,0 +1,13 @@
+File: /projects/base/csv/global_forex/quotes_v1/2009/09/2009-09-25.csv.gz
+Staging truncated
+Staging loaded: 4846934 rows
+INSERT done
+raw_market_data: 4846934 rows
+--- tick_index sample ---
+C:AED-CHF	1	13	13
+C:AED-DKK	1	77	77
+C:AED-EUR	1	72	72
+C:AED-INR	1	239	239
+C:AED-JPY	1	13	13
+--- candles_1m check ---
+256511

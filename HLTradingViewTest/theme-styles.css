@@ -1102,5 +1102,134 @@ body.light-theme #aca-refactor-result::-webkit-scrollbar-thumb { background: #d0
 /* Toast внутри модалки */
 body.light-theme #aca-toast        { background: #f3f3f3; border-color: #e0e3eb; color: #555; }
 
+/* =====================================================
+   PATCH 11 — light-theme-chart-marker-popup.css
+   
+   Добавить в конец theme-styles.css
+   
+   Исправляет модалку Chart Marker (#dt-viz-popup)
+   которая открывается кнопкой "📈 Chart" в тулбаре таблицы.
+   
+   Элементы: popup wrapper, заголовок, labels, inputs,
+   select, color picker, filter tabs, filter body,
+   кнопки Apply/Clear/Auto/Save/Share, presets list,
+   count badge, viz groups builder.
+   ===================================================== */
+
+/* ══════════════════════════════════════════════════════
+   POPUP WRAPPER
+   ══════════════════════════════════════════════════════ */
+   body.light-theme #dt-viz-popup     { background: #ffffff; border-color: #d0d3db;
+    box-shadow: 0 12px 40px rgba(0,0,0,.15); }
+
+/* ══════════════════════════════════════════════════════
+ЗАГОЛОВОК / ХЕДЕР
+══════════════════════════════════════════════════════ */
+body.light-theme .dt-cm-hdr        { color: #131722; border-bottom-color: #e0e3eb; }
+
+/* ══════════════════════════════════════════════════════
+LABELS
+══════════════════════════════════════════════════════ */
+body.light-theme .dt-vl            { color: #787b86; }
+body.light-theme .dt-viz-wrap      { background: #ffffff; }
+
+/* ══════════════════════════════════════════════════════
+INPUTS / SELECTS
+══════════════════════════════════════════════════════ */
+body.light-theme .dt-vi            { background: #f8f9fd; border-color: #d0d3db; color: #131722; }
+body.light-theme .dt-vi:focus      { border-color: #2962FF; }
+body.light-theme .dt-vi-color      { background: #f8f9fd; border-color: #d0d3db; }
+
+/* ══════════════════════════════════════════════════════
+FILTER TABS (Table filters / Simple / Visual / Formula)
+══════════════════════════════════════════════════════ */
+body.light-theme .vz-ftab          { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .vz-ftab:hover    { background: #e4e8f5; color: #131722; }
+body.light-theme .vz-ftab.vz-fon   { background: #2962FF22; border-color: #2962FF; color: #2962FF; }
+
+/* ══════════════════════════════════════════════════════
+FILTER BODY — Table mode hint
+══════════════════════════════════════════════════════ */
+body.light-theme .vz-ftable-hint   { color: #555; }
+body.light-theme .vz-cnt           { color: #00796b; }
+
+/* Simple filter */
+body.light-theme .vz-frow          { gap: 6px; }
+body.light-theme .vz-fs-col,
+body.light-theme .vz-fs-val        { background: #f8f9fd; border-color: #d0d3db; color: #131722; }
+
+/* Visual filter — groups */
+body.light-theme .vz-grp           { background: #f8f9fd; border-color: #e0e3eb; }
+body.light-theme .vz-grp-lbl       { color: #aaa; }
+body.light-theme .vz-grp-lbl em    { color: #f5a623; }
+body.light-theme .vz-lg            { background: #f0f3fa; border-color: #d0d3db; color: #787b86; }
+body.light-theme .vz-lg.vz-on      { background: #2962FF22; border-color: #2962FF; color: #2962FF; }
+body.light-theme .vz-cond-lbl      { color: #2962FF; }
+body.light-theme .vz-and           { color: #aaa; }
+
+/* Inputs inside visual groups */
+body.light-theme .vz-vi            { background: #f8f9fd; border-color: #d0d3db; color: #131722; }
+body.light-theme .vz-vi:focus      { border-color: #2962FF; }
+body.light-theme .vz-add-c         { color: #aaa; }
+body.light-theme .vz-add-c:hover   { color: #2962FF; }
+body.light-theme .vz-add-g         { border-color: #d0d3db; color: #aaa; }
+body.light-theme .vz-add-g:hover   { border-color: #2962FF; color: #2962FF; }
+body.light-theme .vz-del           { color: #ccc; }
+body.light-theme .vz-del:hover     { color: #c62828; }
+
+/* Formula filter */
+body.light-theme .vz-fml           { background: #f8f9fd; border-color: #d0d3db; color: #131722; }
+body.light-theme .vz-fml:focus     { border-color: #2962FF; }
+body.light-theme .vz-ferr          { color: #c62828; }
+body.light-theme .vz-hlbl          { color: #aaa; }
+body.light-theme .vz-chip          { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .vz-chip:hover    { border-color: #2962FF; color: #2962FF; background: #e8f0ff; }
+body.light-theme .vz-ex            { background: #f3f3f3; color: #aaa; }
+body.light-theme .vz-ex:hover      { color: #131722; background: #e0e3eb; }
+
+/* Count badge в правой части */
+body.light-theme #vz-table-cnt,
+body.light-theme #vz-simple-cnt,
+body.light-theme #vz-vis-cnt,
+body.light-theme #vz-fml-cnt       { color: #00796b; }
+
+/* ══════════════════════════════════════════════════════
+КНОПКИ ДЕЙСТВИЙ
+══════════════════════════════════════════════════════ */
+
+/* Apply to chart — зелёная, оставляем, читается хорошо */
+/* Clear */
+body.light-theme .dt-viz-actions .dt-btn         { background: #f0f3fa; border-color: #d0d3db; color: #555; }
+body.light-theme .dt-viz-actions .dt-btn:hover   { background: #e4e8f5; color: #131722; }
+body.light-theme .dt-viz-actions .dt-btn-apply   { background: #e8f5e9; border-color: #4caf50; color: #2e7d32; }
+body.light-theme .dt-viz-actions .dt-btn-apply:hover { background: #c8e6c9; }
+body.light-theme .dt-viz-actions .dt-btn-auto    { background: #fff8e1; border-color: #f5a623; color: #e67e00; }
+
+/* ══════════════════════════════════════════════════════
+SAVED PRESETS
+══════════════════════════════════════════════════════ */
+body.light-theme .dt-preset-row    { border-bottom-color: #e8eaf0; }
+body.light-theme .dt-preset-load   { color: #555; }
+body.light-theme .dt-preset-load:hover { color: #2962FF; }
+body.light-theme .dt-preset-del    { color: #ccc; }
+body.light-theme .dt-preset-del:hover  { color: #c62828; }
+body.light-theme .vz-note          { color: #aaa; }
+
+/* "No presets yet" текст */
+body.light-theme #vz-presets       { color: #aaa; }
+
+/* ══════════════════════════════════════════════════════
+SECTION SEPARATORS
+══════════════════════════════════════════════════════ */
+body.light-theme .dt-viz-body      { background: #ffffff; }
+body.light-theme .dt-viz-col + .dt-viz-col { border-left-color: #e0e3eb; }
+
+/* preset row */
+body.light-theme .vz-prow          { border-bottom-color: #e8eaf0; }
+body.light-theme .vz-pl            { color: #555; }
+body.light-theme .vz-pl:hover      { color: #2962FF; }
+body.light-theme .vz-pd            { color: #ccc; }
+body.light-theme .vz-pd:hover      { color: #c62828; }
+
 
 

@@ -362,6 +362,23 @@ console.log('✓ ATR added');`
             });
         }
 
+        document.getElementById('jsRunAsStudyBtn')?.addEventListener('click', async () => {
+            const code = document.getElementById('jsEditor')?.value?.trim();
+            if (!code) { this.logJSConsole('No code', 'error'); return; }
+        
+            // Берём метаданные из текущего загруженного скрипта
+            const scriptName = this._currentJsSystemName || `Custom_${Date.now()}`;
+            const scriptObj  = this.jsScriptObjects?.[scriptName] || {};
+        
+            await this.runAsStudy(
+                scriptObj.display_name || scriptName,
+                code,
+                scriptObj.inputs_schema  || [],
+                scriptObj.outputs_schema || [],
+                scriptObj.is_overlay !== false
+            );
+        });
+
     }
 
     saveScript(type, pineVersion) {
@@ -947,6 +964,147 @@ console.log('✓ ATR added');`
         
         consoleBody.appendChild(line);
         consoleBody.scrollTop = consoleBody.scrollHeight;
+    }
+
+    async runAsStudy(scriptName, scriptCode, inputs_schema, outputs_schema, isOverlay) {
+        if (!window.customPineIndicators) window.customPineIndicators = [];
+
+        const id   = `js_study_${scriptName}_${Date.now()}`;
+        const name = scriptName;
+
+        // Строим inputs для metainfo из inputs_schema
+        const inputsMeta = (inputs_schema || []).map(inp => ({
+            id:     inp.id,
+            name:   inp.name,
+            type:   ({ integer:'integer', float:'float', color:'color', source:'source', bool:'bool', string:'text' })[inp.type] || 'text',
+            defval: inp.defval,
+            ...(inp.min !== undefined ? { min: inp.min } : {}),
+            ...(inp.max !== undefined ? { max: inp.max } : {}),
+        }));
+
+        const plots = (outputs_schema || []).length > 0
+            ? outputs_schema.map((_, i) => ({ id: `plot_${i}`, type: 'line' }))
+            : [{ id: 'plot_0', type: 'line' }];
+
+        const styles = {};
+        const defaultStyles = {};
+        plots.forEach((p, i) => {
+            const o = (outputs_schema || [])[i] || {};
+            styles[p.id] = { title: o.name || `Plot ${i}`, histogramBase: 0 };
+            defaultStyles[p.id] = {
+                linestyle: 0, linewidth: o.linewidth || 2, plottype: 0,
+                trackPrice: false, transparency: 100, // полностью прозрачный — рисуем сами фигурами
+                visible: true, color: o.color || '#2962FF',
+            };
+        });
+
+        const defaultInputs = {};
+        (inputs_schema || []).forEach(inp => { defaultInputs[inp.id] = inp.defval; });
+
+        // Захватываем inputs_schema в замыкание для main()
+        const _schema  = inputs_schema  || [];
+        const _code    = scriptCode;
+
+        const studyDef = {
+            name,
+            metainfo: {
+                _metainfoVersion: 53,
+                id,
+                scriptIdPart:      name,
+                description:       name,
+                shortDescription:  name.substring(0, 24),
+                is_price_study:    isOverlay !== false,
+                isCustomIndicator: true,
+                format: { type: isOverlay !== false ? 'price' : 'volume', precision: 5 },
+                inputs:   inputsMeta,
+                plots,
+                styles,
+                defaults: { inputs: defaultInputs, styles: defaultStyles, precision: 5 },
+            },
+            constructor: function() {
+                return {
+                    main: function(ctx, inputCallback) {
+                        this._context = ctx;
+
+                        // Собираем inputs из TradingView
+                        const inputs = {};
+                        _schema.forEach((inp, i) => { inputs[inp.id] = inputCallback(i); });
+
+                        // Получаем текущий бар из activedata
+                        const activedata = window.app?.activedata;
+                        if (!activedata || activedata.length === 0) return plots.map(() => NaN);
+
+                        const currentTimeSec = ctx.symbol.time;
+
+                        // Находим индекс бара
+                        function toSec(ts) {
+                            if (typeof ts === 'number') return ts > 1e12 ? Math.floor(ts/1000) : Math.floor(ts);
+                            const iso = String(ts).replace(' ', 'T') + (String(ts).includes('Z') ? '' : 'Z');
+                            const ms = new Date(iso).getTime();
+                            return isNaN(ms) ? 0 : Math.floor(ms / 1000);
+                        }
+
+                        let index = -1;
+                        let best = Infinity;
+                        for (let i = activedata.length - 1; i >= 0; i--) {
+                            const diff = Math.abs(toSec(activedata[i].timestamp) - currentTimeSec);
+                            if (diff < best) { best = diff; index = i; }
+                            if (diff === 0) break;
+                        }
+                        if (index === -1 || best > 120) return plots.map(() => NaN);
+
+                        const bar  = activedata[index];
+                        const bars = activedata;
+
+                        // Хелперы
+                        function sma(field, period) {
+                            const slice = bars.slice(Math.max(0, index - period + 1), index + 1);
+                            if (slice.length < period) return NaN;
+                            return slice.reduce((s, b) => s + parseFloat(b[field] || 0), 0) / period;
+                        }
+                        function highest(field, period) {
+                            const slice = bars.slice(Math.max(0, index - period + 1), index + 1);
+                            return Math.max(...slice.map(b => parseFloat(b[field] || 0)));
+                        }
+                        function lowest(field, period) {
+                            const slice = bars.slice(Math.max(0, index - period + 1), index + 1);
+                            return Math.min(...slice.map(b => parseFloat(b[field] || 0)));
+                        }
+                        function history(field, n) {
+                            const i2 = index - (n || 0);
+                            if (i2 < 0) return NaN;
+                            return parseFloat(activedata[i2][field] || 0);
+                        }
+
+                        try {
+                            const result = (new Function(
+                                'bar','bars','index','inputs',
+                                'sma','highest','lowest','history',
+                                `"use strict";\n${_code}`
+                            ))(bar, bars, index, inputs, sma, highest, lowest, history);
+
+                            if (Array.isArray(result)) return result;
+                            if (result !== undefined && !isNaN(result)) return [result];
+                        } catch(e) { /* silent */ }
+
+                        return plots.map(() => NaN);
+                    }
+                };
+            }
+        };
+
+        // Убираем старую версию если была
+        window.customPineIndicators = window.customPineIndicators.filter(s => s.metainfo?.id !== id && s.name !== name);
+        window.customPineIndicators.push(studyDef);
+
+        // Добавляем на график
+        try {
+            const chart = this.widget.activeChart();
+            await chart.createStudy(name, isOverlay !== false, false);
+            this.logJSConsole(`✅ Study "${name}" добавлен на график`, 'success');
+        } catch(e) {
+            this.logJSConsole(`⚠ Study создан но не отображается (перезагрузите страницу): ${e.message}`, 'warning');
+        }
     }
 }
 
