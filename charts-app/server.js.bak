@@ -189,43 +189,6 @@ app.post('/api/auth/login', async (req, res) => {
         res.status(500).json({ error: 'Login failed' });
     }
 });
-
-// ==================== CHANGE PASSWORD ====================
-app.put('/api/auth/password', async (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-        return res.status(400).json({ error: 'Current password and new password are required' });
-    }
-    if (newPassword.length < 6) {
-        return res.status(400).json({ error: 'New password must be at least 6 characters' });
-    }
-    try {
-        const result = await greenplumPool.query(
-            'SELECT password_hash FROM users WHERE id = $1 AND is_active = true',
-            [req.session.userId]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        const match = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
-        if (!match) {
-            return res.status(401).json({ error: 'Current password is incorrect' });
-        }
-        const newHash = await bcrypt.hash(newPassword, 10);
-        await greenplumPool.query(
-            'UPDATE users SET password_hash = $1 WHERE id = $2',
-            [newHash, req.session.userId]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({ error: 'Password change failed' });
-    }
-});
-
 // ==================== MARKET DATA ENDPOINT ====================
 // Add this to your server.js file
 
@@ -636,7 +599,6 @@ app.get('/api/intervals', requireAuth, async (req, res) => {
              WHERE is_active = TRUE
              ORDER BY sort_order ASC`
         );
-
         res.json(result.rows);
     } catch (error) {
         console.error('Intervals error:', error);
@@ -1093,20 +1055,6 @@ app.get('/api/layouts', requireAuth, async (req, res) => {
 
 app.get('/api/layouts/:id', requireAuth, async (req, res) => {
     try {
-        const result = await greenplumPool.query(
-            `SELECT * FROM chart_layouts WHERE id = $1 AND user_id = $2`,
-            [req.params.id, req.session.userId]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Layout not found' });
-        }
-
-        const row = result.rows[0];
-        var layout_data = row.layout_data;
-        if (typeof layout_data === 'string') {
-            try { layout_data = JSON.parse(layout_data); } catch (_) {}
-        }
         if (layout_data && typeof layout_data === 'object') {
             try {
                 if (Array.isArray(layout_data.charts)) {
@@ -1121,11 +1069,19 @@ app.get('/api/layouts/:id', requireAuth, async (req, res) => {
                         });
                     });
                 }
-                row.layout_data = layout_data;
             } catch (_) {}
         }
 
-        res.json(row);
+        const result = await greenplumPool.query(
+            `SELECT * FROM chart_layouts WHERE id = $1 AND user_id = $2`,
+            [req.params.id, req.session.userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Layout not found' });
+        }
+
+        res.json(result.rows[0]);
     } catch (error) {
         console.error('Layout detail error:', error);
         res.status(500).json({ error: 'Failed to fetch layout' });

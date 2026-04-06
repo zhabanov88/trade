@@ -3,12 +3,6 @@
 // Управление интервалами, индикаторами, скриптами
 // ============================================
 
-function escapeHtml(s) {
-    return String(s || '').replace(/[&<>"']/g, function(c) {
-        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-    });
-}
-
 class SettingsManager {
     constructor() {
         this.currentSection = 'intervals';
@@ -88,11 +82,11 @@ class SettingsManager {
                     <tbody>
                         ${intervals.map(i => `
                             <tr>
-                                <td>${escapeHtml(i.code)}</td>
-                                <td>${escapeHtml(i.name)}</td>
-                                <td>${escapeHtml(i.tradingview_code)}</td>
-                                <td>${escapeHtml(i.clickhouse_table)}</td>
-                                <td>${escapeHtml(i.seconds)}s</td>
+                                <td>${i.code}</td>
+                                <td>${i.name}</td>
+                                <td>${i.tradingview_code}</td>
+                                <td>${i.clickhouse_table}</td>
+                                <td>${i.seconds}s</td>
                                 <td>
                                     <span class="status ${i.is_active ? 'active' : 'inactive'}">
                                         ${i.is_active ? 'ACTIVE' : 'INACTIVE'}
@@ -210,9 +204,9 @@ class SettingsManager {
                 <div class="indicators-list">
                     ${indicators.map(ind => `
                         <div class="indicator-card">
-                            <h3>${escapeHtml(ind.name)}</h3>
-                            <p>${escapeHtml(ind.description)}</p>
-                            <code>${escapeHtml(ind.code)}</code>
+                            <h3>${ind.name}</h3>
+                            <p>${ind.description || ''}</p>
+                            <code>${ind.code}</code>
                             <div class="actions">
                                 <button onclick="settingsManager.editIndicator(${ind.id})">Edit</button>
                                 <button onclick="settingsManager.deleteIndicator(${ind.id})">Delete</button>
@@ -269,9 +263,9 @@ class SettingsManager {
                 <div class="scripts-list">
                     ${scripts.length === 0 ? '<p>No scripts yet</p>' : scripts.map(script => `
                         <div class="script-card">
-                            <h3>${escapeHtml(script.display_name)}</h3>
-                            <p>${escapeHtml(script.description)}</p>
-                            <small>System: ${escapeHtml(script.system_name)}</small>
+                            <h3>${script.display_name}</h3>
+                            <p>${script.description || ''}</p>
+                            <small>System: ${script.system_name}</small>
                             <div class="actions">
                                 <button onclick="settingsManager.viewScript(${script.id})">View</button>
                                 <button onclick="settingsManager.editScript(${script.id})">Edit</button>

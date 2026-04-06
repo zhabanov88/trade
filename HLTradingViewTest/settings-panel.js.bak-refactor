@@ -616,7 +616,7 @@ class SettingsPanel {
                     <div class="settings-card-title">Account Information</div>
                     <div class="settings-row">
                         <div class="settings-row-label">Username</div>
-                        <div class="settings-row-value">${(this.currentUser.username || '').replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; })}</div>
+                        <div class="settings-row-value">${this.currentUser.username}</div>
                     </div>
                     <div class="settings-row">
                         <div class="settings-row-label">User ID</div>
@@ -628,21 +628,6 @@ class SettingsPanel {
                             <span class="settings-badge ${this.isAdmin ? 'settings-badge-admin' : 'settings-badge-user'}">
                                 ${this.isAdmin ? 'Admin' : 'User'}
                             </span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-card">
-                    <div class="settings-card-title">Change Password</div>
-                    <div id="sp-password-form">
-                        <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:8px;">
-                            <input type="password" id="sp-current-pw" placeholder="Current password" style="padding:8px 12px;border:1px solid #3e3e42;border-radius:4px;background:#2d2d30;color:#ccc;font-size:14px;">
-                            <input type="password" id="sp-new-pw" placeholder="New password (min 6 chars)" style="padding:8px 12px;border:1px solid #3e3e42;border-radius:4px;background:#2d2d30;color:#ccc;font-size:14px;">
-
-                            <div style="display:flex;align-items:center;gap:10px;">
-                                <button class="settings-btn" onclick="settingsPanel.changePassword()">Change Password</button>
-                                <span id="sp-pw-status" style="font-size:13px;"></span>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -700,16 +685,6 @@ class SettingsPanel {
                         <button class="settings-btn" onclick="layoutManager.openSaveDialog()">
                             💾 Save Current Layout
                         </button>
-                    </div>
-
-                    <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-                        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 15px;">
-                            <input type="checkbox" id="cs-autosave-refresh"
-                                ${localStorage.getItem('cs_autosave_on_refresh') === 'true' ? 'checked' : ''}
-                                onchange="localStorage.setItem('cs_autosave_on_refresh', this.checked ? 'true' : 'false')"
-                                style="width: 16px; height: 16px; cursor: pointer;">
-                            Автосохранение лэйаута при обновлении страницы (F5 / Ctrl+F5 / Ctrl+R / Ctrl+Shift+R)
-                        </label>
                     </div>
 
                     <table class="settings-table">
@@ -978,38 +953,6 @@ class SettingsPanel {
             await this.switchSection('layouts');
         } catch (error) {
             alert('Failed to delete layout: ' + error.message);
-        }
-    }
-
-    async changePassword() {
-        var cur = document.getElementById('sp-current-pw');
-        var nw = document.getElementById('sp-new-pw');
-        var st = document.getElementById('sp-pw-status');
-        if (!cur || !nw || !st) return;
-        st.textContent = '';
-        st.style.color = '';
-        if (!cur.value || !nw.value) {
-            st.textContent = 'Fill in all fields'; st.style.color = '#ef5350'; return;
-        }
-        if (nw.value.length < 6) {
-            st.textContent = 'Min 6 characters'; st.style.color = '#ef5350'; return;
-        }
-        st.textContent = 'Changing...'; st.style.color = '#888';
-        try {
-            var resp = await fetch('/api/auth/password', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ currentPassword: cur.value, newPassword: nw.value })
-            });
-            var data = await resp.json();
-            if (!resp.ok) {
-                st.textContent = data.error || 'Failed'; st.style.color = '#ef5350'; return;
-            }
-            st.textContent = 'Password changed!'; st.style.color = '#4caf50';
-            cur.value = ''; nw.value = '';
-        } catch (e) {
-            st.textContent = 'Network error'; st.style.color = '#ef5350';
         }
     }
 }

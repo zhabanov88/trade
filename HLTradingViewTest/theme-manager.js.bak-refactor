@@ -1,5 +1,5 @@
 /**
- * theme-manager.js  v4
+ * theme-manager.js  v3
  *
  * Управление темой БЕЗ перезагрузки страницы:
  *  - UI (body class, CSS-переменные) — мгновенно
@@ -26,23 +26,12 @@ class ThemeManager {
         'scalesProperties.textColor':                      '#b2b5be',
         'scalesProperties.lineColor':                      '#2a2e39',
         'scalesProperties.backgroundColor':                '#131722',
-        // Candles
-        'mainSeriesProperties.candleStyle.upColor':        '#648fff',
-        'mainSeriesProperties.candleStyle.downColor':      '#fe6100',
-        'mainSeriesProperties.candleStyle.borderUpColor':  '#648fff',
-        'mainSeriesProperties.candleStyle.borderDownColor':'#fe6100',
-        'mainSeriesProperties.candleStyle.wickUpColor':    '#648fff',
-        'mainSeriesProperties.candleStyle.wickDownColor':  '#fe6100',
-        // Hollow candles
-        'mainSeriesProperties.hollowCandleStyle.upColor':        '#648fff',
-        'mainSeriesProperties.hollowCandleStyle.downColor':      '#fe6100',
-        'mainSeriesProperties.hollowCandleStyle.borderUpColor':  '#648fff',
-        'mainSeriesProperties.hollowCandleStyle.borderDownColor':'#fe6100',
-        'mainSeriesProperties.hollowCandleStyle.wickUpColor':    '#648fff',
-        'mainSeriesProperties.hollowCandleStyle.wickDownColor':  '#fe6100',
-        // Bars
-        'mainSeriesProperties.barStyle.upColor':           '#648fff',
-        'mainSeriesProperties.barStyle.downColor':         '#fe6100',
+        'mainSeriesProperties.candleStyle.upColor':        '#26a69a',
+        'mainSeriesProperties.candleStyle.downColor':      '#ef5350',
+        'mainSeriesProperties.candleStyle.borderUpColor':  '#26a69a',
+        'mainSeriesProperties.candleStyle.borderDownColor':'#ef5350',
+        'mainSeriesProperties.candleStyle.wickUpColor':    '#26a69a',
+        'mainSeriesProperties.candleStyle.wickDownColor':  '#ef5350',
     };
 
     static LIGHT_OVERRIDES = {
@@ -56,23 +45,12 @@ class ThemeManager {
         'scalesProperties.textColor':                      '#131722',
         'scalesProperties.lineColor':                      '#d1d4dc',
         'scalesProperties.backgroundColor':                '#ffffff',
-        // Candles
-        'mainSeriesProperties.candleStyle.upColor':        '#ffffff',
-        'mainSeriesProperties.candleStyle.downColor':      '#000000',
-        'mainSeriesProperties.candleStyle.borderUpColor':  '#000000',
-        'mainSeriesProperties.candleStyle.borderDownColor':'#000000',
-        'mainSeriesProperties.candleStyle.wickUpColor':    '#000000',
-        'mainSeriesProperties.candleStyle.wickDownColor':  '#000000',
-        // Hollow candles
-        'mainSeriesProperties.hollowCandleStyle.upColor':        '#ffffff',
-        'mainSeriesProperties.hollowCandleStyle.downColor':      '#000000',
-        'mainSeriesProperties.hollowCandleStyle.borderUpColor':  '#000000',
-        'mainSeriesProperties.hollowCandleStyle.borderDownColor':'#000000',
-        'mainSeriesProperties.hollowCandleStyle.wickUpColor':    '#000000',
-        'mainSeriesProperties.hollowCandleStyle.wickDownColor':  '#000000',
-        // Bars
-        'mainSeriesProperties.barStyle.upColor':           '#000000',
-        'mainSeriesProperties.barStyle.downColor':         '#000000',
+        'mainSeriesProperties.candleStyle.upColor':        '#26a69a',
+        'mainSeriesProperties.candleStyle.downColor':      '#ef5350',
+        'mainSeriesProperties.candleStyle.borderUpColor':  '#26a69a',
+        'mainSeriesProperties.candleStyle.borderDownColor':'#ef5350',
+        'mainSeriesProperties.candleStyle.wickUpColor':    '#26a69a',
+        'mainSeriesProperties.candleStyle.wickDownColor':  '#ef5350',
     };
 
     // ── СТРУКТУРНЫЕ overrides — для защиты при загрузке layout ───
@@ -176,8 +154,9 @@ class ThemeManager {
         if (typeof widget.changeTheme === 'function') {
             try {
                 widget.changeTheme(tvTheme);
-                this._applyOverrides(theme);
-                setTimeout(() => this._applyOverrides(theme), 50);
+                // После смены темы применяем overrides поверх
+                setTimeout(() => this._applyOverrides(theme), 300);
+                console.log(`[ThemeManager] ✅ widget.changeTheme("${tvTheme}") called`);
                 return;
             } catch (e) {
                 console.warn('[ThemeManager] changeTheme failed:', e.message);
@@ -249,7 +228,7 @@ class ThemeManager {
 
         if (typeof widget.load === 'function') {
             const _origLoad = widget.load.bind(widget);
-            widget.load = (data) => {
+            widget.load = (data) => { console.warn("[LOAD] widget.load called, data type:", typeof data, data ? "len=" + JSON.stringify(data).length : "null");
                 const result = _origLoad(data);
                 setTimeout(() => {
                     this._applyStructuralOverrides(this.currentTheme);
@@ -259,7 +238,7 @@ class ThemeManager {
         }
 
         widget.onChartReady(() => {
-            setTimeout(() => this._applyStructuralOverrides(this.currentTheme), 100);
+            setTimeout(() => this._applyOverrides(this.currentTheme), 100);
         });
     }
 }

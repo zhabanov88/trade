@@ -22,7 +22,12 @@ class TradingApp {
                 .filter(Boolean);
             
 
-            console.log("✓ Active intervals:", activeIntervals);
+            console.log("intervals__intervals__intervals__intervals", intervals)
+            console.log("activeIntervals__activeIntervals__activeIntervals")
+            console.log("activeIntervals__activeIntervals__activeIntervals")
+            console.log("activeIntervals", activeIntervals)
+            console.log("activeIntervals__activeIntervals__activeIntervals")
+            console.log("activeIntervals__activeIntervals__activeIntervals")
             return activeIntervals;
         } catch (error) {
             console.error('Failed to load intervals:', error);
@@ -127,12 +132,6 @@ class TradingApp {
 
     async checkAuth() {
         try {
-            // Use early pre-fetched auth if available (fired in <head> before scripts loaded)
-            if (window._earlyAuth) {
-                const result = await window._earlyAuth;
-                window._earlyAuth = null;
-                return result;
-            }
             const response = await fetch('/api/auth/status', {
                 credentials: 'include'
             });
@@ -157,7 +156,6 @@ class TradingApp {
         document.title = 'magic'
         if (authContainer) authContainer.style.display = 'block';
         if (appContainer) appContainer.style.display = 'none';
-        var lo = document.getElementById('loading-overlay'); if (lo) lo.style.display = 'none';
     }
 
     showAppContainer() {
@@ -180,8 +178,7 @@ class TradingApp {
             usernameEl.textContent = this.currentUser.username;
             
             if (this.currentUser.isAdmin) {
-                const safeUsername = (this.currentUser.username || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-                usernameEl.innerHTML = safeUsername + ' <span style="background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">ADMIN</span>';
+                usernameEl.innerHTML = `${this.currentUser.username} <span style="background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">ADMIN</span>`;
             }
         }
     }
@@ -201,11 +198,16 @@ class TradingApp {
             console.log('✅ Datafeed initialized with ClickHouse data');
 
             // Получаем дефолтный символ
-            const _savedSession = window.chartSession ? window.chartSession.readSession() : {};
+            let _savedSession = null;
 
             // Загружаем интервалы
             this.intervals = await this.loadIntervals();
             console.log('✓ Intervals loaded:', this.intervals);
+
+            try {
+                const _raw = localStorage.getItem('tv_session');
+                if (_raw) _savedSession = JSON.parse(_raw);
+            } catch (_) {}
 
             let defaultSymbol = _savedSession?.symbol || 'EUR';
             if (!_savedSession?.symbol && this.datafeed.instruments?.length > 0) {
@@ -220,43 +222,11 @@ class TradingApp {
 
             // Создаём виджет
             const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
-
-            let _savedData = null;
-            if (_savedSession?.layoutId) {
-                try {
-                    let _row = null;
-                    if (window._earlyLayout) {
-                        _row = await window._earlyLayout;
-                        window._earlyLayout = null;
-                    } else {
-                        const _resp = await fetch('/api/layouts/' + _savedSession.layoutId, { credentials: 'include' });
-                        if (_resp.ok) _row = await _resp.json();
-                    }
-                    if (_row) {
-                        let _ld = _row.layout_data;
-                        if (typeof _ld === 'string') _ld = JSON.parse(_ld);
-                        if (_ld && typeof _ld === 'object') {
-                            if (_ld._appState) delete _ld._appState;
-                            if (_ld.name) delete _ld.name;
-                            if (_ld.content && typeof _ld.content === 'string') {
-                                _savedData = JSON.parse(_ld.content);
-                            } else if (_ld.charts) {
-                                _savedData = _ld;
-                            }
-                        }
-                    }
-                } catch (_) {}
-            }
-
-            if (_savedData) {
-            } else {
-            }
+            
             this.widget = new TradingView.widget({
                 debug: false,
-                symbol: _savedData ? undefined : defaultSymbol,
-                interval: _savedData ? undefined : defaultInterval,
-                saved_data: _savedData,
-                auto_save_delay: 5,
+                symbol: defaultSymbol,
+                interval: defaultInterval,
                 container: 'tv_chart_container',
                 datafeed: this.datafeed,
                 library_path: 'charting_library/charting_library/',
@@ -273,22 +243,9 @@ class TradingApp {
                     'side_toolbar_in_fullscreen_mode'
                 ],
                 
-                custom_formatters: {
-                    priceFormatterFactory: function (symbolInfo) {
-                        var decimals = symbolInfo && symbolInfo.pricescale
-                            ? Math.round(Math.log10(symbolInfo.pricescale))
-                            : 5;
-                        return {
-                            format: function (price) {
-                                if (!isFinite(price)) return '';
-                                return parseFloat(price.toFixed(decimals)).toString();
-                            }
-                        };
-                    }
-                },
                 fullscreen: false,
                 autosize: true,
-                theme: currentTheme,
+                theme: currentTheme, // Используем тему из localStorage 
                 timezone: 'America/New_York',
                 
                 //custom_indicators_getter: function(PineJS) {
@@ -467,11 +424,119 @@ class TradingApp {
                     return all;
                 },
                 
-                save_load_adapter: window.chartSession.adapter,
+                save_load_adapter: {
+                    charts: [],
+                    studyTemplates: [],
+                    
+                    getAllCharts: async () => {
+                        try {
+                            const layouts = await apiClient.getLayouts();
+                            return layouts.map(layout => ({
+                                id: layout.id.toString(),
+                                name: layout.name,
+                                symbol: layout.symbol || defaultSymbol,
+                                resolution: layout.interval || '1',
+                                timestamp: new Date(layout.created_at).getTime() / 1000
+                            }));
+                        } catch (error) {
+                            console.error('Failed to get charts:', error);
+                            return [];
+                        }
+                    },
+                    
+                    removeChart: async (id) => {
+                        try {
+                            await apiClient.deleteLayout(parseInt(id));
+                        } catch (error) {
+                            console.error('Failed to remove chart:', error);
+                        }
+                    },
+                    
+                    saveChart: async (chartData) => {
+                        try {
+                            let content = chartData.content;
+                            if (typeof content === 'string') {
+                                try { content = JSON.parse(content); } catch(_) {}
+                            }
+                            const extendedContent = {
+                                ...(typeof content === 'object' && content !== null ? content : { raw: content }),
+                                _appState: {
+                                    activeDataKey: window.app?._activeDataKey || null,
+                                    tableState:    window.dataTable?.getState ? window.dataTable.getState() : null,
+                                    savedAt:       Date.now(),
+                                }
+                            };
+                            const result = await apiClient.createLayout({
+                                name:        chartData.name,
+                                layout_data: extendedContent,
+                                symbol:      chartData.symbol,
+                                interval:    chartData.resolution,
+                                is_default:  false
+                            });
+                            if (window.layoutManager) {
+                                window.layoutManager._saveSession({
+                                    layoutId:   result.id,
+                                    layoutName: chartData.name,
+                                    symbol:     chartData.symbol,
+                                    interval:   chartData.resolution,
+                                    appState:   extendedContent._appState,
+                                });
+                                window.layoutManager._pushRecent({ id: result.id, name: chartData.name, symbol: chartData.symbol, interval: chartData.resolution });
+                                window.layoutManager._renderRecentMenu();
+                            }
+                            return result.id.toString();
+                        } catch (error) {
+                            console.error('Failed to save chart:', error);
+                            throw error;
+                        }
+                    },
+                    
+                    getChartContent: async (id) => {
+                        console.warn("[LOAD] getChartContent id=", id);
+                        try {
+                            const layout = await apiClient.getLayout(parseInt(id));
+                            let data = layout.layout_data;
+                    
+                            if (data && typeof data === 'object' && data._appState) {
+                                const appState = data._appState;
+                                const { _appState, ...pureTvData } = data;
+                                data = pureTvData;
+                    
+                                if (window.layoutManager) {
+                                    window.layoutManager._saveSession({
+                                        layoutId:   layout.id,
+                                        layoutName: layout.name,
+                                        symbol:     layout.symbol,
+                                        interval:   layout.interval,
+                                        appState,
+                                    });
+                                    window.layoutManager._restoreAppState(appState);
+                                    window.layoutManager._pushRecent(layout);
+                                    window.layoutManager._renderRecentMenu();
+                                }
+                            }
+                            if (data && typeof data === "object" && data.name !== undefined) { delete data.name; } if (data && typeof data === "object" && !data.content && data.charts) { var _wrapped = { content: JSON.stringify(data) }; console.warn("[LOAD] wrapped chart state in content key"); var _r = JSON.stringify(_wrapped); console.warn("[LOAD] returning", _r.length, "chars (wrapped)"); return _r; } var _r = typeof data === "string" ? data : JSON.stringify(data); console.warn("[LOAD] returning", _r ? _r.length : "null", "chars, keys:", data && typeof data === "object" ? Object.keys(data).join(",") : "string"); return _r;
+                            //return data;
+                        } catch (error) {
+                            console.error('Failed to get chart content:', error);
+                            return null;
+                        }
+                    },
+                    
+                    getAllStudyTemplates: () => Promise.resolve([]),
+                    removeStudyTemplate: () => Promise.resolve(),
+                    saveStudyTemplate: () => Promise.resolve(),
+                    getStudyTemplateContent: () => Promise.resolve('')
+                },
                 
-                overrides: currentTheme === 'light'
-                    ? ThemeManager.LIGHT_STRUCTURAL
-                    : ThemeManager.DARK_STRUCTURAL,
+                overrides: {
+                    'mainSeriesProperties.candleStyle.upColor': '#26a69a',
+                    'mainSeriesProperties.candleStyle.downColor': '#ef5350',
+                    'mainSeriesProperties.candleStyle.borderUpColor': '#26a69a',
+                    'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
+                    'mainSeriesProperties.candleStyle.wickUpColor': '#26a69a',
+                    'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350'
+                },
 
                 loading_screen: {
                     backgroundColor: currentTheme === 'light' || currentTheme === 'Light' ? '#ffffff' : '#131722',
@@ -481,7 +546,6 @@ class TradingApp {
 
             // Store widget globally
             window.app.widget = this.widget;
-            if (window.chartSession) window.chartSession.subscribe(this.widget);
             window.app.defaultInterval = defaultInterval
             window.app.activeTimeFrame = defaultInterval
 
@@ -493,12 +557,50 @@ class TradingApp {
                     // Подписываемся на изменение интервала
                     const chart = this.widget.activeChart();
 
+                    // Принудительно применяем тему через overrides
+                    const isLight = (localStorage.getItem('tradingview_theme') || 'dark') === 'light';
+                    if (isLight) {
+                        try {
+                            this.widget.applyOverrides({
+                                // Фон графика
+                                'paneProperties.background':             '#ffffff',
+                                'paneProperties.backgroundType':         'solid',
+                                'paneProperties.backgroundGradientStartColor': '#ffffff',
+                                'paneProperties.backgroundGradientEndColor':   '#f8f9fd',
+                                // Сетка
+                                'paneProperties.vertGridProperties.color':  '#e8edf2',
+                                'paneProperties.horzGridProperties.color':  '#e8edf2',
+                                // Крестик
+                                'paneProperties.crossHairProperties.color': '#758696',
+                                // Шкала цены
+                                'scalesProperties.textColor':    '#131722',
+                                'scalesProperties.lineColor':    '#d1d4dc',
+                                'scalesProperties.backgroundColor': '#ffffff',
+                                // Легенда
+                                'legendProperties.showStudyArguments': true,
+                                'legendProperties.showStudyTitles':    true,
+                                'legendProperties.showStudyValues':    true,
+                                'legendProperties.showSeriesTitle':    true,
+                                'legendProperties.showSeriesOHLC':     true,
+                            });
+                            console.log('✅ Light theme overrides applied');
+                        } catch(e) {
+                            console.warn('⚠️ applyOverrides failed:', e.message);
+                        }
+                    }
+
                     chart.onIntervalChanged().subscribe(null, (interval) => {
                         console.log(`✓ Interval changed to: ${interval}`);
                         this.saveCurrentInterval(interval);
                     });
                     
                     if (window.intervalSelector) {
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
                         window.intervalSelector.init(this.widget);
                     }
 
@@ -629,12 +731,11 @@ class TradingApp {
     showError(message) {
         const loadingOverlay = document.getElementById('loading-overlay');
         if (loadingOverlay) {
-            const safeMsg = String(message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             loadingOverlay.innerHTML = `
                 <div style="text-align: center;">
                     <div style="color: #f44336; font-size: 48px; margin-bottom: 20px;">⚠️</div>
                     <div style="color: #d4d4d4; font-size: 18px; margin-bottom: 10px;">Error</div>
-                    <div style="color: #858585; font-size: 14px; max-width: 400px;">${safeMsg}</div>
+                    <div style="color: #858585; font-size: 14px; max-width: 400px;">${message}</div>
                     <button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #2962FF; color: white; border: none; border-radius: 4px; cursor: pointer;">
                         Reload Page
                     </button>

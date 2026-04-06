@@ -5,26 +5,10 @@
     <meta name="robots" content="noindex,nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Magic</title>
-    <script>try{var _t=localStorage.getItem('tradingview_theme');if(_t==='light'){document.documentElement.classList.add('light-loading');document.documentElement.style.backgroundColor='#fff'}else{document.documentElement.style.backgroundColor='#1e1e1e'}}catch(e){document.documentElement.style.backgroundColor='#1e1e1e'}</script>
-    <style>html{background:#1e1e1e}body{background:#1e1e1e;margin:0}#loading-overlay{position:fixed;inset:0;background:#1e1e1e;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:9999}.loading-text{color:#888;margin-top:20px;font-family:sans-serif;font-size:14px}.light-loading,.light-loading body,.light-loading #loading-overlay{background:#fff}.light-loading .loading-text{color:#555}</style>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="theme-styles.css">
     <link rel="stylesheet" href="code-panel-hotfix.css"> 
-    <script defer src="charting_library/charting_library/charting_library.standalone.js"></script>
-    <script>
-    // Early pre-fetch: auth + layout in parallel (while scripts download)
-    window._earlyAuth = fetch('/api/auth/status', {credentials:'include'})
-        .then(function(r){return r.ok ? r.json() : {authenticated:false}})
-        .catch(function(){return {authenticated:false}});
-    try {
-        var _s = JSON.parse(localStorage.getItem('tv_session'));
-        if (_s && _s.layoutId) {
-            window._earlyLayout = fetch('/api/layouts/' + _s.layoutId, {credentials:'include'})
-                .then(function(r){return r.ok ? r.json() : null})
-                .catch(function(){return null});
-        }
-    } catch(e) {}
-    </script>
+    <script src="charting_library/charting_library/charting_library.standalone.js"></script>
 </head>
 <body class="dark-theme">
     <div class="app-container" id="appContainer" style="display:none" >
@@ -237,7 +221,7 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
     </div>
 
     <!-- Auth Container -->
-    <div class="auth-container" id="authContainer" style="display:none">
+    <div class="auth-container" id="authContainer">
         <div id="loginForm">
             <h2>Login</h2>
             <div class="error-message" id="loginError"></div>
@@ -278,79 +262,75 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
         </div>
     </div>
 
-    <div class="loading-overlay" id="loading-overlay" style="display:flex">
-        <svg width="100" height="100" viewBox="0 0 50 50" style="animation:spin 1s linear infinite"><style>@keyframes spin{to{transform:rotate(360deg)}}</style><circle cx="25" cy="25" r="20" fill="none" stroke="#3e3e42" stroke-width="4"/><path d="M25 5a20 20 0 0 1 20 20" fill="none" stroke="#2962FF" stroke-width="4" stroke-linecap="round"/></svg>
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
         <div class="loading-text">Loading TradingView Chart...</div>
     </div>
     
     <!-- SCRIPTS - ПРАВИЛЬНЫЙ ПОРЯДОК ЗАГРУЗКИ -->
     
-    <script defer src="activedata-persist.js"></script>
+    <script src="activedata-persist.js"></script>
     
     <!-- 1. Theme Manager FIRST -->
-    <script defer src="theme-manager.js?v=4"></script>
+    <script src="theme-manager.js?v=3"></script>
     
     <!-- 2. API Client -->
-    <script defer src="api-client.js"></script>
+    <script src="api-client.js"></script>
     
-    <!-- 3. Chart Session (unified adapter — needs apiClient) -->
-    <script defer src="chart-session.js"></script>
-    
-    <!-- 4. Datafeed -->
-    <script defer src="datafeed-integrated-v3.js"></script>
+    <!-- 3. Datafeed -->
+    <script src="datafeed-integrated-v3.js"></script>
     
     <!-- 4. Settings Manager -->
-    <script defer src="settings-manager.js"></script>
+    <script src="settings-manager.js"></script>
     
     <!-- 5. Main App -->
     <!-- FVG Detector Indicator -->
     <!--
 
-<script defer src="fvg-indicator.js"></script>
+<script src="fvg-indicator.js"></script>
     -->
-    <script defer src="tv-indicator-engine.js?v=17"></script>
-    <script defer src="cisd_indicator.js?v=6"></script>
-    <script defer src="app.js?v=3"></script>
-    <script defer src="bar-detail-popup.js"></script>
+    <script src="tv-indicator-engine.js?v=16"></script>
+    <script src="cisd_indicator.js?v=6"></script>
+    <script src="app.js"></script>
     
     <!-- 6. UI Components -->
-    <script defer src="currency-selector.js"></script>
-    <script defer src="layout-manager.js"></script>
-    <script defer src="script-manager-ui.js"></script>
-    <script defer src="indicator-manager-ui.js"></script>
-    <script defer src="indicators-menu-integration.js"></script>
-    <script defer src="settings-panel.js"></script>
-    <script defer src="code-panel-manager.js"></script>
-    <script defer src="code-panel-hotfix.js"></script>
-    <script defer src="interval-selector.js"></script>
-    <!-- recent-layouts.js REMOVED — merged into chart-session.js -->
+    <script src="currency-selector.js"></script>
+    <script src="layout-manager.js"></script>
+    <script src="script-manager-ui.js"></script>
+    <script src="indicator-manager-ui.js"></script>
+    <script src="indicators-menu-integration.js"></script>
+    <script src="settings-panel.js"></script>
+    <script src="code-panel-manager.js"></script>
+    <script src="code-panel-hotfix.js"></script>
+    <script src="interval-selector.js"></script>
+    <script src="recent-layouts.js"></script>
     
-    <!--<script defer src="data-table.js"></script>-->
-    <script defer src="date-guard.js"></script>
-    <script defer src="setups-backtest.js"></script>  
-    <script defer src="backtest-player.js"></script>
-    <script defer src="setups-backtest-ext.js"></script>
+    <!--<script src="data-table.js"></script>-->
+    <script src="date-guard.js"></script>
+    <script src="setups-backtest.js"></script>  
+    <script src="backtest-player.js"></script>
+    <script src="setups-backtest-ext.js"></script>
 
-    <script defer src="layout-state-sync.js"></script>
+    <script src="layout-state-sync.js"></script>
     
 
-    <script defer src="walkforward-ui.js"></script>
-    <script defer src="ai-ui.js"></script>
-    <script defer src="alert-ui.js"></script>
-    <script defer src="correlation-ui.js"></script>
-    <script defer src="alpha-decay-ui.js"></script>
-    <script defer src="temporal-heatmap-ui.js"></script>
-    <script defer src="multifactor-ui.js"></script>
+    <script src="walkforward-ui.js"></script>
+    <script src="ai-ui.js"></script>
+    <script src="alert-ui.js"></script>
+    <script src="correlation-ui.js"></script>
+    <script src="alpha-decay-ui.js"></script>
+    <script src="temporal-heatmap-ui.js"></script>
+    <script src="multifactor-ui.js"></script>
     
-    <script defer src="tick-analytics.js"></script>
-    <script defer src="neural-ui.js"></script>
-    <script defer src="llm-settings-ui.js"></script>
+    <script src="tick-analytics.js"></script>
+    <script src="neural-ui.js"></script>
+    <script src="llm-settings-ui.js"></script>
 
     
-    <script defer src="session-script-runner.js"></script>
-    <!-- chart-autosave.js REMOVED — merged into chart-session.js -->
+    <script src="session-script-runner.js"></script>
+    <script src="chart-autosave.js"></script>
     
-    <!--<script defer src="ai-code-analyzer.js"></script>-->
+    <!--<script src="ai-code-analyzer.js"></script>-->
     
     
 <script>

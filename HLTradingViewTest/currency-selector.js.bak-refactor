@@ -3,15 +3,6 @@
  * Allows users to switch between available instruments
  */
 
-function escapeHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
 class CurrencySelector {
     constructor() {
         this.instruments = [];
@@ -49,8 +40,8 @@ class CurrencySelector {
             <div class="currency-selector">
                 <select id="currencySelect" class="currency-select">
                     ${this.instruments.map(inst => `
-                        <option value="${escapeHtml(inst.symbol)}" ${inst.symbol === this.currentSymbol ? 'selected' : ''}>
-                            ${escapeHtml(inst.name || inst.symbol)}
+                        <option value="${inst.symbol}" ${inst.symbol === this.currentSymbol ? 'selected' : ''}>
+                            ${inst.name || inst.symbol}
                         </option>
                     `).join('')}
                 </select>

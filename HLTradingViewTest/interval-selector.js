@@ -123,7 +123,7 @@ class IntervalSelector {
             this.intervals = { ticks: [], minutes: [], hours: [], days: [] };
             list.filter(i => i.is_active).forEach(i => {
                 const c = i.tradingview_code;
-                if      (c.includes('T') || c.includes('t'))                    this.intervals.ticks.push(c);
+                if      (c.includes('T') || c.includes('t') || c.includes('S') || c.includes('s'))  this.intervals.ticks.push(c);
                 else if (['1','2','3','5','15','30'].includes(c))                this.intervals.minutes.push(c);
                 else if (['60','120','180','240'].includes(c))                   this.intervals.hours.push(c);
                 else if (c.includes('D') || c.includes('W') || c.includes('M')) this.intervals.days.push(c);
@@ -149,7 +149,7 @@ class IntervalSelector {
         document.querySelector('.interval-selector-panel')?.remove();
 
         const names = {
-            '1T':'1T','1':'1m','2':'2m','3':'3m','5':'5m','15':'15m',
+            '1T':'1T','30S':'30s','1':'1m','2':'2m','3':'3m','5':'5m','15':'15m',
             '30':'30m','60':'1h','120':'2h','180':'3h','240':'4h',
             '1D':'1D','1W':'1W','1M':'1M'
         };
@@ -734,7 +734,7 @@ class IntervalSelector {
     background: transparent;
     border: none;
     color: #787b86;
-    font-size: 12px;
+    /* font-size: 12px; */
     font-weight: 500;
     cursor: pointer;
     border-radius: 3px;

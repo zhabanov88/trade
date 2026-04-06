@@ -1,10 +1,9 @@
 /**
- * chart-autosave.js  v3
+ * chart-autosave.js  v2
  *
- * 1. Автосохранение ОТКЛЮЧЕНО
+ * 1. Автосохранение — всегда в ТЕКУЩИЙ активный layout (не создаёт новых)
  * 2. Отображает имя активного layout рядом с кнопкой Save в TV header
  * 3. Кнопка Save патчится — при клике обновляет текущий layout, а не создаёт новый
- * 4. Save As создаёт новый layout
  *
  * Подключение в index.html ПОСЛЕ app.js:
  *   <script src="chart-autosave.js"></script>
@@ -15,14 +14,13 @@
 
     const LS_SESSION   = 'tv_session';
     const LS_FALLBACK  = 'tv_autosave_data';
-    const DEBOUNCE_MS  = 5000;
-    const HEARTBEAT_S  = 60;
+    const DEBOUNCE_MS  = 5000;   // увеличен для снижения нагрузки
+    const HEARTBEAT_S  = 60;    // heartbeat раз в минуту
 
     let _widget    = null;
     let _debTimer  = null;
     let _heartbeat = null;
     let _isSaving  = false;
-    let _isLoading = false;
     let _nameEl    = null;
 
     // ════════════════════════════════════════════════════════════════
@@ -47,7 +45,8 @@
     // ════════════════════════════════════════════════════════════════
 
     function _scheduleSave(reason) {
-        return;
+        if (_debTimer) clearTimeout(_debTimer);
+        _debTimer = setTimeout(() => { _debTimer = null; _save(reason); }, DEBOUNCE_MS);
     }
 
     // Cooldown — не сохраняем чаще раза в 10 секунд
@@ -82,7 +81,7 @@
     }
 
     async function _save(reason) {
-        if (_isSaving || !_widget || _isLoading) return;
+        if (_isSaving || !_widget) return;
 
         // Cooldown — не сохраняем чаще SAVE_COOLDOWN_MS
         const now = Date.now();
@@ -259,18 +258,14 @@
         const adapter = widget._options?.save_load_adapter || widget.options?.save_load_adapter;
         if (!adapter || adapter._autosavePatchedV2) return;
 
-        // saveChart — нажата кнопка Save или Save As
+        // saveChart — нажата кнопка Save
         const _origSave = adapter.saveChart.bind(adapter);
         adapter.saveChart = async function (chartData) {
             const currentId   = _getActiveLayoutId();
             const currentName = _getActiveLayoutName();
 
-            // chartData.id === undefined → "Save As" (новый лэйаут)
-            // chartData.id !== undefined → "Save" (обновление существующего)
-            const isSaveAs = !chartData.id;
-
-            // "Save" — обновляем текущий layout
-            if (currentId && !isSaveAs) {
+            // Если есть активный layout — обновляем его
+            if (currentId) {
                 try {
                     let content = chartData.content;
                     if (typeof content === 'string') {
@@ -291,7 +286,7 @@
                 }
             }
 
-            // "Save As" или нет активного layout → создаём новый
+            // Нет активного или ошибка → создаём новый
             const newId = await _origSave(chartData);
             _writeSession({ layoutId: newId, layoutName: chartData.name, symbol: chartData.symbol, interval: chartData.resolution });
             _updateBadge();
@@ -302,7 +297,6 @@
         // getChartContent — пользователь открыл layout из списка
         const _origGet = adapter.getChartContent.bind(adapter);
         adapter.getChartContent = async function (id) {
-            _isLoading = true; if (_debTimer) { clearTimeout(_debTimer); _debTimer = null; }
             const content = await _origGet(id);
             try {
                 const all   = await adapter.getAllCharts();
@@ -318,7 +312,6 @@
                     setTimeout(() => _syncLayoutNameFromServer(id, adapter), 500);
                 }
             } catch (_) {}
-            setTimeout(function() { _isLoading = false; }, 15000);
             return content;
         };
 
@@ -450,15 +443,27 @@
         widget.onChartReady(() => {
             const chart = widget.activeChart();
 
-            chart.onSymbolChanged().subscribe(null, () => {});
-            chart.onIntervalChanged().subscribe(null, () => {});
+            chart.onSymbolChanged().subscribe(null, () => _scheduleSave('symbol_changed'));
+            chart.onIntervalChanged().subscribe(null, () => _scheduleSave('interval_changed'));
 
             _patchChart(chart);
             _patchAdapter(widget);
 
             // Подписываемся на смену layout через TV API (если доступно)
             // TV иногда предоставляет chart.onChartLoaded — используем его
+            try {
+                if (typeof widget.subscribe === 'function') {
+                    widget.subscribe('onAutoSaveNeeded', () => _scheduleSave('tv_autosave'));
+                }
+            } catch (_) {}
+
+            // Polling — проверяем каждые 2с не поменялся ли layout в TV
+            // TV хранит имя текущего layout в DOM внутри iframe
             setInterval(() => _detectLayoutChangeFromDOM(), 2000);
+
+            // Heartbeat
+            if (_heartbeat) clearInterval(_heartbeat);
+            _heartbeat = setInterval(() => _save('heartbeat'), HEARTBEAT_S * 1000);
 
             // Badge — несколько попыток (TV iframe рендерится асинхронно)
             [1000, 2500, 5000, 8000, 15000].forEach(t => setTimeout(_injectLayoutName, t));
@@ -489,7 +494,10 @@
                 attachToIframe();
             });
 
-            console.log('[Autosave] v3 Ready (autosave OFF) | Active layout:', _getActiveLayoutName() || 'none');
+            // Восстановление
+            setTimeout(_restore, 800);
+
+            console.log('[Autosave] ✅ Ready | Active layout:', _getActiveLayoutName() || 'none');
         });
     }
 
@@ -512,5 +520,5 @@
         else if (++_n > 150) { clearInterval(_poll); console.warn('[Autosave] Widget not found'); }
     }, 100);
 
-    console.log('[Autosave] chart-autosave.js v3 loaded (autosave OFF)');
+    console.log('[Autosave] 📦 chart-autosave.js v2 loaded');
 })();

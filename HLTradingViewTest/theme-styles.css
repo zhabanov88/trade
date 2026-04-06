@@ -95,7 +95,19 @@ body {
 .app-logo {
     font-size: 18px;
     font-weight: 600;
-    color: var(--accent-primary);
+    /*color: #0072ff;*/
+}
+
+a {
+    text-decoration: none;
+    color: #0072ff;
+    border-bottom: 1px solid;
+    border-color: rgba(0,114,255,.3);
+}
+
+a:hover {
+    color: #f41224 !important;
+    border-color: rgba(244,18,36,.3) !important;
 }
 
 .symbol-name {

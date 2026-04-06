@@ -1,5 +1,5 @@
 /**
- * tv-indicator-engine.js  v11.4
+ * tv-indicator-engine.js  v11.3
  * Подключить в index.html ДО app.js
  *
  * v11 changelog:
@@ -27,30 +27,6 @@
     var _MAX_CHART_RETRIES = 15;
     var _MAX_ERROR_RETRIES = 5;
     var _STUDY_MATCH_LEN = 24;
-    var _LEGEND_COLORS = { dark: '#b2b5be', light: '#131722' };
-
-    function _currentLegendColor() {
-        var theme = 'dark';
-        try { theme = localStorage.getItem('tradingview_theme') || 'dark'; } catch (e) {}
-        return _LEGEND_COLORS[theme] || _LEGEND_COLORS.dark;
-    }
-
-    function _updateLegendColor(theme) {
-        var color = _LEGEND_COLORS[theme] || _LEGEND_COLORS.dark;
-        var c = _chart(); if (!c) return;
-        var keys = Object.keys(window._tve);
-        for (var i = 0; i < keys.length; i++) {
-            var st = window._tve[keys[i]];
-            if (st && st.studyId) {
-                try {
-                    var study = c.getStudyById(st.studyId);
-                    if (study && typeof study.applyOverrides === 'function') {
-                        study.applyOverrides({ 'styles.p0.color': color });
-                    }
-                } catch (e) {}
-            }
-        }
-    }
 
     function _chart() {
         try { return window.app.widget.activeChart(); } catch (e) { return null; }
@@ -221,7 +197,6 @@
         var shapes = [];
         try { shapes = st.def.analyze(bars, st.cfg) || []; }
         catch (e) { console.error('[TVEngine] analyze err:', e); return; }
-        st._shapeCount = shapes.length;
         _drawShapes(key, shapes);
     }
 
@@ -327,7 +302,6 @@
             if (st.tvId) delete window._tveRegistry[st.tvId];
         }
         delete window._tve[key];
-        if (!_hasInstances()) setTimeout(_forceCleanGhosts, 100);
         console.log('[TVEngine] destroyed:', key);
     }
 
@@ -431,7 +405,7 @@
                 format: { type: overlay ? 'inherit' : 'price' },
                 defaults: {
                     styles: { p0: { linestyle: 0, linewidth: 0, plottype: 0,
-                        trackPrice: false, transparency: 100, visible: false, color: _currentLegendColor() } },
+                        trackPrice: false, transparency: 100, visible: false, color: 'rgba(0,0,0,0)' } },
                     inputs: defInps,
                 },
                 styles: { p0: { title: '', histogramBase: 0 } },
@@ -473,8 +447,7 @@
         clearAll:    function () { Object.keys(window._tve).forEach(function (k) { _destroy(k); }); },
         state:       function (key) { return window._tve[key]; },
         cleanGhosts: _forceCleanGhosts,
-        updateLegendColor: _updateLegendColor,
     };
 
-    console.log('[TVEngine] v11.4 loaded');
+    console.log('[TVEngine] v11.3 loaded');
 })();

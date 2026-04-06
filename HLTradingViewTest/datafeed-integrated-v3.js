@@ -100,7 +100,7 @@ class DatabaseIntegratedDatafeed {
             timezone: 'Etc/UTC',
             exchange: instrument.provider_name || 'CLICKHOUSE',
             minmov: 1,
-            pricescale: 10000,
+            pricescale: 100000,
             has_intraday: true,
             has_weekly_and_monthly: true,
             has_seconds: true,
@@ -132,7 +132,7 @@ class DatabaseIntegratedDatafeed {
                 timezone: 'Etc/UTC',
                 exchange: 'CLICKHOUSE',
                 minmov: 1,
-                pricescale: 10000,
+                pricescale: 100000,
                 has_intraday: true,
                 has_weekly_and_monthly: true,
                 has_seconds: true,
@@ -333,7 +333,7 @@ initActiveData(symbol, resolution) {
                     timezone: 'Etc/UTC',
                     exchange: 'CLICKHOUSE',
                     minmov: 1,
-                    pricescale: 10000,
+                    pricescale: 100000,
                     has_intraday: true,
                     has_weekly_and_monthly: true,
                     supported_resolutions: this.supportedResolutions,
@@ -527,7 +527,7 @@ initActiveData(symbol, resolution) {
 
     getIntervalSeconds(resolution) {
         const map = {
-            '1t': 1, '1': 60, '3': 180, '5': 300,
+            '1t': 1, '30S': 30, '1': 60, '3': 180, '5': 300,
             '15': 900, '30': 1800, '60': 3600,
             '180': 10800, '240': 14400,
             '1D': 86400, '1W': 604800, '1M': 2592000

@@ -30,8 +30,7 @@ class LayoutManager {
             // Подписываемся на изменения символа и интервала — сохраняем сессию
             this._subscribeToChanges();
 
-            // Встраиваем меню последних layouts рядом с "Open layout..."
-            this._injectRecentMenu();
+            // Recent menu injection handled by chart-session.js (with deleted layout filtering)
         });
     }
 
@@ -72,43 +71,7 @@ class LayoutManager {
 
         console.log('[LayoutMgr] Restoring session:', session);
 
-        const chart = this.widget.activeChart();
-
-        // Восстанавливаем символ
-        if (session.symbol) {
-            try {
-                chart.setSymbol(session.symbol, () => {
-                    console.log(`[LayoutMgr] ✓ Symbol restored: ${session.symbol}`);
-                });
-            } catch (e) {
-                console.warn('[LayoutMgr] Could not restore symbol:', e);
-            }
-        }
-
-        // Восстанавливаем интервал
-        if (session.interval) {
-            try {
-                chart.setResolution(session.interval, () => {
-                    console.log(`[LayoutMgr] ✓ Interval restored: ${session.interval}`);
-                });
-            } catch (e) {
-                console.warn('[LayoutMgr] Could not restore interval:', e);
-            }
-        }
-
-        // Восстанавливаем layout (через save_load_adapter TradingView)
-        if (session.layoutId) {
-            try {
-                await this._loadLayoutById(session.layoutId, false);
-                console.log(`[LayoutMgr] ✓ Layout restored: ${session.layoutName}`);
-            } catch (e) {
-                console.warn('[LayoutMgr] Could not restore layout:', e);
-                this._saveSession({ layoutId: null, layoutName: null });
-                // Layout удалён — восстанавливаем хотя бы состояние таблицы
-                if (session.appState) this._restoreAppState(session.appState);
-            }
-        } else if (session.appState) {
-            // Нет сохранённого layout, но есть состояние таблицы
+        if (session.appState) {
             this._restoreAppState(session.appState);
         }
     }
@@ -223,9 +186,18 @@ class LayoutManager {
                     window.layoutManager._restoreAppState(layout.layout_data._appState);
                 }
 
-                // Проверяем что layout валиден (есть panes) перед передачей в TV
-                if (!tvData || typeof tvData !== 'object' || !Array.isArray(tvData.panes)) {
-                    console.warn('[LayoutMgr] layout_data missing panes, skipping load');
+                // Unwrap ChartData format: {content: "...", name, symbol, ...} → parse content
+                if (tvData && typeof tvData === 'object' && typeof tvData.content === 'string' && !tvData.panes) {
+                    try { tvData = JSON.parse(tvData.content); } catch (_) {}
+                }
+
+                // Удаляем name — может конфликтовать с TV internal
+                if (tvData && typeof tvData === 'object' && tvData.name !== undefined) {
+                    delete tvData.name;
+                }
+
+                if (!tvData || typeof tvData !== 'object' || (!Array.isArray(tvData.panes) && !Array.isArray(tvData.charts))) {
+                    console.warn('[LayoutMgr] layout_data missing panes/charts, skipping load');
                     setTimeout(resolve, 300);
                     return;
                 }

@@ -133,7 +133,7 @@ body {
 .app-logo {
     font-size: 18px;
     font-weight: 600;
-    color: #2962FF;
+    /*color: #2962FF;*/
     white-space: nowrap;
 }
 
