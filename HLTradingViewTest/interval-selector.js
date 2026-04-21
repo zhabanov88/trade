@@ -155,11 +155,7 @@ class IntervalSelector {
 
         const names = {
             '1T':'1T','30S':'30s','1':'1m','2':'2m','3':'3m','5':'5m','15':'15m',
-<<<<<<< HEAD
-            '30':'30m','60':'1h','120':'2h','180':'3h','240':'4h',
-=======
             '30':'30m','60':'1h','120':'2h','240':'4h','720':'12h',
->>>>>>> e890054 (new data)
             '1D':'1D','1W':'1W','1M':'1M'
         };
 
@@ -743,11 +739,7 @@ class IntervalSelector {
     background: transparent;
     border: none;
     color: #787b86;
-<<<<<<< HEAD
-    /* font-size: 12px; */
-=======
     font-size: 14px;
->>>>>>> e890054 (new data)
     font-weight: 500;
     cursor: pointer;
     border-radius: 3px;

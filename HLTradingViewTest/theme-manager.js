@@ -219,10 +219,6 @@ class ThemeManager {
 
         if (window.TVEngine && typeof window.TVEngine.updateLegendColor === 'function') {
             window.TVEngine.updateLegendColor(theme);
-<<<<<<< HEAD
-=======
-            if (typeof window.TVEngine.redrawAll === "function") window.TVEngine.redrawAll();
->>>>>>> e890054 (new data)
         }
     }
 

@@ -22,10 +22,6 @@ class TradingApp {
                 .map(i => i.tradingview_code)
                 .filter(Boolean);
 
-<<<<<<< HEAD
-            console.log("✓ Active intervals:", activeIntervals);
-=======
->>>>>>> e890054 (new data)
             return activeIntervals;
         } catch (error) {
             console.error('Failed to load intervals:', error);
@@ -177,11 +173,7 @@ class TradingApp {
             usernameEl.textContent = this.currentUser.username;
 
             if (this.currentUser.isAdmin) {
-<<<<<<< HEAD
-                const safeUsername = (this.currentUser.username || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-=======
                 const safeUsername = (this.currentUser.username || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
->>>>>>> e890054 (new data)
                 usernameEl.innerHTML = safeUsername + ' <span style="background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">ADMIN</span>';
             }
         }
@@ -265,10 +257,6 @@ class TradingApp {
 
             // Загружаем интервалы
             this.intervals = await this.loadIntervals();
-<<<<<<< HEAD
-            console.log('✓ Intervals loaded:', this.intervals);
-=======
->>>>>>> e890054 (new data)
 
             let defaultSymbol = _savedSession?.symbol || 'EUR';
             if (!_savedSession?.symbol && this.datafeed.instruments?.length > 0) {
@@ -307,11 +295,7 @@ class TradingApp {
                             }
                         }
                     }
-<<<<<<< HEAD
-                } catch (_) {}
-=======
                 } catch (_) { }
->>>>>>> e890054 (new data)
             }
 
             if (_savedData) {
@@ -340,11 +324,6 @@ class TradingApp {
                     'side_toolbar_in_fullscreen_mode',
                     'drawing_templates'
                 ],
-<<<<<<< HEAD
-                
-=======
-
->>>>>>> e890054 (new data)
                 custom_formatters: {
                     priceFormatterFactory: function (symbolInfo) {
                         var decimals = symbolInfo && symbolInfo.pricescale
@@ -356,8 +335,6 @@ class TradingApp {
                                 return parseFloat(price.toFixed(decimals)).toString();
                             }
                         };
-<<<<<<< HEAD
-=======
                     },
                     dateFormatter: {
                         format: function (date) {
@@ -374,7 +351,6 @@ class TradingApp {
                             var yy = ('0' + (date.getFullYear() % 100)).slice(-2);
                             return D[date.getDay()] + ' ' + dd + ' ' + M[date.getMonth()] + " '" + yy;
                         }
->>>>>>> e890054 (new data)
                     }
                 },
                 fullscreen: false,
@@ -553,14 +529,6 @@ class TradingApp {
                     const all = [...result, ...fromRegistry];
                     return all;
                 },
-<<<<<<< HEAD
-                
-                save_load_adapter: window.chartSession.adapter,
-                
-                overrides: currentTheme === 'light'
-                    ? ThemeManager.LIGHT_STRUCTURAL
-                    : ThemeManager.DARK_STRUCTURAL,
-=======
 
                 save_load_adapter: window.chartSession.adapter,
 
@@ -572,7 +540,6 @@ class TradingApp {
                         return Promise.resolve(items);
                     }
                 },
->>>>>>> e890054 (new data)
 
                 overrides: currentTheme === 'light'
                     ? ThemeManager.LIGHT_STRUCTURAL
@@ -731,11 +698,7 @@ class TradingApp {
     showError(message) {
         const loadingOverlay = document.getElementById('loading-overlay');
         if (loadingOverlay) {
-<<<<<<< HEAD
-            const safeMsg = String(message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-=======
             const safeMsg = String(message || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
->>>>>>> e890054 (new data)
             loadingOverlay.innerHTML = `
                 <div style="text-align: center;">
                     <div style="color: #f44336; font-size: 48px; margin-bottom: 20px;">⚠️</div>

@@ -18,8 +18,6 @@
     let _widget    = null;
     let _isLoading = false;
 
-<<<<<<< HEAD
-=======
     let _autoSaveTimer = null;
     let _autoSaveDebounce = null;
     let _autoSaving = false;
@@ -85,7 +83,6 @@
 
 
 
->>>>>>> e890054 (new data)
 
 
 
@@ -168,11 +165,6 @@
     // ═══════════════════════════════════════════════════════════════════
 
     let _recentInjecting = false;
-<<<<<<< HEAD
-    function _injectRecentItems() {
-        if (_recentInjecting) return;
-        var doc = _getTVDoc() || document;
-=======
     let _recentCooldown = 0;
     let _recentDebounceTimer = null;
     let _chartsCache = null;
@@ -207,17 +199,12 @@
         // Suppress when TV's Layouts dialog is open (avoid DOM interference)
         if (doc.querySelector('[data-dialog-name*="layout"], [class*="chartLayoutsList"], [data-name="chart-layout-manager"]')) return;
 
->>>>>>> e890054 (new data)
         const anchor = doc.querySelector('[data-name="save-load-menu-item-load"]');
         if (!anchor) return;
 
         var recent = readRecent();
         if (recent.length === 0) return;
 
-<<<<<<< HEAD
-        _recentInjecting = true;
-        adapter.getAllCharts().then(function (charts) {
-=======
         // Skip if our items are already in the DOM (prevents inject→mutate→inject loop)
         var existing = anchor.parentElement?.querySelectorAll('[data-rl-injected]');
         if (existing && existing.length > 0) {
@@ -231,19 +218,12 @@
         var _chartsPromise = _useCache ? Promise.resolve(_chartsCache) : adapter.getAllCharts();
         _chartsPromise.then(function (charts) {
             if (!_useCache) { _chartsCache = charts; _chartsCacheTs = Date.now(); }
->>>>>>> e890054 (new data)
             var validIds = {};
             charts.forEach(function (c) { validIds[String(c.id)] = true; });
             var filtered = recent.filter(function (r) { return validIds[String(r.id)]; });
             if (filtered.length !== recent.length) {
                 localStorage.setItem(LS_RECENT, JSON.stringify(filtered));
             }
-<<<<<<< HEAD
-            if (filtered.length === 0) return;
-            var stale = anchor.parentElement?.querySelectorAll('[data-rl-injected]');
-            if (stale && stale.length) stale.forEach(function (el) { el.remove(); });
-            _doInjectRecentItems(anchor, filtered);
-=======
             if (filtered.length === 0) { window.DebugOverlay && DebugOverlay.warn("[RL] no valid items after filter"); return; }
             var stale = anchor.parentElement?.querySelectorAll('[data-rl-injected]');
             if (stale && stale.length) { window.DebugOverlay && DebugOverlay.warn("[RL] removing " + stale.length + " stale"); stale.forEach(function (el) { el.remove(); }); }
@@ -260,18 +240,12 @@
                 var remaining2 = doc3.querySelectorAll('[data-rl-injected]');
                 window.DebugOverlay && DebugOverlay.info("[RL] check@2s: " + remaining2.length + " items still in DOM");
             }, 2000);
->>>>>>> e890054 (new data)
         }).catch(function () {
             var stale = anchor.parentElement?.querySelectorAll('[data-rl-injected]');
             if (stale && stale.length) stale.forEach(function (el) { el.remove(); });
             _doInjectRecentItems(anchor, recent);
         }).finally(function () {
             _recentInjecting = false;
-<<<<<<< HEAD
-        });
-    }
-
-=======
             _recentCooldown = Date.now() + 300;        // 300ms cooldown (loop prevented by items-exist check)
         });
     }
@@ -289,7 +263,6 @@
         }, 30);
     }
 
->>>>>>> e890054 (new data)
     function _doInjectRecentItems(anchor, recent) {
 
         const session  = readSession();
@@ -430,8 +403,6 @@
                             w.saveChartToServer(function () {}, function () {}, { chartName: record.name });
                         }
                     } catch (_) {}
-<<<<<<< HEAD
-=======
                     try {
                         var c = w.activeChart();
                         var iv = c.resolution();
@@ -442,7 +413,6 @@
                         }
                     } catch (_) {}
                     try { document.dispatchEvent(new Event('layoutChanged')); } catch (_) {}
->>>>>>> e890054 (new data)
                 }, 2000);
             } else {
                 adapter.getChartContent(String(id)).then(function (content) {
@@ -581,10 +551,6 @@
         },
 
         getChartContent: async function (id) {
-<<<<<<< HEAD
-
-=======
->>>>>>> e890054 (new data)
             _isLoading = true;
             try {
                 let layout;
@@ -622,8 +588,6 @@
                     interval: layout.interval || ''
                 });
 
-<<<<<<< HEAD
-=======
                 // Patch active item name in TV Layouts popup (TV doesn't update it via getChartContent)
                 var _layoutName = layout.name;
                 if (_layoutName) {
@@ -647,7 +611,6 @@
                     } catch (_) {}
                 }
 
->>>>>>> e890054 (new data)
                 // Delete name field — confuses TV
                 if (data && typeof data === 'object' && data.name !== undefined) {
                     delete data.name;
@@ -666,14 +629,6 @@
                 setTimeout(function () { _isLoading = false; }, 15000);
             }
         },
-<<<<<<< HEAD
-
-        // Study template stubs
-        getAllStudyTemplates:    function () { return Promise.resolve([]); },
-        removeStudyTemplate:    function () { return Promise.resolve(); },
-        saveStudyTemplate:      function () { return Promise.resolve(); },
-        getStudyTemplateContent: function () { return Promise.resolve(''); }
-=======
         // ── Study Templates ─────────────────────────────────────────
         getAllStudyTemplates: function () {
             return fetch('/api/study-templates', { credentials: 'include' })
@@ -751,7 +706,6 @@
                 method: 'DELETE', credentials: 'include'
             }).then(function () {});
         }
->>>>>>> e890054 (new data)
     };
 
     // ═══════════════════════════════════════════════════════════════════
@@ -783,18 +737,12 @@
             chart.onSymbolChanged().subscribe(null, function () {
                 if (_isLoading) return;
                 try { writeSession({ symbol: chart.symbol(), interval: chart.resolution() }); } catch (_) {}
-<<<<<<< HEAD
-=======
                 _scheduleAutoSave('symbol_changed');
->>>>>>> e890054 (new data)
             });
             chart.onIntervalChanged().subscribe(null, function (iv) {
                 if (_isLoading) return;
                 try { writeSession({ symbol: chart.symbol(), interval: iv }); } catch (_) {}
-<<<<<<< HEAD
-=======
                 _scheduleAutoSave('interval_changed');
->>>>>>> e890054 (new data)
             });
 
             // Write current symbol/interval
@@ -803,10 +751,6 @@
             // DOM layout detection interval
             setInterval(_detectLayoutChangeFromDOM, 2000);
 
-<<<<<<< HEAD
-            // MutationObserver for recent menu items (main doc + iframe)
-            var _recentObsFn = function () { _injectRecentItems(); };
-=======
             // Periodic DB autosave (heartbeat every 60s)
             if (_autoSaveTimer) clearInterval(_autoSaveTimer);
             _autoSaveTimer = setInterval(function () { _autoSaveToDb('heartbeat'); }, AUTOSAVE_INTERVAL_MS);
@@ -838,7 +782,6 @@
                 }
                 _debouncedInjectRecent();
             };
->>>>>>> e890054 (new data)
             new MutationObserver(_recentObsFn).observe(document.body, { childList: true, subtree: true });
             var _attachRecentObs = function (doc) {
                 if (!doc || doc._csRecentObs) return;
@@ -879,10 +822,6 @@
                 } catch (_) {}
             });
 
-<<<<<<< HEAD
-            console.log('[chart-session] Ready | Active layout:', getActiveName() || 'none');
-=======
->>>>>>> e890054 (new data)
         });
     }
 
@@ -897,11 +836,8 @@
         setActive:   function (id, name) { writeSession({ layoutId: id, layoutName: name }, 'setActive'); },
         readSession: readSession,
         readRecent:  readRecent,
-<<<<<<< HEAD
-=======
         writeSession: writeSession,
         pushRecent:  pushRecent,
->>>>>>> e890054 (new data)
         loadById:    loadById
     };
 

@@ -1,5 +1,4 @@
 /**
-<<<<<<< HEAD
  * tv-indicator-engine.js  v11.4
  * Подключить в index.html ДО app.js
  *
@@ -17,65 +16,6 @@
  *  - [LOW]    Fix #11: Counter-based key prevents same-ms collision
  *  - [LOW]    Fix #13: appendActiveData returns original result
  *  - [LOW]    Fix #15: Discovery interval cleaned on destroy
-=======
- * tv-indicator-engine.js  v11.15
- *
- * v11.15 changelog (поверх v11.14):
- *  - [FIX]  fontsize → fontSize (заглавная S) в overrides для ВСЕХ типов шейпов
- *           Входное поле в скрипте по-прежнему s.fontsize (строчная) — удобнее писать
- *           В overrides TV всегда передаётся fontSize (верифицировано через getProperties())
- *
- * v11.14 changelog (поверх v11.13):
- *  - [FIX]  Баг смещения шейпов при прокрутке влево:
- *           _drawIncrementalBatch теперь проверяет что viewport не изменился
- *           между итерациями батча. Если viewport сдвинулся — батч отменяется
- *           и запускается новый _incrementalRedraw с актуальным vrKey.
- *  - [PERF] Размер батча увеличен с 30 до 100 шейпов за итерацию —
- *           меньше setTimeout прерываний, меньше шансов поймать смещение viewport.
- *
- * v11.13 changelog (поверх v11.12):
- *  - [FIX]  linestyle: 1=dotted, 2=dashed (было перепутано: 1=dashed, 2=dotted)
- *          Верифицировано визуально через createMultipointShape
- *
- * v11.12 changelog (поверх v11.12):
- *  - [DOC]  vertLabelsAlign ИНВЕРТИРОВАН: top=снизу снаружи, bottom=сверху снаружи, middle=центр
- *          aboveBar/belowBar не работают в TV Advanced Charts
- *
- * v11.11 changelog (поверх v11.10):
- *  - [FIX]  rectangle: правильные имена ключей выравнивания:
- *           horzLabelsAlign (не horzAlign), vertLabelsAlign (не vertAlign)
- *           textColor (заглавная C, не textcolor)
- *           Все три ключа работают через overrides при createMultipointShape
- *  - [FIX]  rectangle: удалён механизм postOverrides — не нужен,
- *           setProperties/applyOverrides на entity не требуются
- *  - [FIX]  Значения horzLabelsAlign/vertLabelsAlign — строки (right/middle),
- *           не числа как предполагалось ранее
- *
- * v11.10 changelog (поверх v11.9):
- *  - [NEW]  postOverrides: после создания шейпа вызывается entity.applyOverrides()
- *           Это единственный способ установить horzAlign/vertAlign для rectangle —
- *           TV игнорирует их при createMultipointShape, но принимает через entity API.
- *           Использование: добавь поле postOverrides:{horzAlign:2,vertAlign:1} в шейп.
- *
- * v11.9 changelog (поверх v11.8):
- *  - [FIX]  rectangle: horzAlign/vertAlign теперь числа (0/1/2), не строки
- *           TV Advanced Charts отклоняет строковые значения — текст не выравнивался
- *  - [FIX]  rectangle: textcolor больше не падает на s.color (цвет зоны с малой
- *           альфой делал текст невидимым). Дефолт: rgba(255,255,255,0.90)
- *  - [NEW]  rectangle: поля horzAlign/vertAlign доступны прямо в шейпе
- *           (0=left/top, 1=center/middle, 2=right/bottom)
- *
- * v11.8 changelog (поверх v11.7):
- *  - [FIX]  rectangle/zone: добавлены textcolor, fontsize, bold в overrides
- *           TV нативно поддерживает текст внутри прямоугольника через showLabel+text
- *           Теперь можно задавать label прямо на rectangle без отдельного text-шейпа
- *  - [NEW]  Универсальный механизм label для ВСЕХ шейпов:
- *           Любой шейп принимает label, textcolor, fontsize, bold
- *           rectangle → текст внутри зоны (нативно TV)
- *           text      → отдельный шейп с координатой
- *           остальные → showLabel + text через overrides
- *  - [NEW]  _TVE_SHAPE_TYPES расширен: text, balloon, label_up, label_down, note
->>>>>>> e890054 (new data)
  */
 (function () {
     'use strict';
@@ -88,10 +28,7 @@
     var _MAX_ERROR_RETRIES = 5;
     var _STUDY_MATCH_LEN = 24;
     var _LEGEND_COLORS = { dark: '#b2b5be', light: '#131722' };
-<<<<<<< HEAD
-=======
     var _VIEWPORT_BUFFER_PCT = 0.15;
->>>>>>> e890054 (new data)
 
     function _currentLegendColor() {
         var theme = 'dark';
@@ -147,9 +84,6 @@
         return bars;
     }
 
-<<<<<<< HEAD
-    /* ── Shapes ────────────────────────────────────────────────── */
-=======
     // ── Viewport ──────────────────────────────────────────────────
     function _getVisibleRange() {
         try {
@@ -512,105 +446,10 @@
     }
 
     /* ── Полная отрисовка ─────────────────────────────────────── */
->>>>>>> e890054 (new data)
     function _clearShapes(key) {
         var st = window._tve[key]; if (!st) return;
         var c = _chart();
         st._generation = (st._generation || 0) + 1;
-<<<<<<< HEAD
-        if (c) for (var i = 0; i < st.shapeIds.length; i++) {
-            try { c.removeEntity(st.shapeIds[i]); } catch (e) {}
-        }
-        st.shapeIds.length = 0;
-        var pending = st._pendingPromises;
-        if (pending && pending.length > 0) {
-            var chartRef = c;
-            var copy = pending.slice();
-            pending.length = 0;
-            for (var j = 0; j < copy.length; j++) {
-                (function (p) {
-                    p.then(function (id) {
-                        if (id != null && chartRef) try { chartRef.removeEntity(id); } catch (e) {}
-                    }).catch(function () {});
-                })(copy[j]);
-            }
-        }
-    }
-
-    function _drawBatch(key, list, idx, batchId, retryCount) {
-        var st = window._tve[key];
-        if (!st || st._hidden || st._batchId !== batchId) return;
-        retryCount = retryCount || 0;
-
-        if (!_chartReady()) {
-            if (retryCount < _MAX_CHART_RETRIES) {
-                setTimeout(function () { _drawBatch(key, list, idx, batchId, retryCount + 1); }, 500);
-            } else {
-                _clearShapes(key);
-            }
-            return;
-        }
-        var c = _chart(); if (!c) return;
-        var end = Math.min(idx + 30, list.length);
-        var ok = true;
-        var gen = st._generation || 0;
-
-        for (var i = idx; i < end && ok; i++) {
-            var s = list[i];
-            try {
-                var shapeName = s.shape || 'rectangle';
-                var isLineType = /line|ray|arrow|trend/i.test(shapeName);
-                var opts = {
-                    shape:            shapeName,
-                    lock:             true,
-                    disableSelection: true,
-                    disableSave:      true,
-                    disableUndo:      true,
-                    zOrder:           s.zOrder || 'bottom',
-                    overrides: {
-                        backgroundColor: s.color,
-                        color:           s.color,
-                        linecolor:       s.color,
-                        linewidth:       s.linewidth !== undefined ? s.linewidth : (isLineType ? 2 : 0),
-                        linestyle:       s.linestyle !== undefined ? s.linestyle : 0,
-                        fillBackground:  s.fillBackground !== undefined ? s.fillBackground : !isLineType,
-                        transparency:    s.transparency !== undefined ? s.transparency : 0,
-                        showLabel:       !!s.label,
-                        text:            s.label || '',
-                    }
-                };
-
-                var r;
-                if (s.point) {
-                    r = c.createShape(s.point, opts);
-                } else if (s.points && s.points.length > 0) {
-                    r = c.createMultipointShape(s.points, opts);
-                } else {
-                    continue;
-                }
-                if (r && typeof r.then === 'function') {
-                    if (!st._pendingPromises) st._pendingPromises = [];
-                    st._pendingPromises.push(r);
-                    (function (ids, p, g, stRef) {
-                        p.then(function (id) {
-                            if (id != null && stRef._generation === g) ids.push(id);
-                        }).catch(function () {});
-                    })(st.shapeIds, r, gen, st);
-                } else if (r != null) {
-                    st.shapeIds.push(r);
-                }
-            } catch (e) {
-                if (e.message && e.message.indexOf('Cannot create') !== -1) {
-                    st._errorRetries = (st._errorRetries || 0) + 1;
-                    if (st._errorRetries < _MAX_ERROR_RETRIES) {
-                        setTimeout(function () {
-                            if (window._tve[key] && window._tve[key]._batchId === batchId) _scheduleRedraw(key, 1000);
-                        }, 100);
-                    } else {
-                        _clearShapes(key);
-                    }
-                    ok = false;
-=======
 
         if (st._shapeMap) {
             if (c) {
@@ -619,7 +458,6 @@
                         var eid = st._shapeMap[idx];
                         if (eid != null) try { c.removeEntity(eid); } catch (e) {}
                     }
->>>>>>> e890054 (new data)
                 }
             }
             st._shapeMap  = {};
@@ -646,27 +484,12 @@
                 })(copy[j]);
             }
         }
-<<<<<<< HEAD
-        if (ok && end < list.length) {
-            setTimeout(function () { _drawBatch(key, list, end, batchId, 0); }, 16);
-        } else if (ok) {
-            st._errorRetries = 0;
-        }
-=======
->>>>>>> e890054 (new data)
     }
 
     function _drawShapes(key, allShapes, visibleIndicesSet) {
         var st = window._tve[key];
         if (!st || st._hidden) return;
         _clearShapes(key);
-<<<<<<< HEAD
-        if (!list.length) return;
-        st._batchId = (st._batchId || 0) + 1;
-        _drawBatch(key, list, 0, st._batchId, 0);
-    }
-
-=======
         if (!allShapes.length) return;
 
         st._shapeMap  = {};
@@ -684,7 +507,6 @@
     }
 
     /* ── _redraw ─────────────────────────────────────────────────── */
->>>>>>> e890054 (new data)
     function _redraw(key, retryCount) {
         var st = window._tve[key];
         if (!st || st._hidden || !st.def || !st.cfg) return;
@@ -692,25 +514,6 @@
 
         if (!_chartReady()) {
             if (retryCount < _MAX_CHART_RETRIES) _scheduleRedraw(key, 800, retryCount + 1);
-<<<<<<< HEAD
-            else {
-                console.warn('[TVEngine:'+key+'] redraw aborted: chart not ready after '+_MAX_CHART_RETRIES+' retries');
-                _clearShapes(key);
-            }
-            return;
-        }
-        var bars = _getBars();
-        if (bars.length < 3) {
-            if (retryCount < _MAX_CHART_RETRIES) _scheduleRedraw(key, 500, retryCount + 1);
-            else console.warn('[TVEngine:'+key+'] redraw aborted: insufficient bars after '+_MAX_CHART_RETRIES+' retries');
-            return;
-        }
-        var shapes = [];
-        try { shapes = st.def.analyze(bars, st.cfg) || []; }
-        catch (e) { console.error('[TVEngine] analyze err:', e); return; }
-        st._shapeCount = shapes.length;
-        _drawShapes(key, shapes);
-=======
             else { console.warn('[TVEngine:'+key+'] redraw aborted: chart not ready'); _clearShapes(key); }
             return;
         }
@@ -757,7 +560,6 @@
         } else {
             _incrementalRedraw(key, vr, vrKey);
         }
->>>>>>> e890054 (new data)
     }
 
     function _scheduleRedraw(key, ms, retryCount) {
@@ -767,14 +569,9 @@
         st.debTimer = setTimeout(function () { _redraw(key, rc); }, ms !== undefined ? ms : 300);
     }
 
-<<<<<<< HEAD
-    /* ── Мониторинг ────────────────────────────────────────────── */
-    function _startMonitor(key, studyId) {
-=======
     /* ── Мониторинг ─────────────────────────────────────────────── */
     function _startMonitor(key, studyId) {
         var vrPollCounter = 0;
->>>>>>> e890054 (new data)
         var iv = setInterval(function () {
             var st = window._tve[key]; if (!st) { clearInterval(iv); return; }
             var c = _chart(); if (!c) return;
@@ -793,8 +590,6 @@
             } catch (e) {}
             if (!vis && !st._hidden)    { st._hidden = true;  _clearShapes(key); }
             else if (vis && st._hidden) { st._hidden = false; _scheduleRedraw(key, 50); }
-<<<<<<< HEAD
-=======
 
             if (!_vrHookInstalled) {
                 vrPollCounter++;
@@ -807,31 +602,18 @@
                     }
                 }
             }
->>>>>>> e890054 (new data)
         }, 500);
         var st = window._tve[key]; if (st) st._iv = iv;
     }
 
-<<<<<<< HEAD
-    /* ── Hooks: self-deactivating when no instances remain ─────── */
-=======
     /* ── Hooks ──────────────────────────────────────────────────── */
->>>>>>> e890054 (new data)
     function _installGetBarsHook() {
         var df = window.app && window.app.datafeed;
         if (!df || typeof df.getBars !== 'function' || df._tveGetBarsHook) return;
         var origGetBars = df.getBars.bind(df);
         df._tveGetBarsHook = true;
-<<<<<<< HEAD
-
-        df.getBars = function (symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
-            if (!_hasInstances()) {
-                return origGetBars(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback);
-            }
-=======
         df.getBars = function (symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
             if (!_hasInstances()) return origGetBars(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback);
->>>>>>> e890054 (new data)
             var wrappedCallback = function (bars, meta) {
                 onHistoryCallback(bars, meta);
                 if (bars && bars.length > 0) {
@@ -854,10 +636,6 @@
         if (!df || typeof df.appendActiveData !== 'function' || df._tveHook) return;
         var orig = df.appendActiveData.bind(df);
         df._tveOrig = orig; df._tveHook = true;
-<<<<<<< HEAD
-
-=======
->>>>>>> e890054 (new data)
         df.appendActiveData = function (data) {
             var result = orig(data);
             if (!_hasInstances() || !data || !data.length) return result;
@@ -902,22 +680,12 @@
     }
 
     /* ── Ghost cleanup ─────────────────────────────────────────── */
-<<<<<<< HEAD
-    // Auto-cleanup disabled: disableSave:true prevents shape persistence across sessions.
-    // Previous implementation removed ALL rectangles, destroying FVG and user annotations.
-=======
->>>>>>> e890054 (new data)
     var _ghostCleanDone = false;
     function _cleanGhostShapes() {
         if (_ghostCleanDone) return;
         _ghostCleanDone = true;
     }
 
-<<<<<<< HEAD
-    // Manual cleanup: removes all untracked TVEngine shapes (admin use)
-    // Shape types created by TVEngine indicators:
-    var _TVE_SHAPE_TYPES = { trend_line:1, rectangle:1, rect:1, vertical_line:1, horizontal_line:1, ray:1, arrow:1 };
-=======
     // Расширенный список всех shape types которые TVEngine создаёт
     var _TVE_SHAPE_TYPES = {
         trend_line:1, extended_line:1, ray:1,
@@ -928,7 +696,6 @@
         flag:1, cross:1, circle:1,
         text:1, balloon:1, label_up:1, label_down:1, note:1, price_label:1,
     };
->>>>>>> e890054 (new data)
 
     function _forceCleanGhosts() {
         var c = _chart(); if (!c) return 0;
@@ -939,15 +706,10 @@
         var keys = Object.keys(window._tve);
         for (var k = 0; k < keys.length; k++) {
             var st = window._tve[keys[k]];
-<<<<<<< HEAD
-            if (st && st.shapeIds) {
-                for (var j = 0; j < st.shapeIds.length; j++) knownIds[String(st.shapeIds[j])] = true;
-=======
             if (st && st._shapeMap) {
                 for (var sidx in st._shapeMap) {
                     if (st._shapeMap.hasOwnProperty(sidx)) knownIds[String(st._shapeMap[sidx])] = true;
                 }
->>>>>>> e890054 (new data)
             }
         }
         var removed = 0;
@@ -969,12 +731,6 @@
         }
         var key = 'tve_' + (++_keyCounter) + '_' + Date.now();
         window._tve[key] = {
-<<<<<<< HEAD
-            shapeIds: [], _pendingPromises: [], _hidden: false, def: def, cfg: null,
-            debTimer: null, _iv: null, _batchId: 0,
-            _generation: 0, _errorRetries: 0,
-            tvId: tvId, _discoveryIv: null
-=======
             shapeIds: [],
             _shapeMap:  {},
             _activeSet: null,
@@ -984,7 +740,6 @@
             _generation: 0, _errorRetries: 0,
             tvId: tvId, _discoveryIv: null,
             _cache: null
->>>>>>> e890054 (new data)
         };
         window._tveRegistry[tvId] = key;
         _cleanGhostShapes();
@@ -1013,10 +768,6 @@
             if (st.cfg) _scheduleRedraw(key, 300);
         }, 100);
         var st = window._tve[key]; if (st) st._discoveryIv = t;
-<<<<<<< HEAD
-
-=======
->>>>>>> e890054 (new data)
         return key;
     }
 
@@ -1054,8 +805,6 @@
                     var st = window._tve[_key]; if (!st) return [NaN];
                     var cfg = {};
                     try { cfg = def.buildCfg ? def.buildCfg(inp) : {}; } catch (e) {}
-<<<<<<< HEAD
-=======
                     if (st._cache) {
                         var newCfgKey = '';
                         try { newCfgKey = JSON.stringify(cfg); } catch (e) {}
@@ -1064,7 +813,6 @@
                             st._activeSet = null;
                         }
                     }
->>>>>>> e890054 (new data)
                     st.cfg = cfg;
                     clearTimeout(st.debTimer);
                     st.debTimer = setTimeout(function () { _redraw(_key); }, 300);
@@ -1086,27 +834,15 @@
         define:      define,
         instances:   function () { return Object.keys(window._tve); },
         registry:    function () { return window._tveRegistry; },
-<<<<<<< HEAD
-        redraw:      function (key) { _scheduleRedraw(key, 0); },
-        redrawAll:   function () { Object.keys(window._tve).forEach(function (k) { _scheduleRedraw(k, 0); }); },
-=======
         redraw:      function (key) { if (window._tve[key]) { window._tve[key]._cache = null; window._tve[key]._activeSet = null; } _scheduleRedraw(key, 0); },
         redrawAll:   function () { Object.keys(window._tve).forEach(function (k) { if (window._tve[k]) { window._tve[k]._cache = null; window._tve[k]._activeSet = null; } _scheduleRedraw(k, 0); }); },
->>>>>>> e890054 (new data)
         destroy:     function (key) { _destroy(key); },
         clearAll:    function () { Object.keys(window._tve).forEach(function (k) { _destroy(k); }); },
         state:       function (key) { return window._tve[key]; },
         cleanGhosts: _forceCleanGhosts,
         updateLegendColor: _updateLegendColor,
-<<<<<<< HEAD
-    };
-
-    console.log('[TVEngine] v11.4 loaded');
-})();
-=======
         setViewportBuffer: function (pct) { _VIEWPORT_BUFFER_PCT = Math.max(0, pct); },
     };
 
     console.log('[TVEngine] v11.15 loaded');
 })();
->>>>>>> e890054 (new data)

@@ -7,13 +7,8 @@
     <title>Magic</title>
     <script>try{var _t=localStorage.getItem('tradingview_theme');if(_t==='light'){document.documentElement.classList.add('light-loading');document.documentElement.style.backgroundColor='#fff'}else{document.documentElement.style.backgroundColor='#1e1e1e'}}catch(e){document.documentElement.style.backgroundColor='#1e1e1e'}</script>
     <style>html{background:#1e1e1e}body{background:#1e1e1e;margin:0}#loading-overlay{position:fixed;inset:0;background:#1e1e1e;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:9999}.loading-text{color:#888;margin-top:20px;font-family:sans-serif;font-size:14px}.light-loading,.light-loading body,.light-loading #loading-overlay{background:#fff}.light-loading .loading-text{color:#555}</style>
-<<<<<<< HEAD
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="theme-styles.css">
-=======
     <link rel="stylesheet" href="styles.css?v=sq">
     <link rel="stylesheet" href="theme-styles.css?v=bl2">
->>>>>>> e890054 (new data)
     <link rel="stylesheet" href="code-panel-hotfix.css"> 
     <script defer src="charting_library/charting_library/charting_library.standalone.js"></script>
     <script>
@@ -36,13 +31,7 @@
         <!-- Top Navigation Bar -->
         <div class="top-navbar">
             <div class="navbar-left">
-<<<<<<< HEAD
-                <a href = "/">
-                    <div class="app-logo">🤖32</div>
-                </a>
-=======
                 <div class="app-logo"><a href="/"><span style="position:relative;top:-3px;right:3px">🤖</span>32</a></div>
->>>>>>> e890054 (new data)
             </div>
             <!--
             <div class="navbar-center">
@@ -304,18 +293,11 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
     <script defer src="api-client.js"></script>
     
     <!-- 3. Chart Session (unified adapter — needs apiClient) -->
-<<<<<<< HEAD
-    <script defer src="chart-session.js"></script>
-    
-    <!-- 4. Datafeed -->
-    <script defer src="datafeed-integrated-v3.js"></script>
-=======
     <script defer src="chart-session.js?v=ctfix"></script>
     
     <!-- 4. Datafeed -->
     <script defer src="datafeed-integrated-v3.js?v=30s"></script>
     <script defer src="debug-overlay.js"></script>
->>>>>>> e890054 (new data)
     
     <!-- 4. Settings Manager -->
     <script defer src="settings-manager.js"></script>
@@ -326,16 +308,10 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
 
 <script defer src="fvg-indicator.js"></script>
     -->
-<<<<<<< HEAD
-    <script defer src="tv-indicator-engine.js?v=17"></script>
-    <script defer src="cisd_indicator.js?v=6"></script>
-    <script defer src="app.js?v=3"></script>
-=======
     <script defer src="tv-indicator-engine.js?v=19"></script>
     <script defer src="cisd_indicator.js?v=6"></script>
     <script defer src="drawing-template-manager.js?v=ctfix"></script>
     <script defer src="app.js?v=wkday"></script>
->>>>>>> e890054 (new data)
     <script defer src="bar-detail-popup.js"></script>
     
     <!-- 6. UI Components -->
@@ -373,8 +349,6 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
 
     
     <script defer src="session-script-runner.js"></script>
-<<<<<<< HEAD
-=======
 
     <!--
     <script src="setups-page.js"></script>
@@ -382,7 +356,6 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
     <script src="nav-pages.js"></script>
     -->
 
->>>>>>> e890054 (new data)
     <!-- chart-autosave.js REMOVED — merged into chart-session.js -->
     
     <!--<script defer src="ai-code-analyzer.js"></script>-->
@@ -457,11 +430,7 @@ chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
             }
         })();
     </script>
-<<<<<<< HEAD
-</body>
-=======
 <script>
 function toggleFullscreen(){var d=document;if(d.fullscreenElement||d.webkitFullscreenElement){(d.exitFullscreen||d.webkitExitFullscreen).call(d)}else{var el=document.documentElement;(el.requestFullscreen||el.webkitRequestFullscreen).call(el)}};function _fsChanged(){var btn=document.getElementById("fullscreen-btn");var sp=btn.querySelector("span");var isFs=!!(document.fullscreenElement||document.webkitFullscreenElement);if(sp){sp.textContent=isFs?"⭳":"⭱"}else{btn.textContent=isFs?"↸":"↸"};btn.title=isFs?"Exit full-screen (Esc)":"Open in full-screen mode"};document.addEventListener("fullscreenchange",_fsChanged);document.addEventListener("webkitfullscreenchange",_fsChanged);
 </script>
->>>>>>> e890054 (new data)
 </html>
