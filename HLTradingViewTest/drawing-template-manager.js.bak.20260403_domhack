@@ -1,0 +1,400 @@
+/* ────────────────────────────────────────────────────────────
+ *  Drawing Template Manager
+ *  Custom implementation for TV Charting Library (v29)
+ *  TV's built-in drawing templates are only in Trading Terminal edition.
+ *  This uses context_menu.items_processor + existing backend API.
+ *
+ *  Backend: GET/POST/DELETE /api/drawing-templates/:toolName[/:name]
+ *  DB: drawing_templates (user_id, tool_name, template_name, content TEXT)
+ * ──────────────────────────────────────────────────────────── */
+(function () {
+    'use strict';
+
+    var _widget = null;
+
+    /* ── Cache ── */
+    var _cache = {};            // { toolName: { names: [...], ts: N } }
+    var CACHE_TTL = 30000;      // 30 s
+
+    /* ── Friendly tool names ── */
+    var TOOL_LABELS = {
+        'trend_line':       'Trend Line',
+        'horizontal_line':  'Horizontal Line',
+        'vertical_line':    'Vertical Line',
+        'horizontal_ray':   'Horizontal Ray',
+        'ray':              'Ray',
+        'extended':         'Extended Line',
+        'parallel_channel': 'Parallel Channel',
+        'regression_trend': 'Regression Trend',
+        'fib_retracement':  'Fib Retracement',
+        'fib_speed_resistance_fan': 'Fib Fan',
+        'rectangle':        'Rectangle',
+        'circle':           'Circle',
+        'ellipse':          'Ellipse',
+        'triangle':         'Triangle',
+        'path':             'Path',
+        'brush':            'Brush',
+        'text':             'Text',
+        'anchored_text':    'Anchored Text',
+        'note':             'Note',
+        'anchored_note':    'Anchored Note',
+        'callout':          'Callout',
+        'arrow_up':         'Arrow Up',
+        'arrow_down':       'Arrow Down',
+        'arrow_marker':     'Arrow Marker',
+        'flag':             'Flag',
+        'price_label':      'Price Label'
+    };
+
+    function toolLabel(name) {
+        return TOOL_LABELS[name] || name.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  API  (matches existing backend endpoints)
+     * ═══════════════════════════════════════════════════ */
+
+    /** GET /api/drawing-templates/:toolName  →  ["name1","name2"] */
+    function fetchTemplateNames(toolName) {
+        return fetch('/api/drawing-templates/' + encodeURIComponent(toolName), {
+            credentials: 'include'
+        })
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (names) {
+            _cache[toolName] = { names: names, ts: Date.now() };
+            return names;
+        })
+        .catch(function () { return []; });
+    }
+
+    function getTemplateNames(toolName) {
+        var c = _cache[toolName];
+        if (c && Date.now() - c.ts < CACHE_TTL) return Promise.resolve(c.names);
+        return fetchTemplateNames(toolName);
+    }
+
+    /** GET /api/drawing-templates/:toolName/:name  →  { content: "..." } */
+    function fetchTemplateContent(toolName, name) {
+        return fetch(
+            '/api/drawing-templates/' + encodeURIComponent(toolName) + '/' + encodeURIComponent(name),
+            { credentials: 'include' }
+        )
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+    }
+
+    /** POST /api/drawing-templates/:toolName  body { name, content } */
+    function saveTemplateToDb(toolName, name, content) {
+        return fetch('/api/drawing-templates/' + encodeURIComponent(toolName), {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, content: content })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            delete _cache[toolName];   // invalidate
+            return data;
+        });
+    }
+
+    /** DELETE /api/drawing-templates/:toolName/:name */
+    function deleteTemplateFromDb(toolName, name) {
+        return fetch(
+            '/api/drawing-templates/' + encodeURIComponent(toolName) + '/' + encodeURIComponent(name),
+            { method: 'DELETE', credentials: 'include' }
+        )
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            delete _cache[toolName];
+            return data;
+        });
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Shape helpers
+     * ═══════════════════════════════════════════════════ */
+
+    function getShapeInfo(shapeId) {
+        if (!_widget) return null;
+        try {
+            var shapes = _widget.activeChart().getAllShapes();
+            for (var i = 0; i < shapes.length; i++) {
+                if (String(shapes[i].id) === String(shapeId)) return shapes[i];
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function getShapeProps(shapeId) {
+        if (!_widget) return null;
+        try {
+            return _widget.activeChart().getShapeById(shapeId).getProperties();
+        } catch (_) { return null; }
+    }
+
+    function applyProps(shapeId, props, saveDefaults) {
+        if (!_widget) return false;
+        try {
+            _widget.activeChart().getShapeById(shapeId).setProperties(props, saveDefaults !== false);
+            return true;
+        } catch (e) {
+            console.error('[DT] setProperties failed:', e);
+            return false;
+        }
+    }
+
+    /** Strip positional / identity fields — keep only visual properties */
+    var SKIP = {
+        id: 1, points: 1, interval: 1, symbol: 1,
+        ownerSource: 1, zorder: 1, linkKey: 1,
+        visible: 1, frozen: 1
+    };
+
+    function visualProps(props) {
+        var out = {};
+        for (var k in props) {
+            if (props.hasOwnProperty(k) && !SKIP[k]) {
+                out[k] = props[k];
+            }
+        }
+        return out;
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Save flow
+     * ═══════════════════════════════════════════════════ */
+
+    function promptAndSave(shapeId, toolName) {
+        var name = prompt('Template name for "' + toolLabel(toolName) + '":');
+        if (!name || !name.trim()) return;
+        name = name.trim();
+
+        var props = getShapeProps(shapeId);
+        if (!props) { alert('Cannot read drawing properties'); return; }
+
+        var vp = visualProps(props);
+        saveTemplateToDb(toolName, name, JSON.stringify(vp))
+            .then(function () {
+                _log('Saved template "' + name + '" for ' + toolName);
+            })
+            .catch(function (e) {
+                alert('Save failed: ' + (e.message || e));
+            });
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Apply flow
+     * ═══════════════════════════════════════════════════ */
+
+    function applyTemplate(shapeId, toolName, templateName) {
+        fetchTemplateContent(toolName, templateName)
+            .then(function (data) {
+                if (!data || !data.content) {
+                    alert('Template not found');
+                    return;
+                }
+                var props;
+                try { props = JSON.parse(data.content); } catch (_) { props = null; }
+                if (!props) { alert('Bad template data'); return; }
+
+                if (applyProps(shapeId, props, true)) {
+                    _log('Applied "' + templateName + '" to ' + toolName);
+                }
+            })
+            .catch(function (e) {
+                alert('Apply failed: ' + (e.message || e));
+            });
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Delete flow
+     * ═══════════════════════════════════════════════════ */
+
+    function confirmAndDelete(toolName, templateName) {
+        if (!confirm('Delete template "' + templateName + '"?')) return;
+        deleteTemplateFromDb(toolName, templateName)
+            .then(function () { _log('Deleted "' + templateName + '"'); })
+            .catch(function () { alert('Delete failed'); });
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Context Menu Processor  (items_processor callback)
+     *
+     *  Signature:  (items, actionsFactory, params) → Promise<items>
+     *  params.detail.type === 'shape'  →  drawing right-click
+     * ═══════════════════════════════════════════════════ */
+
+    function processContextMenu(items, actionsFactory, params) {
+        // Only enrich shape context menus
+        if (!params.detail || params.detail.type !== 'shape' || params.detail.id == null) {
+            return Promise.resolve(items);
+        }
+
+        var shapeId = params.detail.id;
+        var info = getShapeInfo(shapeId);
+        if (!info) return Promise.resolve(items);
+
+        var toolName = info.name;       // e.g. "trend_line"
+        var newItems = Array.from(items);
+
+        // ── Separator ──
+        newItems.push(actionsFactory.createSeparator());
+
+        // ── "Save as Template…" ──
+        newItems.push(actionsFactory.createAction({
+            actionId: 'dt-save',
+            label: '\uD83D\uDCCF Save as Template\u2026',
+            onExecute: function () { promptAndSave(shapeId, toolName); }
+        }));
+
+        // ── "Templates (N)" — async submenu ──
+        newItems.push(actionsFactory.createAsyncAction(function () {
+            return getTemplateNames(toolName).then(function (names) {
+                if (!names || names.length === 0) {
+                    return {
+                        actionId: 'dt-empty',
+                        label: '\uD83D\uDCCF No Saved Templates',
+                        disabled: true
+                    };
+                }
+
+                var sub = [];
+                for (var i = 0; i < names.length; i++) {
+                    (function (tplName) {
+                        // Apply item
+                        sub.push(actionsFactory.createAction({
+                            actionId: 'dt-apply-' + tplName,
+                            label: tplName,
+                            onExecute: function () { applyTemplate(shapeId, toolName, tplName); }
+                        }));
+                    })(names[i]);
+                }
+
+                // Separator + delete section
+                sub.push(actionsFactory.createSeparator());
+                sub.push(actionsFactory.createAction({
+                    actionId: 'dt-manage',
+                    label: '\uD83D\uDDD1\uFE0F Delete Template\u2026',
+                    onExecute: function () {
+                        showDeleteDialog(toolName);
+                    }
+                }));
+
+                return {
+                    actionId: 'dt-templates',
+                    label: '\uD83D\uDCCF Templates (' + names.length + ')',
+                    subItems: sub
+                };
+            });
+        }));
+
+        return Promise.resolve(newItems);
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Delete dialog  (simple floating panel)
+     * ═══════════════════════════════════════════════════ */
+
+    function showDeleteDialog(toolName) {
+        // Remove any existing dialog
+        var old = document.getElementById('dt-delete-dialog');
+        if (old) old.remove();
+
+        getTemplateNames(toolName).then(function (names) {
+            if (!names || names.length === 0) {
+                alert('No templates to delete');
+                return;
+            }
+
+            var overlay = document.createElement('div');
+            overlay.id = 'dt-delete-dialog';
+            overlay.style.cssText =
+                'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;' +
+                'display:flex;align-items:center;justify-content:center;';
+
+            var panel = document.createElement('div');
+            var isDark = document.body.classList.contains('dark-theme') ||
+                         document.documentElement.getAttribute('data-theme') === 'dark';
+            panel.style.cssText =
+                'background:' + (isDark ? '#1e222d' : '#fff') + ';' +
+                'color:' + (isDark ? '#d1d4dc' : '#131722') + ';' +
+                'border:1px solid ' + (isDark ? '#363a45' : '#e0e3eb') + ';' +
+                'border-radius:8px;padding:16px 20px;min-width:260px;max-width:360px;' +
+                'box-shadow:0 8px 24px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;';
+
+            var title = document.createElement('div');
+            title.style.cssText = 'font-size:14px;font-weight:600;margin-bottom:12px;';
+            title.textContent = 'Delete Templates — ' + toolLabel(toolName);
+            panel.appendChild(title);
+
+            for (var i = 0; i < names.length; i++) {
+                (function (tplName) {
+                    var row = document.createElement('div');
+                    row.style.cssText =
+                        'display:flex;align-items:center;justify-content:space-between;' +
+                        'padding:6px 8px;border-radius:4px;margin-bottom:2px;';
+                    row.onmouseenter = function () { row.style.background = isDark ? '#2a2e39' : '#f0f3fa'; };
+                    row.onmouseleave = function () { row.style.background = 'transparent'; };
+
+                    var lbl = document.createElement('span');
+                    lbl.style.cssText = 'font-size:13px;';
+                    lbl.textContent = tplName;
+
+                    var btn = document.createElement('button');
+                    btn.style.cssText =
+                        'background:transparent;border:1px solid ' + (isDark ? '#363a45' : '#e0e3eb') + ';' +
+                        'color:#f23645;font-size:12px;padding:2px 8px;border-radius:4px;cursor:pointer;';
+                    btn.textContent = 'Delete';
+                    btn.onclick = function () {
+                        deleteTemplateFromDb(toolName, tplName).then(function () {
+                            row.remove();
+                            // If no more items, close dialog
+                            if (!panel.querySelector('[data-dt-row]')) overlay.remove();
+                        });
+                    };
+
+                    row.setAttribute('data-dt-row', '1');
+                    row.appendChild(lbl);
+                    row.appendChild(btn);
+                    panel.appendChild(row);
+                })(names[i]);
+            }
+
+            // Close button
+            var closeBtn = document.createElement('button');
+            closeBtn.style.cssText =
+                'display:block;margin:12px auto 0;padding:6px 24px;border:none;border-radius:4px;' +
+                'background:#2962ff;color:#fff;font-size:13px;cursor:pointer;';
+            closeBtn.textContent = 'Close';
+            closeBtn.onclick = function () { overlay.remove(); };
+            panel.appendChild(closeBtn);
+
+            overlay.appendChild(panel);
+            overlay.onclick = function (e) { if (e.target === overlay) overlay.remove(); };
+            document.body.appendChild(overlay);
+        });
+    }
+
+    /* ═══════════════════════════════════════════════════
+     *  Init
+     * ═══════════════════════════════════════════════════ */
+
+    function init(widget) {
+        _widget = widget;
+        _log('Drawing Template Manager ready');
+    }
+
+    function _log(msg) {
+        if (window.DebugOverlay) {
+            window.DebugOverlay.log('[DT] ' + msg);
+        }
+    }
+
+    /* ── Public API ── */
+    window.drawingTemplateManager = {
+        init: init,
+        processContextMenu: processContextMenu
+    };
+
+})();

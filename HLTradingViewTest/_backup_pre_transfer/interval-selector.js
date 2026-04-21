@@ -60,6 +60,7 @@ class IntervalSelector {
         // После первой загрузки данных — обновляем доступные даты
         this._scheduleAvailDaysUpdate();
 
+        console.log('✓ IntervalSelector initialized');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -99,6 +100,7 @@ class IntervalSelector {
             localStorage.setItem(this._settingsKey(), JSON.stringify(s));
 
             // При смене layout — обновляем ключ (layout-state-sync может вызвать этот метод)
+            console.log('[ISP] Settings saved');
         } catch(e) {
             console.warn('[ISP] Could not save settings:', e);
         }
@@ -108,13 +110,6 @@ class IntervalSelector {
     onLayoutChanged() {
         this._loadSettings();
         this._buildFieldsBar();
-        try {
-            if (this.widget && this.widget.activeChart) {
-                this.currentInterval = this.widget.activeChart().resolution();
-                this._ivSeconds = this._res2sec(this.currentInterval);
-                this._markActive();
-            }
-        } catch (_) {}
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -128,9 +123,9 @@ class IntervalSelector {
             this.intervals = { ticks: [], minutes: [], hours: [], days: [] };
             list.filter(i => i.is_active).forEach(i => {
                 const c = i.tradingview_code;
-                if      (c.includes('T') || c.includes('t') || c.includes('S') || c.includes('s'))  this.intervals.ticks.push(c);
+                if      (c.includes('T') || c.includes('t'))                    this.intervals.ticks.push(c);
                 else if (['1','2','3','5','15','30'].includes(c))                this.intervals.minutes.push(c);
-                else if (['60','120','240','720'].includes(c))                   this.intervals.hours.push(c);
+                else if (['60','120','180','240'].includes(c))                   this.intervals.hours.push(c);
                 else if (c.includes('D') || c.includes('W') || c.includes('M')) this.intervals.days.push(c);
             });
         } catch(_) {
@@ -154,12 +149,8 @@ class IntervalSelector {
         document.querySelector('.interval-selector-panel')?.remove();
 
         const names = {
-            '1T':'1T','30S':'30s','1':'1m','2':'2m','3':'3m','5':'5m','15':'15m',
-<<<<<<< HEAD
+            '1T':'1T','1':'1m','2':'2m','3':'3m','5':'5m','15':'15m',
             '30':'30m','60':'1h','120':'2h','180':'3h','240':'4h',
-=======
-            '30':'30m','60':'1h','120':'2h','240':'4h','720':'12h',
->>>>>>> e890054 (new data)
             '1D':'1D','1W':'1W','1M':'1M'
         };
 
@@ -743,11 +734,7 @@ class IntervalSelector {
     background: transparent;
     border: none;
     color: #787b86;
-<<<<<<< HEAD
-    /* font-size: 12px; */
-=======
-    font-size: 14px;
->>>>>>> e890054 (new data)
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     border-radius: 3px;
@@ -755,8 +742,8 @@ class IntervalSelector {
     transition: background .12s, color .12s;
 }
 .isb:hover  { background:#2a2e39; color:#d1d4dc; }
-.isb.active { background:#2962ff; color:#fff; box-shadow: 0 2px 8px rgba(41,98,255,0.35); }
-.isb.active:hover { background:#1e53e5; box-shadow: 0 2px 12px rgba(41,98,255,0.45); }
+.isb.active { background:#9fb4ee; color:#fff; }
+.isb.active:hover { background:#1e4fcc; }
 
 /* ── Разделитель ──────────────────────────────────────────── */
 .isp-sep-v {
@@ -858,7 +845,7 @@ class IntervalSelector {
 /* ── Info fields ──────────────────────────────────────────── */
 .isp-info {
     display:flex; align-items:center; gap:0;
-    font-size:14px; flex:1; min-width:0;
+    font-size:12px; flex:1; min-width:0;
     overflow:hidden; white-space:nowrap;
     /* flex-basis: 100%;    занимает всю ширину → переносится на новую строку */
     order: 2;
@@ -869,10 +856,10 @@ class IntervalSelector {
 .isp-k {
     font-weight:700;
     text-transform:uppercase; letter-spacing:.3px;
-    color:#2962FF;
+    color:#4a4f5e;
 }
 .isp-v {
-    font-size:14px; color:#d1d4dc;
+    font-size:12px; color:#d1d4dc;
     font-variant-numeric:tabular-nums;
 }
 
@@ -970,8 +957,6 @@ class IntervalSelector {
 body.light-theme .interval-selector-panel { background:#f8f9fd; border-bottom-color:#e0e3eb; }
 body.light-theme .isb                     { color:#787b86; }
 body.light-theme .isb:hover               { background:#e9ecf2; color:#131722; }
-body.light-theme .isb.active              { background:#2962ff; color:#fff; box-shadow: 0 2px 8px rgba(41,98,255,0.2); }
-body.light-theme .isb.active:hover        { background:#1e53e5; box-shadow: 0 2px 12px rgba(41,98,255,0.3); }
 body.light-theme .isp-sep-v               { background:#d0d3db; }
 body.light-theme .isp-k                   { color:#aaa; }
 body.light-theme .isp-v                   { color:#131722; }

@@ -22,6 +22,7 @@ class LayoutManager {
         this.checkAuthStatus();
 
         this.widget.onChartReady(() => {
+            console.log('✓ Layout Manager v2 ready');
 
             // Восстанавливаем сессию
             this._restoreSession();
@@ -29,7 +30,8 @@ class LayoutManager {
             // Подписываемся на изменения символа и интервала — сохраняем сессию
             this._subscribeToChanges();
 
-            // Recent menu injection handled by chart-session.js (with deleted layout filtering)
+            // Встраиваем меню последних layouts рядом с "Open layout..."
+            this._injectRecentMenu();
         });
     }
 
@@ -64,11 +66,49 @@ class LayoutManager {
     async _restoreSession() {
         const session = this._loadSession();
         if (!session) {
+            console.log('[LayoutMgr] No saved session');
             return;
         }
 
+        console.log('[LayoutMgr] Restoring session:', session);
 
-        if (session.appState) {
+        const chart = this.widget.activeChart();
+
+        // Восстанавливаем символ
+        if (session.symbol) {
+            try {
+                chart.setSymbol(session.symbol, () => {
+                    console.log(`[LayoutMgr] ✓ Symbol restored: ${session.symbol}`);
+                });
+            } catch (e) {
+                console.warn('[LayoutMgr] Could not restore symbol:', e);
+            }
+        }
+
+        // Восстанавливаем интервал
+        if (session.interval) {
+            try {
+                chart.setResolution(session.interval, () => {
+                    console.log(`[LayoutMgr] ✓ Interval restored: ${session.interval}`);
+                });
+            } catch (e) {
+                console.warn('[LayoutMgr] Could not restore interval:', e);
+            }
+        }
+
+        // Восстанавливаем layout (через save_load_adapter TradingView)
+        if (session.layoutId) {
+            try {
+                await this._loadLayoutById(session.layoutId, false);
+                console.log(`[LayoutMgr] ✓ Layout restored: ${session.layoutName}`);
+            } catch (e) {
+                console.warn('[LayoutMgr] Could not restore layout:', e);
+                this._saveSession({ layoutId: null, layoutName: null });
+                // Layout удалён — восстанавливаем хотя бы состояние таблицы
+                if (session.appState) this._restoreAppState(session.appState);
+            }
+        } else if (session.appState) {
+            // Нет сохранённого layout, но есть состояние таблицы
             this._restoreAppState(session.appState);
         }
     }
@@ -81,11 +121,13 @@ class LayoutManager {
         chart.onSymbolChanged().subscribe(null, () => {
             const symbol = chart.symbol();
             this._saveSession({ symbol });
+            console.log(`[LayoutMgr] Symbol saved: ${symbol}`);
         });
 
         // Интервал изменился
         chart.onIntervalChanged().subscribe(null, (interval) => {
             this._saveSession({ interval });
+            console.log(`[LayoutMgr] Interval saved: ${interval}`);
 
             // Обновляем кнопки кастомного селектора интервалов
             if (window.intervalSelector) {
@@ -181,18 +223,9 @@ class LayoutManager {
                     window.layoutManager._restoreAppState(layout.layout_data._appState);
                 }
 
-                // Unwrap ChartData format: {content: "...", name, symbol, ...} → parse content
-                if (tvData && typeof tvData === 'object' && typeof tvData.content === 'string' && !tvData.panes) {
-                    try { tvData = JSON.parse(tvData.content); } catch (_) {}
-                }
-
-                // Удаляем name — может конфликтовать с TV internal
-                if (tvData && typeof tvData === 'object' && tvData.name !== undefined) {
-                    delete tvData.name;
-                }
-
-                if (!tvData || typeof tvData !== 'object' || (!Array.isArray(tvData.panes) && !Array.isArray(tvData.charts))) {
-                    console.warn('[LayoutMgr] layout_data missing panes/charts, skipping load');
+                // Проверяем что layout валиден (есть panes) перед передачей в TV
+                if (!tvData || typeof tvData !== 'object' || !Array.isArray(tvData.panes)) {
+                    console.warn('[LayoutMgr] layout_data missing panes, skipping load');
                     setTimeout(resolve, 300);
                     return;
                 }
@@ -221,6 +254,7 @@ class LayoutManager {
         // Обновляем меню
         this._renderRecentMenu();
 
+        console.log(`[LayoutMgr] ✓ Layout loaded: ${layout.name}`);
         return layout;
     }
 
@@ -231,6 +265,7 @@ class LayoutManager {
         if (appState.tableState && window.dataTable?.restoreState) {
             setTimeout(() => {
                 window.dataTable.restoreState(appState.tableState);
+                console.log('[LayoutMgr] ✓ Table state restored');
             }, 800);
         }
     
@@ -240,7 +275,9 @@ class LayoutManager {
             const currentKey = window.app?._activeDataKey;
             if (currentKey === appState.activeDataKey) {
                 setTimeout(() => window.dataTable?.refresh?.(), 1000);
+                console.log('[LayoutMgr] ✓ activedata key matches, refreshing table');
             } else {
+                console.log(`[LayoutMgr] activedata will reload: [${currentKey}] → [${appState.activeDataKey}]`);
             }
         }
     }
@@ -270,6 +307,7 @@ class LayoutManager {
             const iframeDoc = this._getIframeDoc();
             if (!iframeDoc || !iframeDoc.body) { setTimeout(tryObserve, 300); return; }
             this._observeIframeMenu(iframeDoc);
+            console.log('[LayoutMgr] ✓ iframe observer started');
         };
         tryObserve();
     }
@@ -467,6 +505,7 @@ class LayoutManager {
         this._pushRecent({ id: result.id, name, symbol, interval });
         this._renderRecentMenu();
     
+        console.log('✓ Layout saved:', result);
         return result;
     }
 
@@ -504,6 +543,7 @@ class LayoutManager {
 
     async deleteLayout(layoutId) {
         await apiClient.deleteLayout(layoutId);
+        console.log('✓ Layout deleted');
         this._renderRecentMenu();
     }
 

@@ -190,33 +190,18 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
-// ==================== CHANGE PASSWORD ====================
-app.put('/api/auth/password', async (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-        return res.status(400).json({ error: 'Current password and new password are required' });
-=======
 // ==================== PASSWORD CHANGE ====================
 app.put('/api/auth/password', requireAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
         return res.status(400).json({ error: 'Current and new password required' });
->>>>>>> e890054 (new data)
     }
     if (newPassword.length < 6) {
         return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
     try {
         const result = await greenplumPool.query(
-<<<<<<< HEAD
-            'SELECT password_hash FROM users WHERE id = $1 AND is_active = true',
-=======
             'SELECT password_hash FROM users WHERE id = $1',
->>>>>>> e890054 (new data)
             [req.session.userId]
         );
         if (result.rows.length === 0) {
@@ -226,22 +211,6 @@ app.put('/api/auth/password', requireAuth, async (req, res) => {
         if (!match) {
             return res.status(401).json({ error: 'Current password is incorrect' });
         }
-<<<<<<< HEAD
-        const newHash = await bcrypt.hash(newPassword, 10);
-        await greenplumPool.query(
-            'UPDATE users SET password_hash = $1 WHERE id = $2',
-            [newHash, req.session.userId]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({ error: 'Password change failed' });
-    }
-});
-
-// ==================== MARKET DATA ENDPOINT ====================
-// Add this to your server.js file
-=======
         const hash = await bcrypt.hash(newPassword, 10);
         await greenplumPool.query(
             'UPDATE users SET password_hash = $1 WHERE id = $2',
@@ -253,7 +222,6 @@ app.put('/api/auth/password', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to change password' });
     }
 });
->>>>>>> e890054 (new data)
 
 // ==================== MARKET DATA ENDPOINT ====================
 
@@ -333,214 +301,6 @@ app.get('/api/market-data', requireAuth, async (req, res) => {
             error: 'Failed to fetch market data',
             details: error.message 
         });
-    }
-});
-
-app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
-    const { ticker, table, from, to, up = '', down = '' } = req.query;
-
-    if (!ticker || !table || !from || !to) {
-        return res.status(400).json({
-            error: 'Missing required parameters: ticker, table, from, to'
-        });
-    }
-
-    const fromTs = parseInt(from);
-    const toTs   = parseInt(to);
-    if (isNaN(fromTs) || isNaN(toTs)) {
-        return res.status(400).json({ error: 'Invalid timestamps' });
-    }
-
-    // Парсим списки доп.таймфреймов
-    const upTables   = up   ? up.split(',').map(s => s.trim()).filter(Boolean)   : [];
-    const downTables = down ? down.split(',').map(s => s.trim()).filter(Boolean) : [];
-
-    // Простая защита от SQL-инъекций: разрешаем только candles_* и market_data_*
-    const allTables = [table, ...upTables, ...downTables];
-    const validPattern = /^[a-z][a-z0-9_]*$/;
-    for (const t of allTables) {
-        if (!validPattern.test(t)) {
-            return res.status(400).json({ error: `Invalid table name: ${t}` });
-        }
-    }
-
-    console.log(`📊 [MTF] ${ticker} | base: ${table} | up: [${upTables}] | down: [${downTables}]`);
-
-    try {
-        // ── 1. Запрос основного ТФ (с tick_index) ───────────────────────
-        const mainQuery = `
-            SELECT
-                window_start  AS timestamp,
-                open, high, low, close, volume,
-                first_tick_index,
-                last_tick_index
-            FROM ${table}
-            WHERE ticker = {ticker:String}
-              AND toUnixTimestamp(window_start) >= {from:UInt32}
-              AND toUnixTimestamp(window_start) <= {to:UInt32}
-            ORDER BY window_start ASC
-            LIMIT 10000
-        `;
-
-        const mainRs   = await clickhouse.query({
-            query:        mainQuery,
-            format:       'JSONEachRow',
-            query_params: { ticker, from: fromTs, to: toTs }
-        });
-        const mainBars = await mainRs.json();
-
-        if (!mainBars.length) {
-            return res.json([]);
-        }
-
-        // ── 2. Вычисляем tick_index диапазон всего ответа ────────────────
-        // Для доп.ТФ запрашиваем с запасом: берём самый ранний first и самый поздний last
-        const globalFirstTick = Math.min(...mainBars.map(b => Number(b.first_tick_index)));
-        const globalLastTick  = Math.max(...mainBars.map(b => Number(b.last_tick_index)));
-
-        // ── 3. Параллельно грузим все доп.ТФ ────────────────────────────
-        // Запрос по tick_index диапазону — точнее и быстрее чем по времени
-        const fetchTf = async (tfTable) => {
-            const q = `
-                SELECT
-                    window_start  AS timestamp,
-                    open, high, low, close, volume,
-                    first_tick_index,
-                    last_tick_index
-                FROM ${tfTable}
-                WHERE ticker = {ticker:String}
-                  AND first_tick_index <= {globalLast:UInt64}
-                  AND last_tick_index  >= {globalFirst:UInt64}
-                ORDER BY window_start ASC
-                LIMIT 50000
-            `;
-            const rs   = await clickhouse.query({
-                query:        q,
-                format:       'JSONEachRow',
-                query_params: {
-                    ticker,
-                    globalFirst: globalFirstTick,
-                    globalLast:  globalLastTick,
-                }
-            });
-            return rs.json();
-        };
-
-        const upResults   = await Promise.all(upTables.map(fetchTf));
-        const downResults = await Promise.all(downTables.map(fetchTf));
-
-        // ── 4. Строим индексы для быстрого джойна ───────────────────────
-        //
-        // Для СТАРШИХ ТФ (up):
-        //   Текущий бар входит в старший, если:
-        //     main.first_tick >= senior.first_tick  AND
-        //     main.last_tick  <= senior.last_tick
-        //
-        // Для МЛАДШИХ ТФ (down):
-        //   Младший входит в текущий, если:
-        //     junior.first_tick >= main.first_tick  AND
-        //     junior.last_tick  <= main.last_tick
-        //
-        // Алгоритм O(n log n): сортируем старшие по first_tick,
-        // для каждого основного бара — бинарный поиск.
-
-        // Индекс старших ТФ: сортировка по first_tick_index
-        const upIndexed = upResults.map(bars =>
-            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
-        );
-
-        // Индекс младших ТФ: группировка по принадлежности к основному бару
-        // Строим interval tree упрощённо: сортируем по first_tick и sweep
-        const downIndexed = downResults.map(bars =>
-            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
-        );
-
-        // Вспомогательная функция бинарного поиска нижней границы
-        function lowerBound(arr, val, key) {
-            let lo = 0, hi = arr.length;
-            while (lo < hi) {
-                const mid = (lo + hi) >> 1;
-                if (Number(arr[mid][key]) < val) lo = mid + 1;
-                else hi = mid;
-            }
-            return lo;
-        }
-
-        // ── 5. Джойн: обогащаем каждый основной бар ─────────────────────
-        const enriched = mainBars.map(bar => {
-            const bFirst = Number(bar.first_tick_index);
-            const bLast  = Number(bar.last_tick_index);
-
-            // Старшие ТФ: ищем бар, в который текущий ВХОДИТ
-            const tfUp = {};
-            for (let i = 0; i < upTables.length; i++) {
-                const sorted = upIndexed[i];
-                const result = [];
-
-                // Ищем кандидатов: senior.first_tick <= bFirst
-                // и проверяем senior.last_tick >= bLast
-                let pos = lowerBound(sorted, bFirst, 'first_tick_index');
-                // Откатываемся назад — нужен бар у которого first_tick <= bFirst
-                // lowerBound дал первый >= bFirst, нам нужен последний <= bFirst
-                pos = pos > 0 ? pos - 1 : pos;
-
-                // Проверяем несколько кандидатов (на случай перекрытий)
-                for (let j = Math.max(0, pos - 2); j <= Math.min(sorted.length - 1, pos + 2); j++) {
-                    const s = sorted[j];
-                    const sFirst = Number(s.first_tick_index);
-                    const sLast  = Number(s.last_tick_index);
-                    if (sFirst <= bFirst && sLast >= bLast) {
-                        result.push(s);
-                        break; // в корректных данных ровно один старший бар
-                    }
-                }
-
-                tfUp[upTables[i]] = result;
-            }
-
-            // Младшие ТФ: все бары у которых tick_index ВХОДИТ в текущий
-            const tfDown = {};
-            for (let i = 0; i < downTables.length; i++) {
-                const sorted = downIndexed[i];
-
-                // Стартовая позиция: first_tick >= bFirst
-                const startPos = lowerBound(sorted, bFirst, 'first_tick_index');
-                const result   = [];
-
-                for (let j = startPos; j < sorted.length; j++) {
-                    const d = sorted[j];
-                    const dFirst = Number(d.first_tick_index);
-                    const dLast  = Number(d.last_tick_index);
-                    if (dFirst > bLast) break; // дальше не будет
-                    if (dFirst >= bFirst && dLast <= bLast) {
-                        result.push(d);
-                    }
-                }
-
-                tfDown[downTables[i]] = result;
-            }
-
-            return {
-                timestamp:         bar.timestamp,
-                open:              bar.open,
-                high:              bar.high,
-                low:               bar.low,
-                close:             bar.close,
-                volume:            bar.volume,
-                first_tick_index:  bar.first_tick_index,
-                last_tick_index:   bar.last_tick_index,
-                ...(upTables.length   > 0 && { tf_up:   tfUp   }),
-                ...(downTables.length > 0 && { tf_down: tfDown }),
-            };
-        });
-
-        console.log(`✅ [MTF] Returned ${enriched.length} bars | up: ${upResults.map((r,i)=>upTables[i]+':'+r.length)} | down: ${downResults.map((r,i)=>downTables[i]+':'+r.length)}`);
-
-        res.json(enriched);
-
-    } catch (err) {
-        console.error('❌ [MTF] Error:', err);
-        res.status(500).json({ error: 'Failed to fetch MTF data', details: err.message });
     }
 });
 
@@ -869,7 +629,6 @@ app.get('/api/intervals', requireAuth, async (req, res) => {
              WHERE is_active = TRUE
              ORDER BY sort_order ASC`
         );
-
         res.json(result.rows);
     } catch (error) {
         console.error('Intervals error:', error);
@@ -968,21 +727,6 @@ app.get('/api/indicators', requireAuth, async (req, res) => {
     } catch (error) {
         console.error('Indicators error:', error);
         res.status(500).json({ error: 'Failed to fetch indicators' });
-    }
-});
-
-app.get('/api/setup-categories', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            `SELECT id, code, name, description, color, is_active, sort_order
-             FROM public.setup_categories
-             WHERE is_active = TRUE
-             ORDER BY sort_order ASC`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('GET /api/setup-categories error:', error);
-        res.status(500).json({ error: 'Failed to fetch setup categories' });
     }
 });
 
@@ -1159,51 +903,6 @@ app.delete('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
 
 app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
     const id = req.params.id;
- 
-    const checkResult = await greenplumPool.query(
-        'SELECT created_by FROM javascript_scripts WHERE id = $1', [id]
-    );
-    if (checkResult.rows.length === 0) {
-        return res.status(404).json({ error: 'javascript_scripts not found' });
-    }
-    const canEdit = req.session.isAdmin || checkResult.rows[0].created_by === req.session.userId;
-    if (!canEdit) {
-        return res.status(403).json({ error: 'Not authorized to edit this javascript_scripts' });
-    }
- 
-    const { code, display_name, description, is_public, system_name, type_id, meta } = req.body;
- 
-    const metaJson = meta != null
-        ? (typeof meta === 'string' ? meta : JSON.stringify(meta))
-        : null;
- 
-    try {
-        const result = await greenplumPool.query(
-            `UPDATE javascript_scripts SET
-                code         = COALESCE($1, code),
-                description  = COALESCE($2, description),
-                display_name = COALESCE($3, display_name),
-                is_public    = COALESCE($4, is_public),
-                system_name  = COALESCE($5, system_name),
-                type_id      = COALESCE($6, type_id),
-                meta         = COALESCE($7::jsonb, meta),
-                updated_at   = CURRENT_TIMESTAMP
-             WHERE id = $8
-             RETURNING *`,
-            [code, description, display_name, is_public, system_name, type_id, metaJson, id]
-        );
- 
-        await logAction(req.session.userId, 'update_javascript_scripts',
-            'javascript_script', id, result.rows[0], req);
- 
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('Update javascript_scripts error:', error);
-        res.status(500).json({ error: 'Failed to update script' });
-    }
-});
-app.put('/api/javascript-scripts11111/:id', requireAuth, async (req, res) => {
-    const id = req.params.id;
     
     console.log("START___PUT___javascript_scripts", id)
 
@@ -1288,50 +987,6 @@ app.get('/api/script-types', requireAuth, async (req, res) => {
 });
 
 app.post('/api/javascript-scripts', requireAuth, async (req, res) => {
-    const { system_name, display_name, description, code,
-        is_public, type_id, inputs_schema, is_overlay, meta } = req.body;
- 
-    try {
-        const activeStatus = await greenplumPool.query(
-            `SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'script'`
-        );
- 
-        const metaJson = meta != null
-            ? (typeof meta === 'string' ? meta : JSON.stringify(meta))
-            : null;
- 
-        const result = await greenplumPool.query(
-            `INSERT INTO javascript_scripts
-                (status_id, created_by, system_name, display_name,
-                 description, code, is_public, type_id, inputs_schema, is_overlay, meta)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,
-                     COALESCE($8, 1),
-                     COALESCE($9,'[]'::jsonb),
-                     COALESCE($10, true),
-                     $11)
-             RETURNING *`,
-            [
-                activeStatus.rows[0].id,
-                req.session.userId,
-                system_name, display_name, description, code, is_public,
-                type_id,
-                JSON.stringify(inputs_schema || []),
-                is_overlay,
-                metaJson,
-            ]
-        );
- 
-        await logAction(req.session.userId, 'create_js_script', 'javascript_script',
-            result.rows[0].id, result.rows[0], req);
- 
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('Create JavaScript script error:', error);
-        res.status(500).json({ error: 'Failed to create script' });
-    }
-});
-
-app.post('/api/javascript-scripts123', requireAuth, async (req, res) => {
     const { system_name, display_name, description, code,
         is_public, type_id, inputs_schema, is_overlay } = req.body;
 
@@ -1440,11 +1095,7 @@ app.get('/api/layouts/:id', requireAuth, async (req, res) => {
         }
 
         const row = result.rows[0];
-<<<<<<< HEAD
-        var layout_data = row.layout_data;
-=======
         let layout_data = row.layout_data;
->>>>>>> e890054 (new data)
         if (typeof layout_data === 'string') {
             try { layout_data = JSON.parse(layout_data); } catch (_) {}
         }
@@ -1609,201 +1260,6 @@ app.delete('/api/layouts/:id', requireAuth, async (req, res) => {
 });
 
 // ==================== CLICKHOUSE DATA ====================
-
-// ==================== STUDY TEMPLATES ====================
-
-app.get('/api/study-templates', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            'SELECT name FROM study_templates WHERE user_id = $1 ORDER BY name',
-            [req.session.userId]
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get study templates error:', error);
-        res.status(500).json({ error: 'Failed to get study templates' });
-    }
-});
-
-app.get('/api/study-templates/:name', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            'SELECT content FROM study_templates WHERE user_id = $1 AND name = $2',
-            [req.session.userId, req.params.name]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Study template not found' });
-        }
-        res.json({ content: result.rows[0].content });
-    } catch (error) {
-        console.error('Get study template content error:', error);
-        res.status(500).json({ error: 'Failed to get study template content' });
-    }
-});
-
-app.post('/api/study-templates', requireAuth, async (req, res) => {
-    try {
-        const { name, content } = req.body;
-        if (!name || !content) {
-            return res.status(400).json({ error: 'name and content are required' });
-        }
-        await greenplumPool.query(
-            'DELETE FROM study_templates WHERE user_id = $1 AND name = $2',
-            [req.session.userId, name]
-        );
-        await greenplumPool.query(
-            'INSERT INTO study_templates (user_id, name, content) VALUES ($1, $2, $3)',
-            [req.session.userId, name, content]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Save study template error:', error);
-        res.status(500).json({ error: 'Failed to save study template' });
-    }
-});
-
-app.delete('/api/study-templates/:name', requireAuth, async (req, res) => {
-    try {
-        await greenplumPool.query(
-            'DELETE FROM study_templates WHERE user_id = $1 AND name = $2',
-            [req.session.userId, req.params.name]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Delete study template error:', error);
-        res.status(500).json({ error: 'Failed to delete study template' });
-    }
-});
-
-// ==================== CHART TEMPLATES ====================
-
-app.get('/api/chart-templates', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            'SELECT name FROM chart_templates WHERE user_id = $1 ORDER BY name',
-            [req.session.userId]
-        );
-        res.json(result.rows.map(r => r.name));
-    } catch (error) {
-        console.error('Get chart templates error:', error);
-        res.status(500).json({ error: 'Failed to get chart templates' });
-    }
-});
-
-app.get('/api/chart-templates/:name', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            'SELECT content FROM chart_templates WHERE user_id = $1 AND name = $2',
-            [req.session.userId, req.params.name]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Chart template not found' });
-        }
-        res.json({ content: result.rows[0].content });
-    } catch (error) {
-        console.error('Get chart template content error:', error);
-        res.status(500).json({ error: 'Failed to get chart template content' });
-    }
-});
-
-app.post('/api/chart-templates', requireAuth, async (req, res) => {
-    try {
-        const { name, content } = req.body;
-        if (!name || !content) {
-            return res.status(400).json({ error: 'name and content are required' });
-        }
-        await greenplumPool.query(
-            'DELETE FROM chart_templates WHERE user_id = $1 AND name = $2',
-            [req.session.userId, name]
-        );
-        await greenplumPool.query(
-            'INSERT INTO chart_templates (user_id, name, content) VALUES ($1, $2, $3::jsonb)',
-            [req.session.userId, name, JSON.stringify(content)]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Save chart template error:', error);
-        res.status(500).json({ error: 'Failed to save chart template' });
-    }
-});
-
-app.delete('/api/chart-templates/:name', requireAuth, async (req, res) => {
-    try {
-        await greenplumPool.query(
-            'DELETE FROM chart_templates WHERE user_id = $1 AND name = $2',
-            [req.session.userId, req.params.name]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Delete chart template error:', error);
-        res.status(500).json({ error: 'Failed to delete chart template' });
-    }
-});
-
-// ==================== DRAWING TEMPLATES ====================
-
-app.get('/api/drawing-templates/:toolName', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            'SELECT template_name FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 ORDER BY template_name',
-            [req.session.userId, req.params.toolName]
-        );
-        res.json(result.rows.map(r => r.template_name));
-    } catch (error) {
-        console.error('Get drawing templates error:', error);
-        res.status(500).json({ error: 'Failed to get drawing templates' });
-    }
-});
-
-app.get('/api/drawing-templates/:toolName/:templateName', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            'SELECT content FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 AND template_name = $3',
-            [req.session.userId, req.params.toolName, req.params.templateName]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Drawing template not found' });
-        }
-        res.json({ content: result.rows[0].content });
-    } catch (error) {
-        console.error('Get drawing template content error:', error);
-        res.status(500).json({ error: 'Failed to get drawing template content' });
-    }
-});
-
-app.post('/api/drawing-templates/:toolName', requireAuth, async (req, res) => {
-    try {
-        const { name, content } = req.body;
-        if (!name || !content) {
-            return res.status(400).json({ error: 'name and content are required' });
-        }
-        await greenplumPool.query(
-            'DELETE FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 AND template_name = $3',
-            [req.session.userId, req.params.toolName, name]
-        );
-        await greenplumPool.query(
-            'INSERT INTO drawing_templates (user_id, tool_name, template_name, content) VALUES ($1, $2, $3, $4)',
-            [req.session.userId, req.params.toolName, name, content]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Save drawing template error:', error);
-        res.status(500).json({ error: 'Failed to save drawing template' });
-    }
-});
-
-app.delete('/api/drawing-templates/:toolName/:templateName', requireAuth, async (req, res) => {
-    try {
-        await greenplumPool.query(
-            'DELETE FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 AND template_name = $3',
-            [req.session.userId, req.params.toolName, req.params.templateName]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Delete drawing template error:', error);
-        res.status(500).json({ error: 'Failed to delete drawing template' });
-    }
-});
 
 app.post('/api/info', requireAuth, async (req, res) => {
     const { req: reqData, type } = req.body;
@@ -2481,55 +1937,6 @@ app.post('/api/intervals', requireAuth, async (req, res) => {
     } catch (error) {
         console.error('Error creating interval:', error);
         res.status(500).json({ error: 'Failed to create interval' });
-    }
-});
-
-app.get('/api/sl-modes', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            `SELECT id, code, name, description, is_active, sort_order
-             FROM public.sl_modes
-             WHERE is_active = TRUE
-             ORDER BY sort_order ASC`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('GET /api/sl-modes error:', error);
-        res.status(500).json({ error: 'Failed to fetch SL modes' });
-    }
-});
- 
-// ==================== TP MODES ====================
- 
-app.get('/api/tp-modes', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            `SELECT id, code, name, description, is_active, sort_order
-             FROM public.tp_modes
-             WHERE is_active = TRUE
-             ORDER BY sort_order ASC`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('GET /api/tp-modes error:', error);
-        res.status(500).json({ error: 'Failed to fetch TP modes' });
-    }
-});
- 
-// ==================== TIME EXIT MODES ====================
- 
-app.get('/api/time-exit-modes', requireAuth, async (req, res) => {
-    try {
-        const result = await greenplumPool.query(
-            `SELECT id, code, name, description, has_value, value_label, is_active, sort_order
-             FROM public.time_exit_modes
-             WHERE is_active = TRUE
-             ORDER BY sort_order ASC`
-        );
-        res.json(result.rows);
-    } catch (error) {
-        console.error('GET /api/time-exit-modes error:', error);
-        res.status(500).json({ error: 'Failed to fetch time exit modes' });
     }
 });
 

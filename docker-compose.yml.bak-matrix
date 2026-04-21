@@ -433,14 +433,11 @@ services:
       - "11436:11436"
       - "4001:4001"
       - "4002:4002"
-      - "443:443"
-      - "8448:8448"
     volumes:
       - /etc/ssl:/etc/ssl:ro
       - certbot-certs:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
       - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
-      - ./nginx/matrix.conf:/etc/nginx/conf.d/matrix.conf:ro
     networks:
       - shared-network
     restart: unless-stopped

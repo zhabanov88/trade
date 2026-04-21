@@ -22,6 +22,7 @@ class LayoutManager {
         this.checkAuthStatus();
 
         this.widget.onChartReady(() => {
+            console.log('✓ Layout Manager v2 ready');
 
             // Восстанавливаем сессию
             this._restoreSession();
@@ -64,9 +65,11 @@ class LayoutManager {
     async _restoreSession() {
         const session = this._loadSession();
         if (!session) {
+            console.log('[LayoutMgr] No saved session');
             return;
         }
 
+        console.log('[LayoutMgr] Restoring session:', session);
 
         if (session.appState) {
             this._restoreAppState(session.appState);
@@ -81,11 +84,13 @@ class LayoutManager {
         chart.onSymbolChanged().subscribe(null, () => {
             const symbol = chart.symbol();
             this._saveSession({ symbol });
+            console.log(`[LayoutMgr] Symbol saved: ${symbol}`);
         });
 
         // Интервал изменился
         chart.onIntervalChanged().subscribe(null, (interval) => {
             this._saveSession({ interval });
+            console.log(`[LayoutMgr] Interval saved: ${interval}`);
 
             // Обновляем кнопки кастомного селектора интервалов
             if (window.intervalSelector) {
@@ -221,6 +226,7 @@ class LayoutManager {
         // Обновляем меню
         this._renderRecentMenu();
 
+        console.log(`[LayoutMgr] ✓ Layout loaded: ${layout.name}`);
         return layout;
     }
 
@@ -231,6 +237,7 @@ class LayoutManager {
         if (appState.tableState && window.dataTable?.restoreState) {
             setTimeout(() => {
                 window.dataTable.restoreState(appState.tableState);
+                console.log('[LayoutMgr] ✓ Table state restored');
             }, 800);
         }
     
@@ -240,7 +247,9 @@ class LayoutManager {
             const currentKey = window.app?._activeDataKey;
             if (currentKey === appState.activeDataKey) {
                 setTimeout(() => window.dataTable?.refresh?.(), 1000);
+                console.log('[LayoutMgr] ✓ activedata key matches, refreshing table');
             } else {
+                console.log(`[LayoutMgr] activedata will reload: [${currentKey}] → [${appState.activeDataKey}]`);
             }
         }
     }
@@ -270,6 +279,7 @@ class LayoutManager {
             const iframeDoc = this._getIframeDoc();
             if (!iframeDoc || !iframeDoc.body) { setTimeout(tryObserve, 300); return; }
             this._observeIframeMenu(iframeDoc);
+            console.log('[LayoutMgr] ✓ iframe observer started');
         };
         tryObserve();
     }
@@ -467,6 +477,7 @@ class LayoutManager {
         this._pushRecent({ id: result.id, name, symbol, interval });
         this._renderRecentMenu();
     
+        console.log('✓ Layout saved:', result);
         return result;
     }
 
@@ -504,6 +515,7 @@ class LayoutManager {
 
     async deleteLayout(layoutId) {
         await apiClient.deleteLayout(layoutId);
+        console.log('✓ Layout deleted');
         this._renderRecentMenu();
     }
 

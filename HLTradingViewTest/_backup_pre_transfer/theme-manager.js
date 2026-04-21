@@ -1,20 +1,18 @@
 /**
- * theme-manager.js  v4
+ * theme-manager.js  v2
  *
  * Управление темой БЕЗ перезагрузки страницы:
  *  - UI (body class, CSS-переменные) — мгновенно
  *  - TradingView виджет — через widget.changeTheme() + applyOverrides()
  *
  * Защита темы при загрузке layout:
- *  - Перехватывает widget.load()
- *  - После загрузки layout восстанавливает СТРУКТУРНЫЕ свойства темы
- *    (фон, сетка, шкалы), но НЕ трогает пользовательские (цвета свечей)
+ *  - Перехватывает widget.load() и save_load_adapter.getChartContent()
+ *  - После загрузки любого layout принудительно восстанавливает тему сайта
  */
 
 class ThemeManager {
 
-    // ── ПОЛНЫЕ overrides — для переключения темы (toggle) ────────
-    // Включают цвета свечей — при смене темы нужно установить всё
+    // Полные наборы overrides для каждой темы
     static DARK_OVERRIDES = {
         'paneProperties.background':                       '#131722',
         'paneProperties.backgroundType':                   'solid',
@@ -26,23 +24,12 @@ class ThemeManager {
         'scalesProperties.textColor':                      '#b2b5be',
         'scalesProperties.lineColor':                      '#2a2e39',
         'scalesProperties.backgroundColor':                '#131722',
-        // Candles
-        'mainSeriesProperties.candleStyle.upColor':        '#648fff',
-        'mainSeriesProperties.candleStyle.downColor':      '#fe6100',
-        'mainSeriesProperties.candleStyle.borderUpColor':  '#648fff',
-        'mainSeriesProperties.candleStyle.borderDownColor':'#fe6100',
-        'mainSeriesProperties.candleStyle.wickUpColor':    '#648fff',
-        'mainSeriesProperties.candleStyle.wickDownColor':  '#fe6100',
-        // Hollow candles
-        'mainSeriesProperties.hollowCandleStyle.upColor':        '#648fff',
-        'mainSeriesProperties.hollowCandleStyle.downColor':      '#fe6100',
-        'mainSeriesProperties.hollowCandleStyle.borderUpColor':  '#648fff',
-        'mainSeriesProperties.hollowCandleStyle.borderDownColor':'#fe6100',
-        'mainSeriesProperties.hollowCandleStyle.wickUpColor':    '#648fff',
-        'mainSeriesProperties.hollowCandleStyle.wickDownColor':  '#fe6100',
-        // Bars
-        'mainSeriesProperties.barStyle.upColor':           '#648fff',
-        'mainSeriesProperties.barStyle.downColor':         '#fe6100',
+        'mainSeriesProperties.candleStyle.upColor':        '#26a69a',
+        'mainSeriesProperties.candleStyle.downColor':      '#ef5350',
+        'mainSeriesProperties.candleStyle.borderUpColor':  '#26a69a',
+        'mainSeriesProperties.candleStyle.borderDownColor':'#ef5350',
+        'mainSeriesProperties.candleStyle.wickUpColor':    '#26a69a',
+        'mainSeriesProperties.candleStyle.wickDownColor':  '#ef5350',
     };
 
     static LIGHT_OVERRIDES = {
@@ -56,51 +43,12 @@ class ThemeManager {
         'scalesProperties.textColor':                      '#131722',
         'scalesProperties.lineColor':                      '#d1d4dc',
         'scalesProperties.backgroundColor':                '#ffffff',
-        // Candles
-        'mainSeriesProperties.candleStyle.upColor':        '#ffffff',
-        'mainSeriesProperties.candleStyle.downColor':      '#000000',
-        'mainSeriesProperties.candleStyle.borderUpColor':  '#000000',
-        'mainSeriesProperties.candleStyle.borderDownColor':'#000000',
-        'mainSeriesProperties.candleStyle.wickUpColor':    '#000000',
-        'mainSeriesProperties.candleStyle.wickDownColor':  '#000000',
-        // Hollow candles
-        'mainSeriesProperties.hollowCandleStyle.upColor':        '#ffffff',
-        'mainSeriesProperties.hollowCandleStyle.downColor':      '#000000',
-        'mainSeriesProperties.hollowCandleStyle.borderUpColor':  '#000000',
-        'mainSeriesProperties.hollowCandleStyle.borderDownColor':'#000000',
-        'mainSeriesProperties.hollowCandleStyle.wickUpColor':    '#000000',
-        'mainSeriesProperties.hollowCandleStyle.wickDownColor':  '#000000',
-        // Bars
-        'mainSeriesProperties.barStyle.upColor':           '#000000',
-        'mainSeriesProperties.barStyle.downColor':         '#000000',
-    };
-
-    // ── СТРУКТУРНЫЕ overrides — для защиты при загрузке layout ───
-    // НЕ включают цвета свечей — сохраняют пользовательские настройки
-    static DARK_STRUCTURAL = {
-        'paneProperties.background':                       '#131722',
-        'paneProperties.backgroundType':                   'solid',
-        'paneProperties.backgroundGradientStartColor':     '#131722',
-        'paneProperties.backgroundGradientEndColor':       '#131722',
-        'paneProperties.vertGridProperties.color':         '#1e2433',
-        'paneProperties.horzGridProperties.color':         '#1e2433',
-        'paneProperties.crossHairProperties.color':        '#9598a1',
-        'scalesProperties.textColor':                      '#b2b5be',
-        'scalesProperties.lineColor':                      '#2a2e39',
-        'scalesProperties.backgroundColor':                '#131722',
-    };
-
-    static LIGHT_STRUCTURAL = {
-        'paneProperties.background':                       '#ffffff',
-        'paneProperties.backgroundType':                   'solid',
-        'paneProperties.backgroundGradientStartColor':     '#ffffff',
-        'paneProperties.backgroundGradientEndColor':       '#f8f9fd',
-        'paneProperties.vertGridProperties.color':         '#e8edf2',
-        'paneProperties.horzGridProperties.color':         '#e8edf2',
-        'paneProperties.crossHairProperties.color':        '#758696',
-        'scalesProperties.textColor':                      '#131722',
-        'scalesProperties.lineColor':                      '#d1d4dc',
-        'scalesProperties.backgroundColor':                '#ffffff',
+        'mainSeriesProperties.candleStyle.upColor':        '#26a69a',
+        'mainSeriesProperties.candleStyle.downColor':      '#ef5350',
+        'mainSeriesProperties.candleStyle.borderUpColor':  '#26a69a',
+        'mainSeriesProperties.candleStyle.borderDownColor':'#ef5350',
+        'mainSeriesProperties.candleStyle.wickUpColor':    '#26a69a',
+        'mainSeriesProperties.candleStyle.wickDownColor':  '#ef5350',
     };
 
     constructor() {
@@ -176,8 +124,9 @@ class ThemeManager {
         if (typeof widget.changeTheme === 'function') {
             try {
                 widget.changeTheme(tvTheme);
-                this._applyOverrides(theme);
-                setTimeout(() => this._applyOverrides(theme), 50);
+                // После смены темы применяем overrides поверх
+                setTimeout(() => this._applyOverrides(theme), 300);
+                console.log(`[ThemeManager] ✅ widget.changeTheme("${tvTheme}") called`);
                 return;
             } catch (e) {
                 console.warn('[ThemeManager] changeTheme failed:', e.message);
@@ -189,47 +138,25 @@ class ThemeManager {
     }
 
     _applyOverrides(theme) {
-        this._doApplyOverrides(theme, false);
-    }
-
-    _applyStructuralOverrides(theme) {
-        this._doApplyOverrides(theme, true);
-    }
-
-    _doApplyOverrides(theme, structuralOnly) {
         const widget = window.app?.widget;
         if (!widget) return;
 
-        var overrides;
-        if (structuralOnly) {
-            overrides = theme === 'light'
-                ? ThemeManager.LIGHT_STRUCTURAL
-                : ThemeManager.DARK_STRUCTURAL;
-        } else {
-            overrides = theme === 'light'
-                ? ThemeManager.LIGHT_OVERRIDES
-                : ThemeManager.DARK_OVERRIDES;
-        }
+        const overrides = theme === 'light'
+            ? ThemeManager.LIGHT_OVERRIDES
+            : ThemeManager.DARK_OVERRIDES;
 
         try {
             widget.applyOverrides(overrides);
+            console.log(`[ThemeManager] ✅ applyOverrides applied for theme: ${theme}`);
         } catch (e) {
             console.warn('[ThemeManager] applyOverrides failed:', e.message);
-        }
-
-        if (window.TVEngine && typeof window.TVEngine.updateLegendColor === 'function') {
-            window.TVEngine.updateLegendColor(theme);
-<<<<<<< HEAD
-=======
-            if (typeof window.TVEngine.redrawAll === "function") window.TVEngine.redrawAll();
->>>>>>> e890054 (new data)
         }
     }
 
     // ════════════════════════════════════════════════════════════════
     // ЗАЩИТА ТЕМЫ ПРИ ЗАГРУЗКЕ LAYOUT
     // Layout хранит внутри себя настройки цветов — при загрузке
-    // они перезаписывают тему. Патчим widget.load()
+    // они перезаписывают тему. Патчим widget.load() и getChartContent()
     // ════════════════════════════════════════════════════════════════
 
     _waitForWidget() {
@@ -251,20 +178,42 @@ class ThemeManager {
         if (this._widgetPatched) return;
         this._widgetPatched = true;
 
+        // Патчим widget.load() — вызывается при загрузке layout
         if (typeof widget.load === 'function') {
             const _origLoad = widget.load.bind(widget);
             widget.load = (data) => {
                 const result = _origLoad(data);
+                // После загрузки layout восстанавливаем тему
                 setTimeout(() => {
-                    this._applyStructuralOverrides(this.currentTheme);
+                    this._applyOverrides(this.currentTheme);
+                    console.log('[ThemeManager] 🎨 Theme reapplied after widget.load()');
                 }, 200);
                 return result;
             };
         }
 
+        // Патчим save_load_adapter.getChartContent()
+        const adapter = widget._options?.save_load_adapter || widget.options?.save_load_adapter;
+        if (adapter && !adapter._themePatched) {
+            const _origGet = adapter.getChartContent.bind(adapter);
+            adapter.getChartContent = async (id) => {
+                const content = await _origGet(id);
+                // Восстанавливаем тему после загрузки
+                setTimeout(() => {
+                    this._applyOverrides(this.currentTheme);
+                    console.log('[ThemeManager] 🎨 Theme reapplied after getChartContent()');
+                }, 400);
+                return content;
+            };
+            adapter._themePatched = true;
+        }
+
+        // Применяем тему сразу после инициализации виджета
         widget.onChartReady(() => {
-            setTimeout(() => this._applyStructuralOverrides(this.currentTheme), 100);
+            setTimeout(() => this._applyOverrides(this.currentTheme), 100);
         });
+
+        console.log('[ThemeManager] ✅ Widget patched for theme protection');
     }
 }
 

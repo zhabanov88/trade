@@ -79,7 +79,6 @@ class DatabaseIntegratedDatafeed {
             seconds_multipliers: ["30"],
             has_weekly_and_monthly: true,
             supported_resolutions: this.supportedResolutions,
-            supports_seconds: true,
             volume_precision: 8,
             data_status: 'streaming',
             currency_code: instrument.quote_currency || 'USD',
@@ -112,7 +111,6 @@ class DatabaseIntegratedDatafeed {
             seconds_multipliers: ["30"],
                 has_weekly_and_monthly: true,
                 supported_resolutions: this.supportedResolutions,
-            supports_seconds: true,
                 volume_precision: 8,
                 data_status: 'streaming',
                 currency_code: 'USD',
@@ -125,7 +123,6 @@ class DatabaseIntegratedDatafeed {
     buildConfig() {
         this.config = {
             supported_resolutions: this.supportedResolutions,
-            supports_seconds: true,
             exchanges: [{ value: 'CLICKHOUSE', name: 'ClickHouse', desc: 'ClickHouse Database' }],
             symbols_types: [
                 { name: 'crypto', value: 'crypto' },
@@ -211,7 +208,6 @@ class DatabaseIntegratedDatafeed {
             seconds_multipliers: ["30"],
                     has_weekly_and_monthly: true,
                     supported_resolutions: this.supportedResolutions,
-            supports_seconds: true,
                     volume_precision: 8,
                     data_status: 'streaming',
                     currency_code: 'USD',
@@ -221,7 +217,7 @@ class DatabaseIntegratedDatafeed {
             }
         }
         
-        setTimeout(() => onSymbolResolvedCallback(JSON.parse(JSON.stringify(symbolInfo))), 0);
+        setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
     }
 
     /**

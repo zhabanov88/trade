@@ -50,6 +50,7 @@
         };
 
         _watchPanel();
+        console.log('[StateSync] data-table patched');
     }
 
     function _autosaveColumns() {
@@ -158,6 +159,7 @@
 
     function applyAppState(appState) {
         if (!appState) return;
+        console.log('[StateSync] Restoring app state, keys:', Object.keys(appState));
 
         // 1. activedata
         if (Array.isArray(appState.activedata) && appState.activedata.length > 0) {
@@ -167,6 +169,7 @@
                 lsSet(LS_ACTIVEDATA, appState.activedata);
                 setTimeout(() => {
                     window.dataTable?.refresh?.();
+                    console.log('[StateSync] ✓ activedata:', appState.activedata.length, 'bars');
                 }, 300);
             } catch (e) { console.warn('[StateSync] activedata err:', e); }
         }
@@ -176,6 +179,7 @@
             try {
                 if (!window.app) window.app = {};
                 window.app.setups = appState.setups;
+                console.log('[StateSync] ✓ setups:', Object.keys(appState.setups));
             } catch (e) { console.warn('[StateSync] setups err:', e); }
         }
 
@@ -183,6 +187,7 @@
         if (appState.backtestCfg) {
             try {
                 lsSet('sb_bt_cfg', appState.backtestCfg);
+                console.log('[StateSync] ✓ backtest cfg restored');
             } catch (e) { console.warn('[StateSync] bt cfg err:', e); }
         }
 
@@ -233,6 +238,7 @@
                 });
 
                 window.dataTable.refresh();
+                console.log('[StateSync] ✓ table columns applied');
             } catch (e) { console.warn('[StateSync] columns apply err:', e); }
         }
 
@@ -252,6 +258,7 @@
                         inp.dispatchEvent(new Event('input', { bubbles: true }));
                     }
                 });
+                console.log('[StateSync] ✓ filters applied');
             }, 200);
         }
     }
@@ -271,6 +278,7 @@
             try {
                 const appState = collectAppState();
                 await _serverPatchAppState(result.id, appState);
+                console.log('[StateSync] ✓ appState saved with layout:', name);
             } catch (e) {
                 console.warn('[StateSync] server patch failed, using localStorage:', e.message);
                 lsSet('tv_app_state_' + result.id, collectAppState());
@@ -300,6 +308,7 @@
             return chartData;
         };
 
+        console.log('[StateSync] ✓ layoutManager patched');
     }
 
     async function _serverPatchAppState(layoutId, appState) {
@@ -318,6 +327,7 @@
             let ld = layout.layout_data;
             if (typeof ld === 'string') ld = JSON.parse(ld);
             if (ld?._appState) {
+                console.log('[StateSync] appState found in layout_data');
                 return ld._appState;
             }
         } catch (_) {}
@@ -325,6 +335,7 @@
         // Fallback localStorage
         const cached = lsGet('tv_app_state_' + layout.id);
         if (cached) {
+            console.log('[StateSync] appState found in localStorage fallback');
             return cached;
         }
 
@@ -356,6 +367,7 @@
             // Применяем текущее значение чтобы тригернуть сохранение
             if (_ad) window.app.activedata = _ad;
 
+            console.log('[StateSync] ✓ activedata proxy installed');
             return true;
         }
 
@@ -382,6 +394,7 @@
                 clearInterval(t);
                 setTimeout(() => {
                     window.dataTable?.refresh?.();
+                    console.log('[StateSync] ✓ activedata from cache:', cached.length, 'bars');
                 }, 300);
             } else {
                 clearInterval(t); // уже заполнен
@@ -397,6 +410,7 @@
         /** Показать текущее состояние (для отладки) */
         inspect() {
             const s = collectAppState();
+            console.log('[StateSync] Current state:', s);
             return s;
         },
         /** Принудительно закэшировать activedata */
@@ -404,6 +418,7 @@
             const ad = window.app?.activedata;
             if (Array.isArray(ad) && ad.length) {
                 lsSet(LS_ACTIVEDATA, ad);
+                console.log('[StateSync] activedata cached:', ad.length);
             }
         },
         /** Восстановить из кэша вручную */
@@ -413,6 +428,7 @@
                 if (!window.app) window.app = {};
                 window.app.activedata = c;
                 window.dataTable?.refresh?.();
+                console.log('[StateSync] Restored:', c.length, 'bars');
             }
         },
     };
@@ -457,6 +473,7 @@
             }
         }, 100);
 
+        console.log('[StateSync] layout-state-sync.js v1.0 ready');
     }
 
     // Export collectAppState for use by chart-session autosave

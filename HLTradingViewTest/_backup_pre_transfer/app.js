@@ -14,18 +14,20 @@ class TradingApp {
         try {
             const response = await fetch('/api/intervals', { credentials: 'include' });
             const intervals = await response.json();
-            window.app.intervals_obj = intervals;
-
+            
             // Фильтруем только активные
             const activeIntervals = intervals
                 .filter(i => i.is_active)
                 .map(i => i.tradingview_code)
                 .filter(Boolean);
+            
 
-<<<<<<< HEAD
-            console.log("✓ Active intervals:", activeIntervals);
-=======
->>>>>>> e890054 (new data)
+            console.log("intervals__intervals__intervals__intervals", intervals)
+            console.log("activeIntervals__activeIntervals__activeIntervals")
+            console.log("activeIntervals__activeIntervals__activeIntervals")
+            console.log("activeIntervals", activeIntervals)
+            console.log("activeIntervals__activeIntervals__activeIntervals")
+            console.log("activeIntervals__activeIntervals__activeIntervals")
             return activeIntervals;
         } catch (error) {
             console.error('Failed to load intervals:', error);
@@ -37,25 +39,29 @@ class TradingApp {
         // 1. Проверяем localStorage (предпочтение пользователя)
         const savedInterval = localStorage.getItem('tradingview_interval');
         if (savedInterval) {
+            console.log(`✓ Using saved interval from localStorage: ${savedInterval}`);
             return savedInterval;
         }
-
+        
         // 2. Проверяем настройки в базе данных (можно добавить позже)
         // const userSettings = await apiClient.getUserSettings();
         // if (userSettings.default_interval) return userSettings.default_interval;
-
+        
         // 3. Используем дефолтный интервал из intervals (первый активный)
         if (this.intervals && this.intervals.length > 0) {
+            console.log(`✓ Using first available interval: ${this.intervals[0]}`);
             return this.intervals[0];
         }
-
+        
         // 4. Fallback
+        console.log('✓ Using fallback interval: 1');
         return '1';
     }
 
     saveCurrentInterval(interval) {
         // Сохраняем текущий интервал в localStorage
         localStorage.setItem('tradingview_interval', interval);
+        console.log(`✓ Interval saved to localStorage: ${interval}`);
     }
 
     // Хелпер для названий интервалов
@@ -78,11 +84,13 @@ class TradingApp {
     }
 
     async init(userFromLogin = null) {
+        console.log('🚀 Initializing TradingView Advanced Platform...');
 
         try {
             let authStatus;
 
             if (userFromLogin) {
+                console.log('✅ Using login data:', userFromLogin);
                 authStatus = {
                     authenticated: true,
                     username: userFromLogin.username,
@@ -93,20 +101,19 @@ class TradingApp {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 authStatus = await this.checkAuth();
             }
-
+            
             if (!authStatus.authenticated) {
+                console.log('❌ User not authenticated');
                 this.showAuthContainer();
                 return;
             }
 
+            console.log('✅ User authenticated:', authStatus.username);
             this.currentUser = authStatus;
             this.isAuthenticated = true;
 
             this.showAppContainer();
             this.updateUserInfo();
-
-            // Pre-load layouts from DB if localStorage is empty (new browser)
-            await this.preloadLayoutsFromDB();
 
             // Initialize TradingView
             await this.initTradingView();
@@ -114,6 +121,7 @@ class TradingApp {
             // Initialize managers
             await this.initializeManagers();
 
+            console.log('✅ Application initialized successfully');
             this.isInitialized = true;
 
         } catch (error) {
@@ -124,12 +132,6 @@ class TradingApp {
 
     async checkAuth() {
         try {
-            // Use early pre-fetched auth if available (fired in <head> before scripts loaded)
-            if (window._earlyAuth) {
-                const result = await window._earlyAuth;
-                window._earlyAuth = null;
-                return result;
-            }
             const response = await fetch('/api/auth/status', {
                 credentials: 'include'
             });
@@ -154,14 +156,13 @@ class TradingApp {
         document.title = 'magic'
         if (authContainer) authContainer.style.display = 'block';
         if (appContainer) appContainer.style.display = 'none';
-        var lo = document.getElementById('loading-overlay'); if (lo) lo.style.display = 'none';
     }
 
     showAppContainer() {
         const authContainer = document.getElementById('authContainer');
         const appContainer = document.getElementById('appContainer');
         const loadingOverlay = document.getElementById('loading-overlay');
-
+        
         document.title = 'Bot32 dashboard'
         if (authContainer) authContainer.style.display = 'none';
         if (loadingOverlay) loadingOverlay.style.display = 'flex';
@@ -175,77 +176,10 @@ class TradingApp {
         const usernameEl = document.getElementById('username');
         if (usernameEl && this.currentUser) {
             usernameEl.textContent = this.currentUser.username;
-
+            
             if (this.currentUser.isAdmin) {
-<<<<<<< HEAD
-                const safeUsername = (this.currentUser.username || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-=======
-                const safeUsername = (this.currentUser.username || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
->>>>>>> e890054 (new data)
-                usernameEl.innerHTML = safeUsername + ' <span style="background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">ADMIN</span>';
+                usernameEl.innerHTML = `${this.currentUser.username} <span style="background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">ADMIN</span>`;
             }
-        }
-    }
-
-
-    /**
-     * Pre-load layouts from DB when localStorage is empty (new browser).
-     * Populates tv_session and tv_recent_layouts so initTradingView()
-     * can restore the user's default layout instead of showing defaults.
-     */
-    async preloadLayoutsFromDB() {
-        try {
-            const cs = window.chartSession;
-            const existingSession = cs ? cs.readSession() : {};
-            if (existingSession.layoutId) {
-                return;
-            }
-
-
-            const layouts = await apiClient.getLayouts();
-            if (!layouts || layouts.length === 0) {
-                return;
-            }
-
-
-            // API returns: is_default DESC, updated_at DESC — layouts[0] is the best choice
-            const layout = layouts[0];
-
-            // Populate session so initTradingView reads layoutId, symbol, interval
-            if (cs) {
-                cs.writeSession({
-                    layoutId: layout.id,
-                    layoutName: layout.name,
-                    symbol: layout.symbol || 'EUR',
-                    interval: layout.interval || '1'
-                }, 'preloadFromDB');
-            } else {
-                localStorage.setItem('tv_session', JSON.stringify({
-                    layoutId: layout.id,
-                    layoutName: layout.name,
-                    symbol: layout.symbol || 'EUR',
-                    interval: layout.interval || '1'
-                }));
-            }
-
-            // Populate recent layouts (push in reverse so first layout lands on top)
-            var recent = layouts.slice(0, 5);
-            for (var i = recent.length - 1; i >= 0; i--) {
-                var l = recent[i];
-                if (cs) {
-                    cs.pushRecent({ id: l.id, name: l.name, symbol: l.symbol || '', interval: l.interval || '' });
-                }
-            }
-
-            // Pre-fetch layout data so initTradingView can use _earlyLayout
-            window._earlyLayout = fetch('/api/layouts/' + layout.id, { credentials: 'include' })
-                .then(function (r) { return r.ok ? r.json() : null; })
-                .catch(function () { return null; });
-
-
-        } catch (error) {
-            console.error('[preload] preloadLayoutsFromDB failed:', error);
-            // Non-fatal: app continues with defaults
         }
     }
 
@@ -253,22 +187,27 @@ class TradingApp {
      * Initialize TradingView widget
      */
     async initTradingView() {
+        console.log('📊 Initializing TradingView widget...');
 
         try {
+            console.log('🔄 Creating DatabaseIntegratedDatafeed...');
             this.datafeed = new DatabaseIntegratedDatafeed();
-
+            
             // Инициализируем datafeed
             await this.datafeed.initialize();
+            console.log('✅ Datafeed initialized with ClickHouse data');
 
             // Получаем дефолтный символ
-            const _savedSession = window.chartSession ? window.chartSession.readSession() : {};
+            let _savedSession = null;
 
             // Загружаем интервалы
             this.intervals = await this.loadIntervals();
-<<<<<<< HEAD
             console.log('✓ Intervals loaded:', this.intervals);
-=======
->>>>>>> e890054 (new data)
+
+            try {
+                const _raw = localStorage.getItem('tv_session');
+                if (_raw) _savedSession = JSON.parse(_raw);
+            } catch (_) {}
 
             let defaultSymbol = _savedSession?.symbol || 'EUR';
             if (!_savedSession?.symbol && this.datafeed.instruments?.length > 0) {
@@ -279,116 +218,43 @@ class TradingApp {
 
             // Получаем дефолтный или сохранённый интервал
             //defaultInterval = this.getDefaultInterval();
+            console.log('✓ Default interval:', defaultInterval);
 
             // Создаём виджет
             const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
-
-            let _savedData = null;
-            if (_savedSession?.layoutId) {
-                try {
-                    let _row = null;
-                    if (window._earlyLayout) {
-                        _row = await window._earlyLayout;
-                        window._earlyLayout = null;
-                    } else {
-                        const _resp = await fetch('/api/layouts/' + _savedSession.layoutId, { credentials: 'include' });
-                        if (_resp.ok) _row = await _resp.json();
-                    }
-                    if (_row) {
-                        let _ld = _row.layout_data;
-                        if (typeof _ld === 'string') _ld = JSON.parse(_ld);
-                        if (_ld && typeof _ld === 'object') {
-                            if (_ld._appState) delete _ld._appState;
-                            if (_ld.name) delete _ld.name;
-                            if (_ld.content && typeof _ld.content === 'string') {
-                                _savedData = JSON.parse(_ld.content);
-                            } else if (_ld.charts) {
-                                _savedData = _ld;
-                            }
-                        }
-                    }
-<<<<<<< HEAD
-                } catch (_) {}
-=======
-                } catch (_) { }
->>>>>>> e890054 (new data)
-            }
-
-            if (_savedData) {
-            } else {
-            }
+            
             this.widget = new TradingView.widget({
                 debug: false,
-                symbol: _savedData ? undefined : defaultSymbol,
-                interval: _savedData ? undefined : defaultInterval,
-                saved_data: _savedData,
-                auto_save_delay: 5,
+                symbol: defaultSymbol,
+                interval: defaultInterval,
                 container: 'tv_chart_container',
                 datafeed: this.datafeed,
                 library_path: 'charting_library/charting_library/',
                 locale: 'en',
                 theme: currentTheme === 'light' || currentTheme === 'Light' ? 'Light' : 'Dark',
-
+                
                 disabled_features: [
                     "header_resolutions"
                     //'use_localstorage_for_settings'
                 ],
-
+                
                 enabled_features: [
                     'study_templates',
-                    'chart_template_storage',
-                    'side_toolbar_in_fullscreen_mode',
-                    'drawing_templates'
+                    'side_toolbar_in_fullscreen_mode'
                 ],
-<<<<<<< HEAD
                 
-=======
-
->>>>>>> e890054 (new data)
-                custom_formatters: {
-                    priceFormatterFactory: function (symbolInfo) {
-                        var decimals = symbolInfo && symbolInfo.pricescale
-                            ? Math.round(Math.log10(symbolInfo.pricescale))
-                            : 5;
-                        return {
-                            format: function (price) {
-                                if (!isFinite(price)) return '';
-                                return parseFloat(price.toFixed(decimals)).toString();
-                            }
-                        };
-<<<<<<< HEAD
-=======
-                    },
-                    dateFormatter: {
-                        format: function (date) {
-                            var D = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                            var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                            var dd = ('0' + date.getUTCDate()).slice(-2);
-                            var yy = ('0' + (date.getUTCFullYear() % 100)).slice(-2);
-                            return D[date.getUTCDay()] + ' ' + dd + ' ' + M[date.getUTCMonth()] + " '" + yy;
-                        },
-                        formatLocal: function (date) {
-                            var D = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                            var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                            var dd = ('0' + date.getDate()).slice(-2);
-                            var yy = ('0' + (date.getFullYear() % 100)).slice(-2);
-                            return D[date.getDay()] + ' ' + dd + ' ' + M[date.getMonth()] + " '" + yy;
-                        }
->>>>>>> e890054 (new data)
-                    }
-                },
                 fullscreen: false,
                 autosize: true,
-                theme: currentTheme,
+                theme: currentTheme, // Используем тему из localStorage 
                 timezone: 'America/New_York',
-
+                
                 //custom_indicators_getter: function(PineJS) {
                 //    return Promise.resolve([]);
                 //},
 
                 custom_indicators_getter: async function (PineJS) {
                     window.PineJS = PineJS;
-
+                 
                     // ── Загружаем скрипты из БД ──────────────────────────────────────────
                     let dbScripts = [];
                     try {
@@ -396,11 +262,12 @@ class TradingApp {
                         if (resp.ok) {
                             const all = await resp.json();
                             dbScripts = all.filter(s => (s.type_code === 'indicator' || s.type_code === 'instrument'));
+                            console.log(`[CIG] ${dbScripts.length} индикаторов из БД`);
                         }
                     } catch (e) {
                         console.error('[CIG] Fetch error:', e);
                     }
-
+                 
                     // ── Хелперы для парсинга inputs ──────────────────────────────────────
                     function parseInputs(script) {
                         // default_inputs может быть строкой JSON или объектом
@@ -408,41 +275,41 @@ class TradingApp {
                         if (typeof raw === 'string') {
                             try { raw = JSON.parse(raw); } catch (_) { raw = {}; }
                         }
-
+                 
                         // Поддерживаем два формата:
                         // 1. Массив: [{id, name, type, defval, ...}]
                         // 2. Объект: { length: 14, source: "close" }
                         if (Array.isArray(raw)) return raw;
-
+                 
                         return Object.entries(raw).map(([key, val], i) => ({
-                            id: `in_${i}`,
-                            name: key,
+                            id:     `in_${i}`,
+                            name:   key,
                             defval: val,
-                            type: typeof val === 'number'
-                                ? (Number.isInteger(val) ? 'integer' : 'float')
-                                : typeof val === 'boolean'
-                                    ? 'bool'
-                                    : 'text',
+                            type:   typeof val === 'number'
+                                        ? (Number.isInteger(val) ? 'integer' : 'float')
+                                        : typeof val === 'boolean'
+                                            ? 'bool'
+                                            : 'text',
                         }));
                     }
-
+                 
                     function buildDefaultInputs(inputsArr) {
                         const obj = {};
                         inputsArr.forEach(inp => { obj[inp.id] = inp.defval; });
                         return obj;
                     }
-
+                 
                     // ── Строим определения ───────────────────────────────────────────────
                     const result = [];
-
+                 
                     for (const script of dbScripts) {
-                        const id = script.system_name || `indicator_${script.id}`;
-                        const name = script.display_name || id;
-                        const desc = script.description || name;
+                        const id      = script.system_name   || `indicator_${script.id}`;
+                        const name    = script.display_name  || id;
+                        const desc    = script.description   || name;
                         const overlay = !!(script.is_overlay);
-                        const inputs = parseInputs(script);
-                        const tvId = `${id}@tv-basicstudies-1`;
-
+                        const inputs  = parseInputs(script);
+                        const tvId    = `${id}@tv-basicstudies-1`;
+                 
                         // ── Попытка 1: код скрипта возвращает готовый TV-объект ───────────
                         if (script.code && script.code.trim()) {
                             if (script.code && script.code.trim()) {
@@ -453,9 +320,10 @@ class TradingApp {
                                     const factory = new Function('PineJS', script.code);
                                     const built = factory(PineJS);
                                     if (built && built.metainfo && built.constructor) {
-                                        built.metainfo.id = tvId;
+                                        built.metainfo.id                = tvId;
                                         built.metainfo.isCustomIndicator = true;
                                         result.push(built);
+                                        console.log(`[CIG] ✅ "${name}" — из кода`);
                                         continue;
                                     }
                                 } catch (e) {
@@ -463,7 +331,7 @@ class TradingApp {
                                 }
                             }
                         }
-
+                 
                         // ── Попытка 2: минимальная заглушка с параметрами из БД ──────────
                         // КРИТИЧНО: компилируем функцию main ОДИН РАЗ, не на каждом баре!
                         let mainFn;
@@ -484,54 +352,54 @@ class TradingApp {
                                 mainFn = null;
                             }
                         }
-
+                 
                         const capturedMainFn = mainFn; // замыкание
-
+                 
                         result.push({
                             name: name,
                             metainfo: {
                                 _metainfoVersion: 53,
-                                id: tvId,
-                                description: desc,
+                                id:               tvId,
+                                description:      desc,
                                 shortDescription: name.substring(0, 24),
-                                is_price_study: overlay,
+                                is_price_study:   overlay,
                                 isCustomIndicator: true,
                                 format: { type: overlay ? 'inherit' : 'price', precision: 4 },
-
+                 
                                 // ── Параметры из БД ──────────────────────────────────────
                                 inputs: inputs.map(inp => ({
-                                    id: inp.id,
-                                    name: inp.name || inp.id,
-                                    defval: inp.defval !== undefined ? inp.defval : 0,
-                                    type: inp.type || 'integer',
-                                    ...(inp.min !== undefined ? { min: inp.min } : {}),
-                                    ...(inp.max !== undefined ? { max: inp.max } : {}),
-                                    ...(inp.step !== undefined ? { step: inp.step } : {}),
-                                    ...(inp.options ? { options: inp.options } : {}),
-                                    ...(inp.tooltip ? { tooltip: inp.tooltip } : {}),
+                                    id:     inp.id,
+                                    name:   inp.name    || inp.id,
+                                    defval: inp.defval  !== undefined ? inp.defval : 0,
+                                    type:   inp.type    || 'integer',
+                                    ...(inp.min  !== undefined ? { min: inp.min }  : {}),
+                                    ...(inp.max  !== undefined ? { max: inp.max }  : {}),
+                                    ...(inp.step !== undefined ? { step: inp.step }: {}),
+                                    ...(inp.options        ? { options: inp.options }       : {}),
+                                    ...(inp.tooltip        ? { tooltip: inp.tooltip }       : {}),
                                 })),
-
+                 
                                 plots: [{ id: 'plot_0', type: 'line' }],
-
+                 
                                 defaults: {
                                     styles: {
                                         plot_0: {
-                                            linestyle: 0,
-                                            linewidth: 2,
-                                            plottype: 0,
-                                            trackPrice: false,
+                                            linestyle:    0,
+                                            linewidth:    2,
+                                            plottype:     0,
+                                            trackPrice:   false,
                                             transparency: 0,
-                                            visible: true,
-                                            color: '#2962FF',
+                                            visible:      true,
+                                            color:        '#2962FF',
                                         },
                                     },
                                     precision: 4,
-                                    inputs: buildDefaultInputs(inputs),
+                                    inputs:    buildDefaultInputs(inputs),
                                 },
-
+                 
                                 styles: { plot_0: { title: 'Value', histogramBase: 0 } },
                             },
-
+                 
                             constructor: function () {
                                 this.main = function (ctx, inputCallback) {
                                     if (capturedMainFn) {
@@ -539,44 +407,135 @@ class TradingApp {
                                             const r = capturedMainFn(ctx, inputCallback);
                                             if (Array.isArray(r)) return r;
                                             if (typeof r === 'number') return [r];
-                                        } catch (_) { }
+                                        } catch (_) {}
                                     }
                                     return [0];
                                 };
                             },
                         });
-
+                 
+                        console.log(`[CIG] ⚙️ "${name}" — заглушка, inputs: ${inputs.length}`);
                     }
-
+                 
                     // Добавляем то что добавили через Pine Editor
                     const fromRegistry = (window.customPineIndicators || []).filter(Boolean);
                     const all = [...result, ...fromRegistry];
+                    console.log(`[CIG] Итого индикаторов для TV: ${all.length}`);
                     return all;
                 },
-<<<<<<< HEAD
                 
-                save_load_adapter: window.chartSession.adapter,
-                
-                overrides: currentTheme === 'light'
-                    ? ThemeManager.LIGHT_STRUCTURAL
-                    : ThemeManager.DARK_STRUCTURAL,
-=======
-
-                save_load_adapter: window.chartSession.adapter,
-
-                context_menu: {
-                    items_processor: function (items, actionsFactory, params) {
-                        if (window.drawingTemplateManager) {
-                            return window.drawingTemplateManager.processContextMenu(items, actionsFactory, params);
+                save_load_adapter: {
+                    charts: [],
+                    studyTemplates: [],
+                    
+                    getAllCharts: async () => {
+                        try {
+                            const layouts = await apiClient.getLayouts();
+                            return layouts.map(layout => ({
+                                id: layout.id.toString(),
+                                name: layout.name,
+                                symbol: layout.symbol || defaultSymbol,
+                                resolution: layout.interval || '1',
+                                timestamp: new Date(layout.created_at).getTime() / 1000
+                            }));
+                        } catch (error) {
+                            console.error('Failed to get charts:', error);
+                            return [];
                         }
-                        return Promise.resolve(items);
-                    }
+                    },
+                    
+                    removeChart: async (id) => {
+                        try {
+                            await apiClient.deleteLayout(parseInt(id));
+                        } catch (error) {
+                            console.error('Failed to remove chart:', error);
+                        }
+                    },
+                    
+                    saveChart: async (chartData) => {
+                        try {
+                            let content = chartData.content;
+                            if (typeof content === 'string') {
+                                try { content = JSON.parse(content); } catch(_) {}
+                            }
+                            const extendedContent = {
+                                ...(typeof content === 'object' && content !== null ? content : { raw: content }),
+                                _appState: {
+                                    activeDataKey: window.app?._activeDataKey || null,
+                                    tableState:    window.dataTable?.getState ? window.dataTable.getState() : null,
+                                    savedAt:       Date.now(),
+                                }
+                            };
+                            const result = await apiClient.createLayout({
+                                name:        chartData.name,
+                                layout_data: extendedContent,
+                                symbol:      chartData.symbol,
+                                interval:    chartData.resolution,
+                                is_default:  false
+                            });
+                            if (window.layoutManager) {
+                                window.layoutManager._saveSession({
+                                    layoutId:   result.id,
+                                    layoutName: chartData.name,
+                                    symbol:     chartData.symbol,
+                                    interval:   chartData.resolution,
+                                    appState:   extendedContent._appState,
+                                });
+                                window.layoutManager._pushRecent({ id: result.id, name: chartData.name, symbol: chartData.symbol, interval: chartData.resolution });
+                                window.layoutManager._renderRecentMenu();
+                            }
+                            return result.id.toString();
+                        } catch (error) {
+                            console.error('Failed to save chart:', error);
+                            throw error;
+                        }
+                    },
+                    
+                    getChartContent: async (id) => {
+                        try {
+                            const layout = await apiClient.getLayout(parseInt(id));
+                            let data = layout.layout_data;
+                    
+                            if (data && typeof data === 'object' && data._appState) {
+                                const appState = data._appState;
+                                const { _appState, ...pureTvData } = data;
+                                data = pureTvData;
+                    
+                                if (window.layoutManager) {
+                                    window.layoutManager._saveSession({
+                                        layoutId:   layout.id,
+                                        layoutName: layout.name,
+                                        symbol:     layout.symbol,
+                                        interval:   layout.interval,
+                                        appState,
+                                    });
+                                    window.layoutManager._restoreAppState(appState);
+                                    window.layoutManager._pushRecent(layout);
+                                    window.layoutManager._renderRecentMenu();
+                                }
+                            }
+                            return typeof data === 'string' ? data : JSON.stringify(data);
+                            //return data;
+                        } catch (error) {
+                            console.error('Failed to get chart content:', error);
+                            return null;
+                        }
+                    },
+                    
+                    getAllStudyTemplates: () => Promise.resolve([]),
+                    removeStudyTemplate: () => Promise.resolve(),
+                    saveStudyTemplate: () => Promise.resolve(),
+                    getStudyTemplateContent: () => Promise.resolve('')
                 },
->>>>>>> e890054 (new data)
-
-                overrides: currentTheme === 'light'
-                    ? ThemeManager.LIGHT_STRUCTURAL
-                    : ThemeManager.DARK_STRUCTURAL,
+                
+                overrides: {
+                    'mainSeriesProperties.candleStyle.upColor': '#26a69a',
+                    'mainSeriesProperties.candleStyle.downColor': '#ef5350',
+                    'mainSeriesProperties.candleStyle.borderUpColor': '#26a69a',
+                    'mainSeriesProperties.candleStyle.borderDownColor': '#ef5350',
+                    'mainSeriesProperties.candleStyle.wickUpColor': '#26a69a',
+                    'mainSeriesProperties.candleStyle.wickDownColor': '#ef5350'
+                },
 
                 loading_screen: {
                     backgroundColor: currentTheme === 'light' || currentTheme === 'Light' ? '#ffffff' : '#131722',
@@ -586,40 +545,75 @@ class TradingApp {
 
             // Store widget globally
             window.app.widget = this.widget;
-            if (window.chartSession) window.chartSession.subscribe(this.widget);
             window.app.defaultInterval = defaultInterval
             window.app.activeTimeFrame = defaultInterval
 
             // Wait for chart ready
             await new Promise((resolve) => {
                 this.widget.onChartReady(() => {
-
+                    console.log('✅ TradingView chart ready');
+                    
                     // Подписываемся на изменение интервала
                     const chart = this.widget.activeChart();
 
-                    chart.onIntervalChanged().subscribe(null, (interval) => {
-                        this.saveCurrentInterval(interval);
-                    });
-
-                    if (window.intervalSelector) {
-                        window.intervalSelector.init(this.widget);
+                    // Принудительно применяем тему через overrides
+                    const isLight = (localStorage.getItem('tradingview_theme') || 'dark') === 'light';
+                    if (isLight) {
+                        try {
+                            this.widget.applyOverrides({
+                                // Фон графика
+                                'paneProperties.background':             '#ffffff',
+                                'paneProperties.backgroundType':         'solid',
+                                'paneProperties.backgroundGradientStartColor': '#ffffff',
+                                'paneProperties.backgroundGradientEndColor':   '#f8f9fd',
+                                // Сетка
+                                'paneProperties.vertGridProperties.color':  '#e8edf2',
+                                'paneProperties.horzGridProperties.color':  '#e8edf2',
+                                // Крестик
+                                'paneProperties.crossHairProperties.color': '#758696',
+                                // Шкала цены
+                                'scalesProperties.textColor':    '#131722',
+                                'scalesProperties.lineColor':    '#d1d4dc',
+                                'scalesProperties.backgroundColor': '#ffffff',
+                                // Легенда
+                                'legendProperties.showStudyArguments': true,
+                                'legendProperties.showStudyTitles':    true,
+                                'legendProperties.showStudyValues':    true,
+                                'legendProperties.showSeriesTitle':    true,
+                                'legendProperties.showSeriesOHLC':     true,
+                            });
+                            console.log('✅ Light theme overrides applied');
+                        } catch(e) {
+                            console.warn('⚠️ applyOverrides failed:', e.message);
+                        }
                     }
 
-                    if (window.drawingTemplateManager) {
-                        window.drawingTemplateManager.init(this.widget);
+                    chart.onIntervalChanged().subscribe(null, (interval) => {
+                        console.log(`✓ Interval changed to: ${interval}`);
+                        this.saveCurrentInterval(interval);
+                    });
+                    
+                    if (window.intervalSelector) {
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
+                        window.intervalSelector.init(this.widget);
                     }
 
                     // Hide loading overlay
                     const loadingOverlay = document.getElementById('loading-overlay');
                     const appContainer = document.getElementById('appContainer');
-
+                    
                     if (loadingOverlay) {
                         loadingOverlay.style.display = 'none';
                     }
                     if (appContainer) {
                         appContainer.style.visibility = 'visible';
                     }
-
+                    
                     window.indicatorHelpers = {
                         // Найти study по имени (частичное совпадение)
                         findByName(name) {
@@ -631,7 +625,7 @@ class TradingApp {
                                 );
                             } catch (_) { return []; }
                         },
-
+                 
                         // Скрыть индикатор
                         hideByName(name) {
                             const chart = window.app?.widget?.activeChart();
@@ -641,11 +635,11 @@ class TradingApp {
                                     const entity = chart.getStudyById(s.entityId);
                                     entity?.setVisible(false);
                                 } catch (_) {
-                                    try { chart.setEntityVisibility(s.entityId, false); } catch (__) { }
+                                    try { chart.setEntityVisibility(s.entityId, false); } catch (__) {}
                                 }
                             });
                         },
-
+                 
                         // Показать индикатор
                         showByName(name) {
                             const chart = window.app?.widget?.activeChart();
@@ -655,20 +649,20 @@ class TradingApp {
                                     const entity = chart.getStudyById(s.entityId);
                                     entity?.setVisible(true);
                                 } catch (_) {
-                                    try { chart.setEntityVisibility(s.entityId, true); } catch (__) { }
+                                    try { chart.setEntityVisibility(s.entityId, true); } catch (__) {}
                                 }
                             });
                         },
-
+                 
                         // Удалить индикатор с графика
                         removeByName(name) {
                             const chart = window.app?.widget?.activeChart();
                             if (!chart) return;
                             this.findByName(name).forEach(s => {
-                                try { chart.removeStudy(s.entityId); } catch (_) { }
+                                try { chart.removeStudy(s.entityId); } catch (_) {}
                             });
                         },
-
+                 
                         // Список всех активных индикаторов
                         listAll() {
                             const chart = window.app?.widget?.activeChart();
@@ -680,7 +674,7 @@ class TradingApp {
                     resolve();
                 });
 
-
+                
             });
 
         } catch (error) {
@@ -690,22 +684,27 @@ class TradingApp {
     }
 
     async initializeManagers() {
+        console.log('🔧 Initializing managers...');
 
         try {
             if (window.layoutManager) {
                 window.layoutManager.init(this.widget);
+                console.log('✅ Layout Manager initialized');
             }
 
             if (window.indicatorsMenuIntegration) {
                 window.indicatorsMenuIntegration.init(this.widget);
+                console.log('✅ Indicators Menu Integration initialized');
             }
 
             if (window.codePanelManager) {
                 window.codePanelManager.init(this.widget);
+                console.log('✅ Code Panel Manager initialized');
             }
-
+            
             if (window.currencySelector && this.datafeed) {
                 window.currencySelector.init(this.widget);
+                console.log('✅ Currency Selector initialized');
             }
 
         } catch (error) {
@@ -731,16 +730,11 @@ class TradingApp {
     showError(message) {
         const loadingOverlay = document.getElementById('loading-overlay');
         if (loadingOverlay) {
-<<<<<<< HEAD
-            const safeMsg = String(message || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-=======
-            const safeMsg = String(message || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
->>>>>>> e890054 (new data)
             loadingOverlay.innerHTML = `
                 <div style="text-align: center;">
                     <div style="color: #f44336; font-size: 48px; margin-bottom: 20px;">⚠️</div>
                     <div style="color: #d4d4d4; font-size: 18px; margin-bottom: 10px;">Error</div>
-                    <div style="color: #858585; font-size: 14px; max-width: 400px;">${safeMsg}</div>
+                    <div style="color: #858585; font-size: 14px; max-width: 400px;">${message}</div>
                     <button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #2962FF; color: white; border: none; border-radius: 4px; cursor: pointer;">
                         Reload Page
                     </button>
@@ -771,11 +765,11 @@ function toggleTheme() {
 // Auth handlers
 async function handleLogin(event) {
     event.preventDefault();
-
+    
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
-
+    
     try {
         const response = await fetch('/api/auth/login', {
             method: 'POST',
@@ -783,10 +777,11 @@ async function handleLogin(event) {
             credentials: 'include',
             body: JSON.stringify({ username, password })
         });
-
+        
         const data = await response.json();
-
+        
         if (response.ok && data.success) {
+            console.log('✅ Login successful:', data.user);
             await app.init(data.user);
             // Перезагружаем скрипты в code panel после логина
             if (window.codePanelManager) {
@@ -805,12 +800,12 @@ async function handleLogin(event) {
 
 async function handleRegister(event) {
     event.preventDefault();
-
+    
     const username = document.getElementById('registerUsername').value;
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const errorDiv = document.getElementById('registerError');
-
+    
     try {
         const response = await fetch('/api/auth/register', {
             method: 'POST',
@@ -818,10 +813,11 @@ async function handleRegister(event) {
             credentials: 'include',
             body: JSON.stringify({ username, email, password })
         });
-
+        
         const data = await response.json();
-
+        
         if (response.ok && data.success) {
+            console.log('✅ Registration successful:', data.user);
             await app.init(data.user);
             if (window.codePanelManager) {
                 await window.codePanelManager.loadExamplesFromDatabase();
@@ -840,7 +836,7 @@ async function handleRegister(event) {
 function toggleAuthForm() {
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
-
+    
     if (loginForm.style.display === 'none') {
         loginForm.style.display = 'block';
         registerForm.style.display = 'none';
@@ -852,12 +848,15 @@ function toggleAuthForm() {
 
 // Auto-initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
-
+    console.log('📄 DOM Content Loaded');
+    
     const authStatus = await app.checkAuth();
-
+    
     if (authStatus.authenticated) {
+        console.log('✅ User already authenticated, auto-initializing...');
         await app.init();
     } else {
+        console.log('ℹ️ User not authenticated, showing login form');
         app.showAuthContainer();
     }
 });

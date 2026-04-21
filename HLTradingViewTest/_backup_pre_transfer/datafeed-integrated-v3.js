@@ -1,6 +1,6 @@
 /**
  * DatabaseIntegratedDatafeed V2 + activedata
- *
+ * 
  * НОВОЕ: window.app.activedata[]
  * - Хранит все сырые записи с сервера для текущего символа/интервала
  * - Накапливается при прокрутке (назад/вперёд)
@@ -17,12 +17,11 @@ class DatabaseIntegratedDatafeed {
         this.symbols = new Map();
         this.subscribers = new Map();
         this.loadedRanges = new Map();
-
+        
         // Инициализируем activedata — НЕ затираем если уже есть кэш из localStorage
         if (!window.app) window.app = {};
         if (!Array.isArray(window.app.activedata)) window.app.activedata = [];
 
-        /*
         let _activedata = localStorage.getItem("activedata")
         if(_activedata){
             _activedata = JSON.parse(_activedata)
@@ -30,11 +29,16 @@ class DatabaseIntegratedDatafeed {
                 window.app.activedata = _activedata
             }
         }
-        */
-
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("window.app.activedata", window.app.activedata)
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
+        console.log("DatabaseIntegratedDatafeed____")
         if (!window.app._activeDataKey) window.app._activeDataKey = null;
         if (!window.app._activeDataIndex) window.app._activeDataIndex = new Set();
-
+        
         console.log('📡 DatabaseIntegratedDatafeed V2 created');
     }
 
@@ -86,68 +90,6 @@ class DatabaseIntegratedDatafeed {
         }
     }
 
-    buildMarketDataUrl({ ticker, table, from, to }) {
-        const aggregateUp = localStorage.getItem('aggregateUp');
-        const aggregateDown = localStorage.getItem('aggregateDown');
-
-        const data = window.app.intervals_obj;
-
-        const list = data
-            .sort((a, b) => a.sort_order - b.sort_order)
-            .map(x => x.clickhouse_table);
-
-        const idx = Object.fromEntries(list.map((v, i) => [v, i]));
-        const current = window.app._currentTable;
-
-        function parse(str) {
-            if (!str) return [];
-
-            const parts = str.split(',').map(x => x.trim());
-            const res = [];
-            const start = idx[current];
-
-            if (start === undefined) return [];
-
-            let fromIndex = 0;
-
-            if (idx[parts[0]] !== undefined) {
-                res.push(parts[0]);
-                fromIndex = 1;
-            }
-
-            for (let i = fromIndex; i < parts.length; i++) {
-                const n = Number(parts[i]);
-
-                if (Number.isNaN(n)) continue;
-
-                const val = list[start + n];
-
-                if (val) res.push(val);
-            }
-
-            return [...new Set(res)];
-        }
-
-        const up = parse(aggregateUp);
-        const down = parse(aggregateDown);
-        let endpoint = 'market-data';
-        const params = new URLSearchParams({
-            ticker,
-            table,
-            from,
-            to
-        });
-
-        if (up.length) params.append('up', up.join(','));
-        if (down.length) params.append('down', down.join(','));
-
-        if (up.length || down.length) {
-            endpoint = 'market-data/mtf';
-        }
-
-        return `/api/${endpoint}?${params.toString()}`;
-    }
-
     buildSymbolInfo(instrument) {
         return {
             name: instrument.symbol,
@@ -158,11 +100,11 @@ class DatabaseIntegratedDatafeed {
             timezone: 'Etc/UTC',
             exchange: instrument.provider_name || 'CLICKHOUSE',
             minmov: 1,
-            pricescale: 100000,
+            pricescale: 10000,
             has_intraday: true,
             has_weekly_and_monthly: true,
             has_seconds: true,
-            seconds_multipliers: ['30'],
+            seconds_multipliers: ['1'],
             supported_resolutions: this.supportedResolutions,
             volume_precision: 8,
             data_status: 'streaming',
@@ -190,11 +132,11 @@ class DatabaseIntegratedDatafeed {
                 timezone: 'Etc/UTC',
                 exchange: 'CLICKHOUSE',
                 minmov: 1,
-                pricescale: 100000,
+                pricescale: 10000,
                 has_intraday: true,
                 has_weekly_and_monthly: true,
                 has_seconds: true,
-                seconds_multipliers: ['30'],
+                seconds_multipliers: ['1'],
                 supported_resolutions: this.supportedResolutions,
                 volume_precision: 8,
                 data_status: 'streaming',
@@ -230,44 +172,59 @@ class DatabaseIntegratedDatafeed {
      * Инициализация/сброс activedata при смене символа или интервала
      */
     // СТАЛО:
-    initActiveData(symbol, resolution) {
-        const key = `${symbol}_${resolution}`;
+initActiveData(symbol, resolution) {
+    const key = `${symbol}_${resolution}`;
 
-        // Ключ не изменился — ничего не делаем
+    // Ключ не изменился — ничего не делаем
 
-        window.app._key = key
-        if (!window.app._activeDataKey) {
-            window.app._activeDataKey = localStorage.getItem("_activeDataKey")
-
-        }
-        localStorage.setItem("_activeDataKey", key)
-        console.log("iAD", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
-        if (window.app._activeDataKey === key) return;
-
-
-        console.log("iAD___222222", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
-
-        const prevKey = window.app._activeDataKey; // null при первом запуске
-
-        // Первый запуск после загрузки страницы (prevKey === null).
-        // Если activedata уже содержит данные — они восстановлены из localStorage.
-        // Сбрасывать нельзя — просто принимаем ключ и перестраиваем индекс.
-        if (prevKey === null && window.app.activedata.length > 0) {
-            console.log(`🔄 activedata INIT: keeping ${window.app.activedata.length} cached bars, key → [${key}]`);
-            window.app._activeDataKey = key;
-            // Перестраиваем индекс из существующих данных
-            window.app._activeDataIndex = new Set(
-                window.app.activedata.map(item => item.timestamp)
-            );
-            return;
-        }
-
-        // Настоящая смена символа или интервала — сбрасываем
-        console.log(`🔄 activedata RESET: [${prevKey ?? 'none'}] → [${key}]`);
-        window.app.activedata = [];
-        window.app._activeDataKey = key;
-        window.app._activeDataIndex = new Set();
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData", key, '----', window.app._activeDataKey, "!!!!!!")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    console.log("initActiveData")
+    window.app._key = key
+    if(!window.app._activeDataKey){
+        window.app._activeDataKey = localStorage.getItem("_activeDataKey")
+        
     }
+    localStorage.setItem("_activeDataKey", key)
+    console.log("iAD", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
+    if (window.app._activeDataKey === key) return;
+
+
+    console.log("iAD___222222", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
+
+    const prevKey = window.app._activeDataKey; // null при первом запуске
+
+    // Первый запуск после загрузки страницы (prevKey === null).
+    // Если activedata уже содержит данные — они восстановлены из localStorage.
+    // Сбрасывать нельзя — просто принимаем ключ и перестраиваем индекс.
+    if (prevKey === null && window.app.activedata.length > 0) {
+        console.log(`🔄 activedata INIT: keeping ${window.app.activedata.length} cached bars, key → [${key}]`);
+        window.app._activeDataKey = key;
+        // Перестраиваем индекс из существующих данных
+        window.app._activeDataIndex = new Set(
+            window.app.activedata.map(item => item.timestamp)
+        );
+        return;
+    }
+
+    // Настоящая смена символа или интервала — сбрасываем
+    console.log(`🔄 activedata RESET: [${prevKey ?? 'none'}] → [${key}]`);
+    window.app.activedata = [];
+    window.app._activeDataKey = key;
+    window.app._activeDataIndex = new Set();
+}
 
     /**
      * Добавление новых сырых записей в activedata (без дублей)
@@ -275,19 +232,19 @@ class DatabaseIntegratedDatafeed {
      */
     appendActiveData(rawItems) {
         if (!rawItems || rawItems.length === 0) return 0;
-
+     
         if (!window.app.activedata) {
             window.app.activedata = [];
             window.app._activeDataIndex = new Set();
         }
-
+     
         // Восстанавливаем индекс если он пустой но данные есть
         if (window.app._activeDataIndex.size === 0 && window.app.activedata.length > 0) {
             window.app.activedata.forEach(item => {
                 window.app._activeDataIndex.add(item.timestamp);
             });
         }
-
+     
         let added = 0;
         rawItems.forEach(item => {
             const ts = item.timestamp;
@@ -297,7 +254,7 @@ class DatabaseIntegratedDatafeed {
                 added++;
             }
         });
-
+     
         if (added > 0) {
             console.log(`📦 activedata: +${added} new | total: ${window.app.activedata.length}`);
         }
@@ -311,22 +268,22 @@ class DatabaseIntegratedDatafeed {
         const config = this.intervals.find(i => {
             const tvCode = i.tradingview_code;
             return tvCode === tvResolution ||
-                tvCode === normalized ||
-                tvCode.toUpperCase() === normalized;
+                   tvCode === normalized ||
+                   tvCode.toUpperCase() === normalized;
         });
         return config;
     }
 
     getClickHouseTable(tvResolution) {
         if (tvResolution === '1t' || tvResolution === '1T') {
-            return 'forex_quotes';
+            return 'raw_market_data';
         }
         const config = this.getIntervalConfig(tvResolution);
         if (!config) {
-            if (['1', '3', '5'].includes(tvResolution)) return 'market_data_minute';
-            if (['15', '30', '60'].includes(tvResolution)) return 'market_data_hour';
-            if (['1D', '1W'].includes(tvResolution)) return 'market_data_day';
-            return 'market_data_minute';
+            //if (['1', '3', '5'].includes(tvResolution)) return 'market_data_minute';
+            //if (['15', '30', '60'].includes(tvResolution)) return 'market_data_hour';
+            //if (['1D', '1W'].includes(tvResolution)) return 'market_data_day';
+            //return 'market_data_minute';
         }
         return config.clickhouse_table || 'market_data_minute';
     }
@@ -376,7 +333,7 @@ class DatabaseIntegratedDatafeed {
                     timezone: 'Etc/UTC',
                     exchange: 'CLICKHOUSE',
                     minmov: 1,
-                    pricescale: 100000,
+                    pricescale: 10000,
                     has_intraday: true,
                     has_weekly_and_monthly: true,
                     supported_resolutions: this.supportedResolutions,
@@ -391,9 +348,8 @@ class DatabaseIntegratedDatafeed {
 
         symbolInfo.has_ticks = true;
         symbolInfo.has_seconds = true;
-        symbolInfo.seconds_multipliers = ["30"];
 
-        setTimeout(() => onSymbolResolvedCallback(JSON.parse(JSON.stringify(symbolInfo))), 0);
+        setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
     }
 
     /**
@@ -421,7 +377,7 @@ class DatabaseIntegratedDatafeed {
 
             // ── Сохраняем текущий контекст для бектеста ───────────────────
             window.app._currentTicker = ticker;
-            window.app._currentTable = table;
+            window.app._currentTable  = table;
             window.app._currentResolution = resolution;
 
             // Сбрасываем мета-данные диапазона дат при смене инструмента/ТФ
@@ -443,7 +399,7 @@ class DatabaseIntegratedDatafeed {
             if (firstDataRequest) {
                 console.log('🎯 FIRST REQUEST');
 
-                const isTick = table === 'forex_quotes' || resolution === '1t' || resolution === '1T';
+                const isTick = table === 'raw_market_data' || resolution === '1t' || resolution === '1T';
                 const latestUrl = isTick
                     ? `/api/market-data/ticks/latest?ticker=${ticker}`
                     : `/api/market-data/latest?ticker=${ticker}&table=${table}`;
@@ -457,7 +413,6 @@ class DatabaseIntegratedDatafeed {
 
                 actualTo = latestTs;
                 actualFrom = latestTs - (10000 * intervalSeconds);
-                if (actualFrom < 0) actualFrom = 0;
 
                 console.log(`✅ Latest in DB: ${new Date(latestTs * 1000).toISOString()}`);
 
@@ -483,15 +438,11 @@ class DatabaseIntegratedDatafeed {
                 }
             }
 
-            // ── Clamp timestamps (UInt32 не принимает отрицательные) ──────
-            if (actualFrom < 0) actualFrom = 0;
-            if (actualTo < 0) actualTo = 0;
-
             // ── Запрос данных ─────────────────────────────────────────────
-            const isTick = table === 'forex_quotes' ||
-                table.includes('tick') ||
-                resolution === '1t' ||
-                resolution === '1T';
+            const isTick = table === 'raw_market_data' ||
+                           table.includes('tick') ||
+                           resolution === '1t' ||
+                           resolution === '1T';
 
             let response;
 
@@ -501,14 +452,10 @@ class DatabaseIntegratedDatafeed {
                     { credentials: 'include' }
                 );
             } else {
-                const url = this.buildMarketDataUrl({
-                    ticker,
-                    table,
-                    from: actualFrom,
-                    to: actualTo
-                });
-
-                response = await fetch(url, { credentials: 'include' });
+                response = await fetch(
+                    `/api/market-data?ticker=${ticker}&table=${table}&from=${actualFrom}&to=${actualTo}`,
+                    { credentials: 'include' }
+                );
             }
 
             if (!response.ok) {
@@ -553,22 +500,20 @@ class DatabaseIntegratedDatafeed {
             const bars = data
                 .map(bar => ({
                     time: new Date(bar.timestamp).getTime(),
-                    open: parseFloat(bar.open),
-                    high: parseFloat(bar.high),
-                    low: parseFloat(bar.low),
-                    close: parseFloat(bar.close),
-                    volume: parseFloat(bar.volume || 0),
-                    ...(bar.tf_up !== undefined && { tf_up: bar.tf_up }),
-                    ...(bar.tf_down !== undefined && { tf_down: bar.tf_down }),
+                    open:   parseFloat(bar.open),
+                    high:   parseFloat(bar.high),
+                    low:    parseFloat(bar.low),
+                    close:  parseFloat(bar.close),
+                    volume: parseFloat(bar.volume || 0)
                 }))
                 .sort((a, b) => a.time - b.time);
 
             // ── Обновляем кеш диапазонов ──────────────────────────────────
             const firstTs = Math.floor(bars[0].time / 1000);
-            const lastTs = Math.floor(bars[bars.length - 1].time / 1000);
+            const lastTs  = Math.floor(bars[bars.length - 1].time / 1000);
 
             if (!cache.firstBar || firstTs < cache.firstBar) cache.firstBar = firstTs;
-            if (!cache.lastBar || lastTs > cache.lastBar) cache.lastBar = lastTs;
+            if (!cache.lastBar  || lastTs  > cache.lastBar)  cache.lastBar  = lastTs;
 
             console.log(`✅ ${bars.length} bars | activedata: ${window.app.activedata.length} records total\n`);
 
@@ -582,7 +527,7 @@ class DatabaseIntegratedDatafeed {
 
     getIntervalSeconds(resolution) {
         const map = {
-            '1t': 1, '30S': 30, '1': 60, '3': 180, '5': 300,
+            '1t': 1, '1': 60, '3': 180, '5': 300,
             '15': 900, '30': 1800, '60': 3600,
             '180': 10800, '240': 14400,
             '1D': 86400, '1W': 604800, '1M': 2592000
@@ -616,7 +561,7 @@ class DatabaseIntegratedDatafeed {
             } else {
                 const b = bars[barTime];
                 b.high = Math.max(b.high, mid);
-                b.low = Math.min(b.low, mid);
+                b.low  = Math.min(b.low,  mid);
                 b.close = mid;
                 b.volume++;
             }
@@ -633,18 +578,22 @@ class DatabaseIntegratedDatafeed {
 
             const now = Math.floor(Date.now() / 1000);
             const ticker = symbolInfo.clickhouse_ticker || `C:${symbolInfo.name}-USD`;
-            const table = this.getClickHouseTable(resolution);
+            const table  = this.getClickHouseTable(resolution);
 
             try {
-                const url = this.buildMarketDataUrl({
-                    ticker,
-                    table,
-                    from: now - 300,
-                    to: now
-                });
-
-                const response = await fetch(url, { credentials: 'include' });
-
+                let response = {}
+                if(table == "raw_market_data"){
+                    response = await fetch( //if (isTick) {
+                    `/api/market-data/ticks?ticker=${ticker}&table=${table}&from=${now - 300}&to=${now}`,
+                    { credentials: 'include' }
+                );
+                } else{
+                    response = await fetch( //if (isTick) {
+                        `/api/market-data?ticker=${ticker}&table=${table}&from=${now - 300}&to=${now}`,
+                        { credentials: 'include' }
+                    );
+                }
+                
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.length > 0) {
@@ -653,17 +602,15 @@ class DatabaseIntegratedDatafeed {
 
                         const latestBar = data[data.length - 1];
                         onRealtimeCallback({
-                            time: new Date(latestBar.timestamp).getTime(),
-                            open: parseFloat(latestBar.open),
-                            high: parseFloat(latestBar.high),
-                            low: parseFloat(latestBar.low),
-                            close: parseFloat(latestBar.close),
-                            volume: parseFloat(latestBar.volume || 0),
-                            ...(latestBar.tf_up !== undefined && { tf_up: latestBar.tf_up }),
-                            ...(latestBar.tf_down !== undefined && { tf_down: latestBar.tf_down }),
+                            time:   new Date(latestBar.timestamp).getTime(),
+                            open:   parseFloat(latestBar.open),
+                            high:   parseFloat(latestBar.high),
+                            low:    parseFloat(latestBar.low),
+                            close:  parseFloat(latestBar.close),
+                            volume: parseFloat(latestBar.volume || 0)
                         });
                     }
-                } else { }
+                }
             } catch (error) {
                 console.error('Error in subscribeBars:', error);
             }
