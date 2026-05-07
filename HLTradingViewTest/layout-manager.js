@@ -2,15 +2,15 @@
 class LayoutManager {
 
     // ── Ключи localStorage ─────────────────────────────────────────────────
-    static LS_SESSION   = 'tv_session';       // { symbol, interval, layoutId, layoutName }
-    static LS_RECENT    = 'tv_recent_layouts'; // [ { id, name, symbol, interval, usedAt }, ... ]
-    static MAX_RECENT   = 5;
+    static LS_SESSION = 'tv_session';       // { symbol, interval, layoutId, layoutName }
+    static LS_RECENT = 'tv_recent_layouts'; // [ { id, name, symbol, interval, usedAt }, ... ]
+    static MAX_RECENT = 5;
 
     constructor() {
-        this.widget      = null;
-        this.layouts     = [];
+        this.widget = null;
+        this.layouts = [];
         this.currentUser = null;
-        this._menuEl     = null;    // DOM элемент выпадающего меню
+        this._menuEl = null;    // DOM элемент выпадающего меню
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -30,7 +30,69 @@ class LayoutManager {
             this._subscribeToChanges();
 
             // Recent menu injection handled by chart-session.js (with deleted layout filtering)
+            this._injectSourceCodeButtons();
         });
+    }
+
+    // Метод для добавления кнопки исходного кода в легенду индикаторов
+    _injectSourceCodeButtons() {
+        const iframeDoc = this._getIframeDoc();
+        if (!iframeDoc) return;
+
+        const observer = new MutationObserver(() => {
+            const actions = iframeDoc.querySelectorAll('[data-name="actions"]:not(.source-code-ready)');
+
+            actions.forEach(container => {
+                const buttonsContainer = container.querySelector('div');
+                if (!buttonsContainer) return;
+
+                const settingsBtn = buttonsContainer.querySelector('[data-name="legend-settings-action"]');
+
+                if (settingsBtn) {
+                    container.classList.add('source-code-ready');
+                    const btn = iframeDoc.createElement('button');
+
+                    btn.className = settingsBtn.className;
+                    btn.setAttribute('title', 'Source Code');
+                    btn.setAttribute('type', 'button');
+                    btn.style.cursor = 'pointer';
+
+                    btn.innerHTML = `
+                    <div class="${settingsBtn.querySelector('div').className}">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" width="18" height="18">
+                            <path fill="currentColor" d="M7 14H5.5A1.5 1.5 0 0 1 4 12.5v-1A2.9 2.9 0 0 0 2.66 9l.18-.13A2.9 2.9 0 0 0 4 6.5V5.5C4 4.67 4.67 4 5.5 4H7V3H5.5A2.5 2.5 0 0 0 3 5.5V6.5a1.9 1.9 0 0 1-.77 1.58c-.42.32-.84.43-.85.44C1.3 8.54 1 8.65 1 9s.3.46.38.48c0 0 .43.12.85.44.4.3.77.8.77 1.58v1A2.5 2.5 0 0 0 5.5 15H7v-1Zm4-10h1.5c.83 0 1.5.67 1.5 1.5v1A2.9 2.9 0 0 0 15.34 9l-.18.13A2.9 2.9 0 0 0 14 11.5V12.5c0 .83-.67 1.5-1.5 1.5H11v1h1.5a2.5 2.5 0 0 0 2.5-2.5V11.5c0-.79.38-1.27.77-1.58.42-.32.84-.43.85-.44.08-.02.38-.13.38-.48s-.3-.46-.38-.48c0 0-.43-.12-.85-.44-.4-.3-.77-.8-.77-1.58v-1A2.5 2.5 0 0 0 12.5 3H11v1Z"></path>
+                        </svg>
+                    </div>`;
+
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const sourceItem = container.closest('[data-name="legend-source-item"]');
+
+                        if (sourceItem) {
+                            const titleWrapper = sourceItem.querySelector('[data-name="legend-source-title"]');
+
+                            if (titleWrapper) {
+                                const indicatorName = titleWrapper.textContent.trim();
+                                const selectEl = document.querySelector('.selectJS');
+
+                                if (selectEl) {
+                                    selectEl.value = indicatorName;
+                                    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                                } else {
+                                    console.warn('Селект с классом .selectJS не найден');
+                                }
+                            }
+                        }
+                    };
+
+                    buttonsContainer.insertBefore(btn, settingsBtn);
+                }
+            });
+        }, { childList: true, subtree: true });
+
+        observer.observe(iframeDoc.body, { childList: true, subtree: true });
     }
 
     async checkAuthStatus() {
@@ -96,20 +158,20 @@ class LayoutManager {
 
         // Сохраняем начальное состояние
         try {
-            const symbol   = chart.symbol();
+            const symbol = chart.symbol();
             const interval = chart.resolution();
             this._saveSession({ symbol, interval });
-        } catch (e) {}
+        } catch (e) { }
         // Автосохранение состояния таблицы каждые 30 секунд
         setInterval(() => {
             try {
                 const appState = {
                     activeDataKey: window.app?._activeDataKey || null,
-                    tableState:    window.dataTable?.getState ? window.dataTable.getState() : null,
-                    savedAt:       Date.now(),
+                    tableState: window.dataTable?.getState ? window.dataTable.getState() : null,
+                    savedAt: Date.now(),
                 };
                 this._saveSession({ appState });
-            } catch (e) {}
+            } catch (e) { }
         }, 30000);
     }
 
@@ -135,11 +197,11 @@ class LayoutManager {
 
             // Добавляем в начало
             recent.unshift({
-                id:       layout.id,
-                name:     layout.name,
-                symbol:   layout.symbol   || '',
+                id: layout.id,
+                name: layout.name,
+                symbol: layout.symbol || '',
                 interval: layout.interval || '',
-                usedAt:   Date.now()
+                usedAt: Date.now()
             });
 
             // Оставляем только MAX_RECENT
@@ -159,60 +221,60 @@ class LayoutManager {
     async _loadLayoutById(id, updateRecent = true) {
         const layout = await apiClient.getLayout(parseInt(id));
 
-       // Применяем layout данные
-       if (layout.layout_data) {
-        await new Promise((resolve) => {
-            if (this.widget.load) {
-                let tvData = layout.layout_data;
+        // Применяем layout данные
+        if (layout.layout_data) {
+            await new Promise((resolve) => {
+                if (this.widget.load) {
+                    let tvData = layout.layout_data;
 
-                // Если пришла строка — парсим
-                if (typeof tvData === 'string') {
-                    try { tvData = JSON.parse(tvData); } catch(_) {}
+                    // Если пришла строка — парсим
+                    if (typeof tvData === 'string') {
+                        try { tvData = JSON.parse(tvData); } catch (_) { }
+                    }
+
+                    // Вырезаем _appState — TV его не понимает и падает на panes
+                    if (tvData && typeof tvData === 'object' && tvData._appState) {
+                        const { _appState, ...pureTvData } = tvData;
+                        tvData = pureTvData;
+                    }
+
+                    // Восстанавливаем appState вручную
+                    if (layout.layout_data?._appState && window.layoutManager?._restoreAppState) {
+                        window.layoutManager._restoreAppState(layout.layout_data._appState);
+                    }
+
+                    // Unwrap ChartData format: {content: "...", name, symbol, ...} → parse content
+                    if (tvData && typeof tvData === 'object' && typeof tvData.content === 'string' && !tvData.panes) {
+                        try { tvData = JSON.parse(tvData.content); } catch (_) { }
+                    }
+
+                    // Удаляем name — может конфликтовать с TV internal
+                    if (tvData && typeof tvData === 'object' && tvData.name !== undefined) {
+                        delete tvData.name;
+                    }
+
+                    if (!tvData || typeof tvData !== 'object' || (!Array.isArray(tvData.panes) && !Array.isArray(tvData.charts))) {
+                        console.warn('[LayoutMgr] layout_data missing panes/charts, skipping load');
+                        setTimeout(resolve, 300);
+                        return;
+                    }
+
+                    this.widget.load(tvData);
                 }
-
-                // Вырезаем _appState — TV его не понимает и падает на panes
-                if (tvData && typeof tvData === 'object' && tvData._appState) {
-                    const { _appState, ...pureTvData } = tvData;
-                    tvData = pureTvData;
-                }
-
-                // Восстанавливаем appState вручную
-                if (layout.layout_data?._appState && window.layoutManager?._restoreAppState) {
-                    window.layoutManager._restoreAppState(layout.layout_data._appState);
-                }
-
-                // Unwrap ChartData format: {content: "...", name, symbol, ...} → parse content
-                if (tvData && typeof tvData === 'object' && typeof tvData.content === 'string' && !tvData.panes) {
-                    try { tvData = JSON.parse(tvData.content); } catch (_) {}
-                }
-
-                // Удаляем name — может конфликтовать с TV internal
-                if (tvData && typeof tvData === 'object' && tvData.name !== undefined) {
-                    delete tvData.name;
-                }
-
-                if (!tvData || typeof tvData !== 'object' || (!Array.isArray(tvData.panes) && !Array.isArray(tvData.charts))) {
-                    console.warn('[LayoutMgr] layout_data missing panes/charts, skipping load');
-                    setTimeout(resolve, 300);
-                    return;
-                }
-
-                this.widget.load(tvData);
-            }
-            setTimeout(resolve, 300);
-        });
-    }
+                setTimeout(resolve, 300);
+            });
+        }
 
         // Применяем символ и интервал из layout
-        if (layout.symbol)   this.widget.activeChart().setSymbol(layout.symbol);
+        if (layout.symbol) this.widget.activeChart().setSymbol(layout.symbol);
         if (layout.interval) this.widget.activeChart().setResolution(layout.interval);
 
         // Сохраняем в сессию
         this._saveSession({
-            layoutId:   layout.id,
+            layoutId: layout.id,
             layoutName: layout.name,
-            symbol:     layout.symbol,
-            interval:   layout.interval
+            symbol: layout.symbol,
+            interval: layout.interval
         });
 
         // Добавляем в recent
@@ -226,14 +288,14 @@ class LayoutManager {
 
     _restoreAppState(appState) {
         if (!appState) return;
-    
+
         // Восстанавливаем состояние таблицы
         if (appState.tableState && window.dataTable?.restoreState) {
             setTimeout(() => {
                 window.dataTable.restoreState(appState.tableState);
             }, 800);
         }
-    
+
         // activedata восстановится автоматически через datafeed при загрузке символа/интервала.
         // Если ключ уже совпадает — данные в памяти, просто обновляем таблицу.
         if (appState.activeDataKey) {
@@ -257,14 +319,14 @@ class LayoutManager {
         document.body.appendChild(guard);
         this._waitForIframeAndObserve();
     }
-    
+
     _getIframeDoc() {
         try {
             const iframe = document.querySelector('#tv_chart_container iframe');
             return iframe?.contentDocument || iframe?.contentWindow?.document || null;
         } catch (e) { return null; }
     }
-    
+
     _waitForIframeAndObserve() {
         const tryObserve = () => {
             const iframeDoc = this._getIframeDoc();
@@ -273,10 +335,10 @@ class LayoutManager {
         };
         tryObserve();
     }
-    
+
     _observeIframeMenu(iframeDoc) {
         this._injectIframeStyles(iframeDoc);
-        const ANCHOR   = '[data-name="save-load-menu-item-load"]';
+        const ANCHOR = '[data-name="save-load-menu-item-load"]';
         const INJECTED = 'lm-recently-used-section';
         const tryInject = () => {
             const anchor = iframeDoc.querySelector(ANCHOR);
@@ -288,23 +350,23 @@ class LayoutManager {
         this._iframeObserver = new MutationObserver(tryInject);
         this._iframeObserver.observe(iframeDoc.body, { childList: true, subtree: true });
     }
-    
+
     _buildRecentSection(iframeDoc, anchor) {
-        const recent  = this._loadRecent();
+        const recent = this._loadRecent();
         const session = this._loadSession();
-    
+
         const section = iframeDoc.createElement('div');
         section.id = 'lm-recently-used-section';
-    
+
         const divider = iframeDoc.createElement('div');
         divider.className = 'lm-tv-divider';
         section.appendChild(divider);
-    
+
         const header = iframeDoc.createElement('div');
         header.className = 'lm-tv-section-header';
         header.textContent = 'RECENTLY USED';
         section.appendChild(header);
-    
+
         if (recent.length === 0) {
             const empty = iframeDoc.createElement('div');
             empty.className = 'lm-tv-empty';
@@ -314,15 +376,15 @@ class LayoutManager {
             recent.forEach(r => {
                 const item = iframeDoc.createElement('div');
                 item.className = 'lm-tv-item' + (session?.layoutId == r.id ? ' lm-tv-item--active' : '');
-    
+
                 const nameEl = iframeDoc.createElement('div');
                 nameEl.className = 'lm-tv-item-name';
                 nameEl.textContent = r.name;
-    
+
                 const metaEl = iframeDoc.createElement('div');
                 metaEl.className = 'lm-tv-item-meta';
                 metaEl.textContent = [r.symbol, r.interval].filter(Boolean).join(', ');
-    
+
                 item.appendChild(nameEl);
                 item.appendChild(metaEl);
                 item.addEventListener('click', async () => {
@@ -337,10 +399,10 @@ class LayoutManager {
                 section.appendChild(item);
             });
         }
-    
+
         anchor.parentNode.insertBefore(section, anchor.nextSibling);
     }
-    
+
     _renderRecentMenu() {
         const iframeDoc = this._getIframeDoc();
         if (!iframeDoc) return;
@@ -351,7 +413,7 @@ class LayoutManager {
         existing.remove();
         this._buildRecentSection(iframeDoc, anchor);
     }
-    
+
     _injectIframeStyles(iframeDoc) {
         if (iframeDoc.getElementById('lm-iframe-styles')) return;
         const style = iframeDoc.createElement('style');
@@ -414,7 +476,7 @@ class LayoutManager {
         const m = Math.floor(diff / 60000);
         const h = Math.floor(diff / 3600000);
         const d = Math.floor(diff / 86400000);
-        if (m < 1)  return 'just now';
+        if (m < 1) return 'just now';
         if (m < 60) return `${m}m ago`;
         if (h < 24) return `${h}h ago`;
         return `${d}d ago`;
@@ -441,32 +503,32 @@ class LayoutManager {
 
     async saveLayout(name, description = '', isDefault = false) {
         if (!this.widget) throw new Error('Widget not initialized');
-    
+
         const layoutData = await this.getCurrentLayoutData();
-        const chart      = this.widget.activeChart();
-        const symbol     = chart.symbol();
-        const interval   = chart.resolution();
-    
+        const chart = this.widget.activeChart();
+        const symbol = chart.symbol();
+        const interval = chart.resolution();
+
         const appState = {
             activeDataKey: window.app?._activeDataKey || null,
-            tableState:    window.dataTable?.getState ? window.dataTable.getState() : null,
-            savedAt:       Date.now(),
+            tableState: window.dataTable?.getState ? window.dataTable.getState() : null,
+            savedAt: Date.now(),
         };
-    
+
         const extendedLayoutData = {
             ...(typeof layoutData === 'object' && layoutData !== null ? layoutData : { tvData: layoutData }),
             _appState: appState,
         };
-    
+
         const result = await apiClient.createLayout({
             name, description, layout_data: extendedLayoutData,
             symbol, interval, is_default: isDefault
         });
-    
+
         this._saveSession({ layoutId: result.id, layoutName: name, symbol, interval, appState });
         this._pushRecent({ id: result.id, name, symbol, interval });
         this._renderRecentMenu();
-    
+
         return result;
     }
 

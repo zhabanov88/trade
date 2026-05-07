@@ -14,18 +14,18 @@ const { LLMRouter, PROVIDERS } = require('./llm-router');
 const { buildCorrelationMatrix, buildPortfolio, efficientFrontier, detectMarketMode, getVolatilities } = require('./correlation-engine');
 const app = express();
 
-// Middleware 
+// Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static('public'));
 
-// Session configuration 
+// Session configuration
 app.use(session({
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
     resave: false,
     saveUninitialized: false,
-    cookie: { 
-        secure: false, // Set to true in production with HTTPS 
+    cookie: {
+        secure: false, // Set to true in production with HTTPS
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         sameSite: 'lax'
@@ -105,9 +105,9 @@ app.post('/api/auth/register', async (req, res) => {
 
     try {
         const passwordHash = await bcrypt.hash(password, 10);
-        
+
         const result = await greenplumPool.query(
-            `INSERT INTO users (username, password_hash, email, role_id) 
+            `INSERT INTO users (username, password_hash, email, role_id)
              VALUES ($1, $2, $3, (SELECT id FROM roles WHERE name = 'user'))
              RETURNING id, username, email, is_admin`,
             [username, passwordHash, email]
@@ -120,14 +120,14 @@ app.post('/api/auth/register', async (req, res) => {
 
         await logAction(user.id, 'register', 'user', user.id, null, req);
 
-        res.json({ 
-            success: true, 
-            user: { 
-                id: user.id, 
-                username: user.username, 
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
                 email: user.email,
                 isAdmin: user.is_admin
-            } 
+            }
         });
     } catch (error) {
         if (error.code === '23505') {
@@ -148,7 +148,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     try {
         const result = await greenplumPool.query(
-            `SELECT id, username, password_hash, email, is_admin 
+            `SELECT id, username, password_hash, email, is_admin
              FROM users WHERE username = $1 AND is_active = true`,
             [username]
         );
@@ -175,14 +175,14 @@ app.post('/api/auth/login', async (req, res) => {
 
         await logAction(user.id, 'login', 'user', user.id, null, req);
 
-        res.json({ 
-            success: true, 
-            user: { 
-                id: user.id, 
-                username: user.username, 
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
                 email: user.email,
                 isAdmin: user.is_admin
-            } 
+            }
         });
     } catch (error) {
         console.error('Login error:', error);
@@ -190,33 +190,18 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-<<<<<<< HEAD
-// ==================== CHANGE PASSWORD ====================
-app.put('/api/auth/password', async (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-    }
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-        return res.status(400).json({ error: 'Current password and new password are required' });
-=======
 // ==================== PASSWORD CHANGE ====================
 app.put('/api/auth/password', requireAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
         return res.status(400).json({ error: 'Current and new password required' });
->>>>>>> e890054 (new data)
     }
     if (newPassword.length < 6) {
         return res.status(400).json({ error: 'New password must be at least 6 characters' });
     }
     try {
         const result = await greenplumPool.query(
-<<<<<<< HEAD
-            'SELECT password_hash FROM users WHERE id = $1 AND is_active = true',
-=======
             'SELECT password_hash FROM users WHERE id = $1',
->>>>>>> e890054 (new data)
             [req.session.userId]
         );
         if (result.rows.length === 0) {
@@ -226,22 +211,6 @@ app.put('/api/auth/password', requireAuth, async (req, res) => {
         if (!match) {
             return res.status(401).json({ error: 'Current password is incorrect' });
         }
-<<<<<<< HEAD
-        const newHash = await bcrypt.hash(newPassword, 10);
-        await greenplumPool.query(
-            'UPDATE users SET password_hash = $1 WHERE id = $2',
-            [newHash, req.session.userId]
-        );
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({ error: 'Password change failed' });
-    }
-});
-
-// ==================== MARKET DATA ENDPOINT ====================
-// Add this to your server.js file
-=======
         const hash = await bcrypt.hash(newPassword, 10);
         await greenplumPool.query(
             'UPDATE users SET password_hash = $1 WHERE id = $2',
@@ -253,45 +222,13 @@ app.put('/api/auth/password', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to change password' });
     }
 });
->>>>>>> e890054 (new data)
 
-// ==================== MARKET DATA ENDPOINT ====================
 
-// Market data endpoint - fetches from ClickHouse
-app.get('/api/market-data', requireAuth, async (req, res) => {
-    const { ticker, table, from, to } = req.query;
-    
-    if (!ticker || !table || !from || !to) {
-        return res.status(400).json({ 
-            error: 'Missing required parameters: ticker, table, from, to' 
-        });
-    }
-    
-    const allowedTables = [
-        'market_data_minute',
-        'market_data_hour', 
-        'market_data_day',
-        'market_data_week'
-    ];
-    
-    //if (!allowedTables.includes(table)) {
-    //    console.warn(`⚠️ Table ${table} not in allowed list, but proceeding`);
-    //}
-    
+app.get('/api/market-data-ticks-last', requireAuth, async (req, res) => {
+    const { sort } = req.query;
     try {
-        const fromTimestamp = parseInt(from);
-        const toTimestamp = parseInt(to);
-        
-        if (isNaN(fromTimestamp) || isNaN(toTimestamp)) {
-            return res.status(400).json({ error: 'Invalid timestamps' });
-        }
-        
-        console.log(`📊 Fetching: ${ticker} from ${table}`);
-        console.log(`   From: ${new Date(fromTimestamp * 1000).toISOString()}`);
-        console.log(`   To: ${new Date(toTimestamp * 1000).toISOString()}`);
-        
         const query = `
-            SELECT 
+            SELECT
                 window_start as timestamp,
                 open,
                 high,
@@ -300,12 +237,292 @@ app.get('/api/market-data', requireAuth, async (req, res) => {
                 volume
             FROM ${table}
             WHERE ticker = {ticker:String}
-              AND toUnixTimestamp(window_start) >= {from:UInt32}
-              AND toUnixTimestamp(window_start) <= {to:UInt32}
+            ORDER BY window_start ${sort}
+            LIMIT 10000
+        `;
+
+        const resultSet = await clickhouse.query({
+            query: query,
+            format: 'JSONEachRow',
+            query_params: {
+                ticker: ticker
+            }
+        });
+
+        const data = await resultSet.json();
+        const sortedData = data.sort((a, b) => {
+            return new Date(a.timestamp) - new Date(b.timestamp);
+        });
+
+
+        return sortedData
+
+    } catch (error) {
+        console.error('❌ Market data error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch market data',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/market-data/ticks/aggregated-last', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1, sort = 'ASC' } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({
+            error: 'Missing required parameter: ticker'
+        });
+    }
+
+    try {
+        const hasDateFilter = from && to;
+        const intervalSeconds = parseInt(interval);
+
+        const formatDateTime64 = (date) => {
+            const isoString = date.toISOString();
+            const withoutZ = isoString.slice(0, -1);
+            const parts = withoutZ.split('.');
+            const dateTimePart = parts[0].replace('T', ' ');
+            const milliseconds = parts[1] || '000';
+            const microseconds = milliseconds.padEnd(6, '0');
+            return `${dateTimePart}.${microseconds}`;
+        };
+
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(toStartOfInterval(
+                    participant_timestamp, INTERVAL ${intervalSeconds} SECOND
+                ), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
+                toFloat64(avg(price)) as open,
+                toFloat64(max(price)) as high,
+                toFloat64(min(price)) as low,
+                toFloat64(argMax(price, participant_timestamp)) as close,
+                toUInt64(count()) as volume
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            ${hasDateFilter ? `AND participant_timestamp >= {from:DateTime64(6, 'UTC')} AND participant_timestamp <= {to:DateTime64(6, 'UTC')}` : ''}
+            GROUP BY ticker, timestamp
+            ORDER BY timestamp ${sort}
+            LIMIT 10000
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker,
+                ...(hasDateFilter && {
+                    from: formatDateTime64(new Date(parseInt(from) * 1000)),
+                    to: formatDateTime64(new Date(parseInt(to) * 1000))
+                })
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ Tick aggregation error:', error);
+        res.status(500).json({
+            error: 'Failed to aggregate ticks',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/market-data-test', requireAuth, async (req, res) => {
+    const { ticker, table, from, to } = req.query;
+
+    if (!ticker || !table) {
+        return res.status(400).json({ error: 'Missing ticker or table' });
+    }
+
+    try {
+        const conditions = ['ticker = {ticker:String}'];
+        const queryParams = { ticker };
+
+        // from и to приходят как unix seconds
+        if (from) {
+            conditions.push('toUnixTimestamp(window_start) >= {from:UInt32}');
+            queryParams.from = parseInt(from);
+        }
+
+        if (to) {
+            conditions.push('toUnixTimestamp(window_start) <= {to:UInt32}');
+            queryParams.to = parseInt(to);
+        }
+
+        const orderDir = (from && !to) ? 'ASC' : 'DESC';
+
+        const query = `
+            SELECT
+                window_start AS timestamp,
+                open, high, low, close, volume
+            FROM ${table}
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY window_start ${orderDir}
+            LIMIT 10000
+        `;
+
+        const resultSet = await clickhouse.query({
+            query,
+            format: 'JSONEachRow',
+            query_params: queryParams
+        });
+
+        const data = await resultSet.json();
+
+        // Всегда возвращаем в хронологическом порядке
+        data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        return res.json(data);
+
+    } catch (error) {
+        console.error('❌ Market data error:', error);
+        res.status(500).json({ error: 'Failed to fetch market data', details: error.message });
+    }
+});
+
+app.get('/api/market-data/ticks/aggregated-test', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1, sort = 'ASC' } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({
+            error: 'Missing required parameter: ticker'
+        });
+    }
+
+    try {
+        const intervalSeconds = parseInt(interval);
+
+        const formatDateTime64 = (date) => {
+            const isoString = date.toISOString();
+            const withoutZ = isoString.slice(0, -1);
+            const parts = withoutZ.split('.');
+            const dateTimePart = parts[0].replace('T', ' ');
+            const milliseconds = parts[1] || '000';
+            const microseconds = milliseconds.padEnd(6, '0');
+
+            return `${dateTimePart}.${microseconds}`;
+        };
+
+        const conditions = ['ticker = {ticker:String}'];
+        const queryParams = { ticker };
+
+        if (from) {
+            conditions.push(
+                "participant_timestamp >= {from:DateTime64(6, 'UTC')}"
+            );
+
+            queryParams.from = formatDateTime64(
+                new Date(parseInt(from) * 1000)
+            );
+        }
+
+        if (to) {
+            conditions.push(
+                "participant_timestamp <= {to:DateTime64(6, 'UTC')}"
+            );
+
+            queryParams.to = formatDateTime64(
+                new Date(parseInt(to) * 1000)
+            );
+        }
+
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(
+                    toStartOfInterval(
+                        participant_timestamp,
+                        INTERVAL ${intervalSeconds} SECOND
+                    ),
+                    '%Y-%m-%dT%H:%i:%S.000Z'
+                ) as timestamp,
+                toFloat64(avg(price)) as open,
+                toFloat64(max(price)) as high,
+                toFloat64(min(price)) as low,
+                toFloat64(argMax(price, participant_timestamp)) as close,
+                toUInt64(count()) as volume
+            FROM raw_market_data
+            WHERE ${conditions.join(' AND ')}
+            GROUP BY ticker, timestamp
+            ORDER BY timestamp ${sort}
+            LIMIT 10000
+        `;
+
+        const result = await clickhouse.query({
+            query,
+            query_params: queryParams,
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ Tick aggregation error:', error);
+
+        res.status(500).json({
+            error: 'Failed to aggregate ticks',
+            details: error.message
+        });
+    }
+});
+
+// ==================== MARKET DATA ENDPOINT ====================
+
+// Market data endpoint - fetches from ClickHouse
+app.get('/api/market-data', requireAuth, async (req, res) => {
+    const { ticker, table, from, to } = req.query;
+
+    if (!ticker || !table || !from || !to) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table, from, to'
+        });
+    }
+
+    const allowedTables = [
+        'market_data_minute',
+        'market_data_hour',
+        'market_data_day',
+        'market_data_week'
+    ];
+
+    //if (!allowedTables.includes(table)) {
+    //    console.warn(`⚠️ Table ${table} not in allowed list, but proceeding`);
+    //}
+
+    try {
+        const fromTimestamp = parseInt(from);
+        const toTimestamp = parseInt(to);
+
+        if (isNaN(fromTimestamp) || isNaN(toTimestamp)) {
+            return res.status(400).json({ error: 'Invalid timestamps' });
+        }
+
+        console.log(`📊 Fetching: ${ticker} from ${table}`);
+        console.log(`   From: ${new Date(fromTimestamp * 1000).toISOString()}`);
+        console.log(`   To: ${new Date(toTimestamp * 1000).toISOString()}`);
+
+        const query = `
+            SELECT
+                window_start as timestamp,
+                open,
+                high,
+                low,
+                close,
+                volume
+            FROM ${table}
+            WHERE ticker = {ticker:String}
             ORDER BY window_start ASC
             LIMIT 10000
         `;
-        
+
         const resultSet = await clickhouse.query({
             query: query,
             format: 'JSONEachRow',
@@ -315,28 +532,216 @@ app.get('/api/market-data', requireAuth, async (req, res) => {
                 to: toTimestamp
             }
         });
-        
+
         const data = await resultSet.json();
-        
+
         console.log(`✅ Returned ${data.length} bars for ${ticker}`);
-        
+
         if (data.length > 0) {
             console.log(`   First: ${data[0].timestamp}`);
             console.log(`   Last: ${data[data.length - 1].timestamp}`);
         }
-        
+
         res.json(data);
-        
+
     } catch (error) {
         console.error('❌ Market data error:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to fetch market data',
-            details: error.message 
+            details: error.message
         });
     }
 });
 
 app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
+    const { ticker, table, from, to, up = '', down = '' } = req.query;
+
+    if (!ticker || !table) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table'
+        });
+    }
+
+    // Парсим списки доп.таймфреймов
+    const upTables   = up   ? up.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const downTables = down ? down.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // Простая защита от SQL-инъекций
+    const allTables = [table, ...upTables, ...downTables];
+    const validPattern = /^[a-z][a-z0-9_]*$/;
+    for (const t of allTables) {
+        if (!validPattern.test(t)) {
+            return res.status(400).json({ error: `Invalid table name: ${t}` });
+        }
+    }
+
+    console.log(`📊 [MTF] ${ticker} | base: ${table} | up: [${upTables}] | down: [${downTables}]`);
+
+    try {
+        // ── 1. Запрос основного ТФ ────────────────────────────────────────
+        // Логика аналогична /api/market-data-test:
+        //   - from и to опциональны
+        //   - ORDER DESC когда есть только to (подгрузка истории назад)
+        //   - ORDER ASC  когда есть только from (подгрузка вперёд)
+        //   - финальная сортировка всегда ASC
+        const conditions = ['ticker = {ticker:String}'];
+        const queryParams = { ticker };
+
+        if (from) {
+            conditions.push('toUnixTimestamp(window_start) >= {from:UInt32}');
+            queryParams.from = parseInt(from);
+        }
+        if (to) {
+            conditions.push('toUnixTimestamp(window_start) <= {to:UInt32}');
+            queryParams.to = parseInt(to);
+        }
+
+        // DESC когда грузим историю назад (есть to, нет from)
+        const orderDir = (from && !to) ? 'ASC' : 'DESC';
+
+        const mainQuery = `
+            SELECT
+                window_start     AS timestamp,
+                open, high, low, close, volume,
+                first_tick_index,
+                last_tick_index
+            FROM ${table}
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY window_start ${orderDir}
+            LIMIT 10000
+        `;
+
+        const mainRs = await clickhouse.query({
+            query: mainQuery,
+            format: 'JSONEachRow',
+            query_params: queryParams,
+        });
+        let mainBars = await mainRs.json();
+
+        if (!mainBars.length) {
+            return res.json([]);
+        }
+
+        // Всегда возвращаем в хронологическом порядке (как в market-data-test)
+        mainBars.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        // Если нет доп.ТФ — возвращаем как есть
+        if (upTables.length === 0 && downTables.length === 0) {
+            return res.json(mainBars);
+        }
+
+        // ── 2. Вычисляем tick_index диапазон для запроса доп.ТФ ──────────
+        const globalFirstTick = Math.min(...mainBars.map(b => Number(b.first_tick_index)));
+        const globalLastTick  = Math.max(...mainBars.map(b => Number(b.last_tick_index)));
+
+        // ── 3. Параллельно грузим все доп.ТФ ─────────────────────────────
+        const fetchTf = async (tfTable) => {
+            const q = `
+                SELECT
+                    window_start     AS timestamp,
+                    open, high, low, close, volume,
+                    first_tick_index,
+                    last_tick_index
+                FROM ${tfTable}
+                WHERE ticker = {ticker:String}
+                  AND first_tick_index <= {globalLast:UInt64}
+                  AND last_tick_index  >= {globalFirst:UInt64}
+                ORDER BY window_start ASC
+                LIMIT 50000
+            `;
+            const rs = await clickhouse.query({
+                query: q,
+                format: 'JSONEachRow',
+                query_params: { ticker, globalFirst: globalFirstTick, globalLast: globalLastTick },
+            });
+            return rs.json();
+        };
+
+        const upResults   = await Promise.all(upTables.map(fetchTf));
+        const downResults = await Promise.all(downTables.map(fetchTf));
+
+        // ── 4. Строим индексы для O(n log n) джойна ───────────────────────
+        const upIndexed   = upResults.map(bars =>
+            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
+        );
+        const downIndexed = downResults.map(bars =>
+            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
+        );
+
+        function lowerBound(arr, val, key) {
+            let lo = 0, hi = arr.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (Number(arr[mid][key]) < val) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        // ── 5. Джойн ──────────────────────────────────────────────────────
+        const enriched = mainBars.map(bar => {
+            const bFirst = Number(bar.first_tick_index);
+            const bLast  = Number(bar.last_tick_index);
+
+            // Старшие ТФ: бар, в который текущий ВХОДИТ
+            const tfUp = {};
+            for (let i = 0; i < upTables.length; i++) {
+                const sorted = upIndexed[i];
+                const result = [];
+                let pos = lowerBound(sorted, bFirst, 'first_tick_index');
+                pos = pos > 0 ? pos - 1 : pos;
+                for (let j = Math.max(0, pos - 2); j <= Math.min(sorted.length - 1, pos + 2); j++) {
+                    const s = sorted[j];
+                    const sFirst = Number(s.first_tick_index);
+                    const sLast  = Number(s.last_tick_index);
+                    if (sFirst <= bFirst && sLast >= bLast) {
+                        result.push(s);
+                        break;
+                    }
+                }
+                tfUp[upTables[i]] = result;
+            }
+
+            // Младшие ТФ: все бары, которые ВХОДЯТ в текущий
+            const tfDown = {};
+            for (let i = 0; i < downTables.length; i++) {
+                const sorted = downIndexed[i];
+                const startPos = lowerBound(sorted, bFirst, 'first_tick_index');
+                const result = [];
+                for (let j = startPos; j < sorted.length; j++) {
+                    const dFirst = Number(sorted[j].first_tick_index);
+                    const dLast  = Number(sorted[j].last_tick_index);
+                    if (dFirst > bLast) break;
+                    if (dFirst >= bFirst && dLast <= bLast) result.push(sorted[j]);
+                }
+                tfDown[downTables[i]] = result;
+            }
+
+            return {
+                timestamp:        bar.timestamp,
+                open:             bar.open,
+                high:             bar.high,
+                low:              bar.low,
+                close:            bar.close,
+                volume:           bar.volume,
+                first_tick_index: bar.first_tick_index,
+                last_tick_index:  bar.last_tick_index,
+                ...(upTables.length   > 0 && { tf_up:   tfUp   }),
+                ...(downTables.length > 0 && { tf_down: tfDown }),
+            };
+        });
+
+        console.log(`✅ [MTF] Returned ${enriched.length} bars | up: ${upResults.map((r, i) => upTables[i] + ':' + r.length)} | down: ${downResults.map((r, i) => downTables[i] + ':' + r.length)}`);
+
+        return res.json(enriched);
+
+    } catch (err) {
+        console.error('❌ [MTF] Error:', err);
+        res.status(500).json({ error: 'Failed to fetch MTF data', details: err.message });
+    }
+});
+
+app.get('/api/market-data/mtf_old', requireAuth, async (req, res) => {
     const { ticker, table, from, to, up = '', down = '' } = req.query;
 
     if (!ticker || !table || !from || !to) {
@@ -346,13 +751,13 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
     }
 
     const fromTs = parseInt(from);
-    const toTs   = parseInt(to);
+    const toTs = parseInt(to);
     if (isNaN(fromTs) || isNaN(toTs)) {
         return res.status(400).json({ error: 'Invalid timestamps' });
     }
 
     // Парсим списки доп.таймфреймов
-    const upTables   = up   ? up.split(',').map(s => s.trim()).filter(Boolean)   : [];
+    const upTables = up ? up.split(',').map(s => s.trim()).filter(Boolean) : [];
     const downTables = down ? down.split(',').map(s => s.trim()).filter(Boolean) : [];
 
     // Простая защита от SQL-инъекций: разрешаем только candles_* и market_data_*
@@ -382,9 +787,9 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
             LIMIT 10000
         `;
 
-        const mainRs   = await clickhouse.query({
-            query:        mainQuery,
-            format:       'JSONEachRow',
+        const mainRs = await clickhouse.query({
+            query: mainQuery,
+            format: 'JSONEachRow',
             query_params: { ticker, from: fromTs, to: toTs }
         });
         const mainBars = await mainRs.json();
@@ -396,7 +801,7 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
         // ── 2. Вычисляем tick_index диапазон всего ответа ────────────────
         // Для доп.ТФ запрашиваем с запасом: берём самый ранний first и самый поздний last
         const globalFirstTick = Math.min(...mainBars.map(b => Number(b.first_tick_index)));
-        const globalLastTick  = Math.max(...mainBars.map(b => Number(b.last_tick_index)));
+        const globalLastTick = Math.max(...mainBars.map(b => Number(b.last_tick_index)));
 
         // ── 3. Параллельно грузим все доп.ТФ ────────────────────────────
         // Запрос по tick_index диапазону — точнее и быстрее чем по времени
@@ -414,19 +819,19 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
                 ORDER BY window_start ASC
                 LIMIT 50000
             `;
-            const rs   = await clickhouse.query({
-                query:        q,
-                format:       'JSONEachRow',
+            const rs = await clickhouse.query({
+                query: q,
+                format: 'JSONEachRow',
                 query_params: {
                     ticker,
                     globalFirst: globalFirstTick,
-                    globalLast:  globalLastTick,
+                    globalLast: globalLastTick,
                 }
             });
             return rs.json();
         };
 
-        const upResults   = await Promise.all(upTables.map(fetchTf));
+        const upResults = await Promise.all(upTables.map(fetchTf));
         const downResults = await Promise.all(downTables.map(fetchTf));
 
         // ── 4. Строим индексы для быстрого джойна ───────────────────────
@@ -469,7 +874,7 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
         // ── 5. Джойн: обогащаем каждый основной бар ─────────────────────
         const enriched = mainBars.map(bar => {
             const bFirst = Number(bar.first_tick_index);
-            const bLast  = Number(bar.last_tick_index);
+            const bLast = Number(bar.last_tick_index);
 
             // Старшие ТФ: ищем бар, в который текущий ВХОДИТ
             const tfUp = {};
@@ -488,7 +893,7 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
                 for (let j = Math.max(0, pos - 2); j <= Math.min(sorted.length - 1, pos + 2); j++) {
                     const s = sorted[j];
                     const sFirst = Number(s.first_tick_index);
-                    const sLast  = Number(s.last_tick_index);
+                    const sLast = Number(s.last_tick_index);
                     if (sFirst <= bFirst && sLast >= bLast) {
                         result.push(s);
                         break; // в корректных данных ровно один старший бар
@@ -505,12 +910,12 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
 
                 // Стартовая позиция: first_tick >= bFirst
                 const startPos = lowerBound(sorted, bFirst, 'first_tick_index');
-                const result   = [];
+                const result = [];
 
                 for (let j = startPos; j < sorted.length; j++) {
                     const d = sorted[j];
                     const dFirst = Number(d.first_tick_index);
-                    const dLast  = Number(d.last_tick_index);
+                    const dLast = Number(d.last_tick_index);
                     if (dFirst > bLast) break; // дальше не будет
                     if (dFirst >= bFirst && dLast <= bLast) {
                         result.push(d);
@@ -521,20 +926,20 @@ app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
             }
 
             return {
-                timestamp:         bar.timestamp,
-                open:              bar.open,
-                high:              bar.high,
-                low:               bar.low,
-                close:             bar.close,
-                volume:            bar.volume,
-                first_tick_index:  bar.first_tick_index,
-                last_tick_index:   bar.last_tick_index,
-                ...(upTables.length   > 0 && { tf_up:   tfUp   }),
+                timestamp: bar.timestamp,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+                first_tick_index: bar.first_tick_index,
+                last_tick_index: bar.last_tick_index,
+                ...(upTables.length > 0 && { tf_up: tfUp }),
                 ...(downTables.length > 0 && { tf_down: tfDown }),
             };
         });
 
-        console.log(`✅ [MTF] Returned ${enriched.length} bars | up: ${upResults.map((r,i)=>upTables[i]+':'+r.length)} | down: ${downResults.map((r,i)=>downTables[i]+':'+r.length)}`);
+        console.log(`✅ [MTF] Returned ${enriched.length} bars | up: ${upResults.map((r, i) => upTables[i] + ':' + r.length)} | down: ${downResults.map((r, i) => downTables[i] + ':' + r.length)}`);
 
         res.json(enriched);
 
@@ -556,8 +961,8 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/auth/status', (req, res) => {
     if (req.session && req.session.userId) {
-        res.json({ 
-            authenticated: true, 
+        res.json({
+            authenticated: true,
             username: req.session.username,
             userId: req.session.userId,
             isAdmin: req.session.isAdmin || false
@@ -631,7 +1036,7 @@ app.post('/api/backtest/run', requireAuth, async (req, res) => {
         riskPct = 1,
         leverage = 1,
         slMode = 'pct', slValue = 1,
-        tpMode = 'rr',  tpValue = 2,
+        tpMode = 'rr', tpValue = 2,
         maxBars = 50,
         direction = 'both',
         useColExit = true,
@@ -685,7 +1090,7 @@ app.post('/api/backtest/run', requireAuth, async (req, res) => {
 
     // Конвертируем даты в unix секунды
     const fromTs = fromDate ? Math.floor(new Date(fromDate + 'T00:00:00Z').getTime() / 1000) : null;
-    const toTs   = toDate   ? Math.floor(new Date(toDate   + 'T23:59:59Z').getTime() / 1000) : null;
+    const toTs = toDate ? Math.floor(new Date(toDate + 'T23:59:59Z').getTime() / 1000) : null;
 
     const cfg = {
         ticker, table, fromTs, toTs,
@@ -761,17 +1166,17 @@ app.post('/api/backtest/walkforward', requireAuth, async (req, res) => {
         riskPct = 1,
         leverage = 1,
         slMode = 'pct', slValue = 1,
-        tpMode = 'rr',  tpValue = 2,
+        tpMode = 'rr', tpValue = 2,
         maxBars = 50,
         direction = 'both',
         useColExit = true,
         setupCols = {},
 
         // Walk-Forward специфичные параметры
-        wfWindows    = 5,
-        inSamplePct  = 70,
+        wfWindows = 5,
+        inSamplePct = 70,
         anchoredStart = false,
-        paramRanges  = {
+        paramRanges = {
             slValue: [0.5, 1.0, 1.5, 2.0],
             tpValue: [1.5, 2.0, 3.0],
             riskPct: [0.5, 1.0, 2.0],
@@ -787,7 +1192,7 @@ app.post('/api/backtest/walkforward', requireAuth, async (req, res) => {
     }
 
     const fromTs = fromDate ? Math.floor(new Date(fromDate + 'T00:00:00Z').getTime() / 1000) : null;
-    const toTs   = toDate   ? Math.floor(new Date(toDate   + 'T23:59:59Z').getTime() / 1000) : null;
+    const toTs = toDate ? Math.floor(new Date(toDate + 'T23:59:59Z').getTime() / 1000) : null;
 
     const cfg = {
         ticker, table, fromTs, toTs,
@@ -803,8 +1208,8 @@ app.post('/api/backtest/walkforward', requireAuth, async (req, res) => {
     };
 
     const wfCfg = {
-        windows:      parseInt(wfWindows),
-        inSamplePct:  parseInt(inSamplePct),
+        windows: parseInt(wfWindows),
+        inSamplePct: parseInt(inSamplePct),
         anchoredStart: Boolean(anchoredStart),
         paramRanges,
     };
@@ -863,7 +1268,7 @@ app.post('/api/backtest/montecarlo', requireAuth, async (req, res) => {
 app.get('/api/intervals', requireAuth, async (req, res) => {
     try {
         const result = await greenplumPool.query(
-            `SELECT id, code, name, description, tradingview_code, clickhouse_table, 
+            `SELECT id, code, name, description, tradingview_code, clickhouse_table,
                     seconds, sort_order, is_active
              FROM time_intervals
              WHERE is_active = TRUE
@@ -881,12 +1286,14 @@ app.get('/api/intervals', requireAuth, async (req, res) => {
 
 app.get('/api/instruments', requireAuth, async (req, res) => {
     const { provider_id, type, search } = req.query;
-    
+
     try {
         let query = `
-            SELECT i.*, dp.name as provider_name
+            SELECT i.*, dp.name as provider_name,
+            gp.name as group_provider_name
             FROM instruments i
             LEFT JOIN data_providers dp ON i.provider_id = dp.id
+            LEFT JOIN group_providers gp ON dp.group_provider_id = gp.id
             WHERE i.is_active = TRUE
         `;
         const params = [];
@@ -922,7 +1329,7 @@ app.post('/api/instruments', requireAdmin, async (req, res) => {
 
     try {
         const result = await greenplumPool.query(
-            `INSERT INTO instruments (provider_id, symbol, name, type, base_currency, quote_currency, 
+            `INSERT INTO instruments (provider_id, symbol, name, type, base_currency, quote_currency,
                                      tradingview_symbol, clickhouse_ticker)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *`,
@@ -1023,14 +1430,14 @@ app.post('/api/indicators', requireAuth, async (req, res) => {
         const result = await greenplumPool.query(
             `INSERT INTO indicators (
                 category_id, status_id, created_by, system_name, display_name, description,
-                indicator_type, algorithm, tradingview_id, is_overlay, default_inputs, 
+                indicator_type, algorithm, tradingview_id, is_overlay, default_inputs,
                 default_styles, is_public, is_default
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING *`,
             [
-                category_id, activeStatus.rows[0].id, req.session.userId, system_name, 
-                display_name, description, indicator_type, algorithm, tradingview_id, 
-                is_overlay, JSON.stringify(default_inputs || {}), JSON.stringify(default_styles || {}), 
+                category_id, activeStatus.rows[0].id, req.session.userId, system_name,
+                display_name, description, indicator_type, algorithm, tradingview_id,
+                is_overlay, JSON.stringify(default_inputs || {}), JSON.stringify(default_styles || {}),
                 is_public, req.session.isAdmin ? false : false
             ]
         );
@@ -1046,7 +1453,7 @@ app.post('/api/indicators', requireAuth, async (req, res) => {
 
 app.put('/api/indicators/:id', requireAuth, async (req, res) => {
     const indicatorId = req.params.id;
-    
+
     // Check ownership or admin
     const checkResult = await greenplumPool.query(
         'SELECT created_by FROM indicators WHERE id = $1',
@@ -1100,7 +1507,7 @@ app.put('/api/indicators/:id', requireAuth, async (req, res) => {
 
 app.delete('/api/indicators/:id', requireAuth, async (req, res) => {
     const indicatorId = req.params.id;
-    
+
     const checkResult = await greenplumPool.query(
         'SELECT created_by FROM indicators WHERE id = $1',
         [indicatorId]
@@ -1130,7 +1537,7 @@ app.delete('/api/indicators/:id', requireAuth, async (req, res) => {
 
 app.delete('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
     const id = req.params.id;
-    
+
     const checkResult = await greenplumPool.query(
         `SELECT js.*, st.code AS type_code, js.inputs_schema, js.is_overlay
         FROM javascript_scripts js
@@ -1159,7 +1566,7 @@ app.delete('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
 
 app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
     const id = req.params.id;
- 
+
     const checkResult = await greenplumPool.query(
         'SELECT created_by FROM javascript_scripts WHERE id = $1', [id]
     );
@@ -1170,13 +1577,13 @@ app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
     if (!canEdit) {
         return res.status(403).json({ error: 'Not authorized to edit this javascript_scripts' });
     }
- 
+
     const { code, display_name, description, is_public, system_name, type_id, meta } = req.body;
- 
+
     const metaJson = meta != null
         ? (typeof meta === 'string' ? meta : JSON.stringify(meta))
         : null;
- 
+
     try {
         const result = await greenplumPool.query(
             `UPDATE javascript_scripts SET
@@ -1192,10 +1599,10 @@ app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
              RETURNING *`,
             [code, description, display_name, is_public, system_name, type_id, metaJson, id]
         );
- 
+
         await logAction(req.session.userId, 'update_javascript_scripts',
             'javascript_script', id, result.rows[0], req);
- 
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Update javascript_scripts error:', error);
@@ -1204,7 +1611,7 @@ app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
 });
 app.put('/api/javascript-scripts11111/:id', requireAuth, async (req, res) => {
     const id = req.params.id;
-    
+
     console.log("START___PUT___javascript_scripts", id)
 
     let sql = 'SELECT created_by FROM "javascript_scripts" WHERE id = $1'
@@ -1240,7 +1647,7 @@ app.put('/api/javascript-scripts11111/:id', requireAuth, async (req, res) => {
             WHERE id = $7
             RETURNING *`,
             [code, description, display_name, is_public, system_name,
-            type_id, id]
+                type_id, id]
         );
 
         await logAction(req.session.userId, 'update_javascript_scripts', 'indicator', id, result.rows[0], req);
@@ -1290,16 +1697,16 @@ app.get('/api/script-types', requireAuth, async (req, res) => {
 app.post('/api/javascript-scripts', requireAuth, async (req, res) => {
     const { system_name, display_name, description, code,
         is_public, type_id, inputs_schema, is_overlay, meta } = req.body;
- 
+
     try {
         const activeStatus = await greenplumPool.query(
             `SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'script'`
         );
- 
+
         const metaJson = meta != null
             ? (typeof meta === 'string' ? meta : JSON.stringify(meta))
             : null;
- 
+
         const result = await greenplumPool.query(
             `INSERT INTO javascript_scripts
                 (status_id, created_by, system_name, display_name,
@@ -1320,10 +1727,10 @@ app.post('/api/javascript-scripts', requireAuth, async (req, res) => {
                 metaJson,
             ]
         );
- 
+
         await logAction(req.session.userId, 'create_js_script', 'javascript_script',
             result.rows[0].id, result.rows[0], req);
- 
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Create JavaScript script error:', error);
@@ -1350,8 +1757,8 @@ app.post('/api/javascript-scripts123', requireAuth, async (req, res) => {
                     COALESCE($10, true))
             RETURNING *`,
             [activeStatus.rows[0].id, req.session.userId,
-            system_name, display_name, description, code, is_public,
-            type_id, JSON.stringify(inputs_schema || []), is_overlay]
+                system_name, display_name, description, code, is_public,
+                type_id, JSON.stringify(inputs_schema || []), is_overlay]
         );
 
         await logAction(req.session.userId, 'create_js_script', 'javascript_script', result.rows[0].id, result.rows[0], req);
@@ -1440,13 +1847,9 @@ app.get('/api/layouts/:id', requireAuth, async (req, res) => {
         }
 
         const row = result.rows[0];
-<<<<<<< HEAD
-        var layout_data = row.layout_data;
-=======
         let layout_data = row.layout_data;
->>>>>>> e890054 (new data)
         if (typeof layout_data === 'string') {
-            try { layout_data = JSON.parse(layout_data); } catch (_) {}
+            try { layout_data = JSON.parse(layout_data); } catch (_) { }
         }
         if (layout_data && typeof layout_data === 'object') {
             try {
@@ -1463,7 +1866,7 @@ app.get('/api/layouts/:id', requireAuth, async (req, res) => {
                     });
                 }
                 row.layout_data = layout_data;
-            } catch (_) {}
+            } catch (_) { }
         }
 
         res.json(row);
@@ -1474,14 +1877,14 @@ app.get('/api/layouts/:id', requireAuth, async (req, res) => {
 });
 app.get('/api/market-data/tickers', requireAuth, async (req, res) => {
     const { table } = req.query;
-    
+
     const tableToQuery = table || 'market_data_minute';
-    
+
     try {
         console.log(`📋 Getting available tickers from ${tableToQuery}`);
-        
+
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 MIN(window_start) as earliest,
                 MAX(window_start) as latest,
@@ -1491,23 +1894,23 @@ app.get('/api/market-data/tickers', requireAuth, async (req, res) => {
             ORDER BY ticker
             LIMIT 100
         `;
-        
+
         const resultSet = await clickhouse.query({
             query: query,
             format: 'JSONEachRow'
         });
-        
+
         const data = await resultSet.json();
-        
+
         console.log(`✅ Found ${data.length} tickers`);
-        
+
         res.json(data);
-        
+
     } catch (error) {
         console.error('❌ Tickers list error:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to get tickers',
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -1528,7 +1931,7 @@ app.post('/api/layouts', requireAuth, async (req, res) => {
             `INSERT INTO chart_layouts (user_id, name, description, layout_data, symbol, interval, is_default)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING *`,
-             [req.session.userId, name, description, typeof layout_data === 'string' ? layout_data : JSON.stringify(layout_data), symbol, interval, is_default]
+            [req.session.userId, name, description, typeof layout_data === 'string' ? layout_data : JSON.stringify(layout_data), symbol, interval, is_default]
         );
 
         await logAction(req.session.userId, 'create_layout', 'layout', result.rows[0].id, { name }, req);
@@ -1576,7 +1979,7 @@ app.put('/api/layouts/:id', requireAuth, async (req, res) => {
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = $7
              RETURNING *`,
-             [name, description, typeof layout_data === 'string' ? layout_data : JSON.stringify(layout_data), symbol, interval, is_default, req.params.id]
+            [name, description, typeof layout_data === 'string' ? layout_data : JSON.stringify(layout_data), symbol, interval, is_default, req.params.id]
         );
 
         await logAction(req.session.userId, 'update_layout', 'layout', req.params.id, { name }, req);
@@ -1813,7 +2216,7 @@ app.post('/api/info', requireAuth, async (req, res) => {
     }
 
     const { coin, interval, startTime, endTime } = reqData || {};
-    
+
     try {
         // Get interval configuration from database
         const intervalConfig = await greenplumPool.query(
@@ -1833,12 +2236,12 @@ app.post('/api/info', requireAuth, async (req, res) => {
             [coin || 'EUR']
         );
 
-        const ticker = instrumentResult.rows.length > 0 
-            ? instrumentResult.rows[0].clickhouse_ticker 
+        const ticker = instrumentResult.rows.length > 0
+            ? instrumentResult.rows[0].clickhouse_ticker
             : `C:${coin}-USD`;
 
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 toUnixTimestamp(window_start) * 1000 as time,
                 open, high, low, close, volume, transactions, window_start
@@ -1872,34 +2275,34 @@ app.post('/api/info', requireAuth, async (req, res) => {
 // ==================== LATEST TIMESTAMP ENDPOINT ====================
 app.get('/api/market-data/latest', requireAuth, async (req, res) => {
     const { ticker, table } = req.query;
-    
+
     if (!ticker || !table) {
-        return res.status(400).json({ 
-            error: 'Missing required parameters: ticker, table' 
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table'
         });
     }
-    
+
     const allowedTables = [
         'market_data_minute',
-        'market_data_hour', 
+        'market_data_hour',
         'market_data_day',
         'market_data_week'
     ];
-    
+
     //if (!allowedTables.includes(table)) {
     //    console.warn(`⚠️ Table ${table} not in allowed list, but proceeding`);
     //}
-    
+
     try {
         console.log(`📅 Getting latest: ${ticker} from ${table}`);
-        
+
         // Получаем MAX(window_start) для этого тикера
         const query = `
             SELECT MAX(window_start) as latest_timestamp
             FROM ${table}
             WHERE ticker = {ticker:String}
         `;
-        
+
         const resultSet = await clickhouse.query({
             query: query,
             format: 'JSONEachRow',
@@ -1907,30 +2310,30 @@ app.get('/api/market-data/latest', requireAuth, async (req, res) => {
                 ticker: ticker
             }
         });
-        
+
         const data = await resultSet.json();
-        
+
         if (!data || data.length === 0 || !data[0].latest_timestamp) {
             console.log(`⚠️ No data for ${ticker} in ${table}`);
-            return res.status(404).json({ 
-                error: 'No data found for this ticker' 
+            return res.status(404).json({
+                error: 'No data found for this ticker'
             });
         }
-        
+
         const latestTimestamp = data[0].latest_timestamp;
         console.log(`✅ Latest: ${latestTimestamp} (${new Date(latestTimestamp).toISOString()})`);
-        
+
         res.json({
             ticker: ticker,
             table: table,
             latest_timestamp: latestTimestamp
         });
-        
+
     } catch (error) {
         console.error('❌ Latest timestamp error:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to get latest timestamp',
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -1939,12 +2342,12 @@ app.get('/api/market-data/latest', requireAuth, async (req, res) => {
 
 app.get('/api/instruments/search', requireAuth, async (req, res) => {
     const { query } = req.query;
-    
+
     try {
         const searchTerm = `%${query}%`;
-        
+
         const result = await greenplumPool.query(`
-            SELECT 
+            SELECT
                 i.id,
                 i.symbol,
                 i.name,
@@ -1954,17 +2357,19 @@ app.get('/api/instruments/search', requireAuth, async (req, res) => {
                 i.quote_currency,
                 i.clickhouse_ticker,
                 i.tradingview_symbol,
-                p.name as provider_name
+                p.name as provider_name,
+                gp.name as group_provider_name
             FROM instruments i
-            LEFT JOIN providers p ON i.provider_id = p.id
+            LEFT JOIN data_providers p ON i.provider_id = p.id
+            LEFT JOIN group_providers gp ON p.group_provider_id = gp.id
             WHERE i.is_active = TRUE
               AND (
                   UPPER(i.symbol) LIKE UPPER($1)
                   OR UPPER(i.name) LIKE UPPER($1)
                   OR UPPER(i.description) LIKE UPPER($1)
               )
-            ORDER BY 
-                CASE 
+            ORDER BY
+                CASE
                     WHEN UPPER(i.symbol) = UPPER($2) THEN 1
                     WHEN UPPER(i.symbol) LIKE UPPER($2) || '%' THEN 2
                     ELSE 3
@@ -1972,9 +2377,9 @@ app.get('/api/instruments/search', requireAuth, async (req, res) => {
                 i.symbol
             LIMIT 50
         `, [searchTerm, query]);
-        
+
         res.json(result.rows);
-        
+
     } catch (error) {
         console.error('Search error:', error);
         res.status(500).json({ error: 'Search failed' });
@@ -1985,32 +2390,32 @@ app.get('/api/instruments/search', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
     const { ticker } = req.query;
-    
+
     console.log('\n📊 GET LATEST TICK:');
     console.log(`   Ticker: ${ticker}`);
-    
+
     if (!ticker) {
         return res.status(400).json({ error: 'Missing ticker parameter' });
     }
-    
+
     try {
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 formatDateTime(max(participant_timestamp), '%Y-%m-%d %H:%i:%S.%f') as latest_timestamp
             FROM raw_market_data
             WHERE ticker = {ticker:String}
             GROUP BY ticker
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: { ticker: ticker },
             format: 'JSONEachRow'
         });
-        
+
         const rows = await result.json();
-        
+
         if (rows.length > 0) {
             console.log(`   ✅ Latest tick: ${rows[0].latest_timestamp}`);
             res.json(rows[0]);
@@ -2018,10 +2423,54 @@ app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
             console.log('   ⚠️ No ticks found');
             res.json({ latest_timestamp: null });
         }
-        
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
         res.status(500).json({ error: 'Failed to get latest tick', details: error.message });
+    }
+});
+
+// ========== Вернет последние (самые новые) данные по валюте ==========
+
+app.get('/api/market-data/last-data', requireAuth, async (req, res) => {
+    const { ticker } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({ error: 'Missing ticker parameter' });
+    }
+
+    try {
+        // ✅ Убрал лишнюю запятую после timestamp
+        const query = `
+            SELECT
+                ticker,
+                participant_timestamp as timestamp
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            ORDER BY participant_timestamp DESC
+            LIMIT 1
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker: ticker,
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        console.log(`✅ /api/market-data/last-data for ${ticker}:`, rows);
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ Error in /api/market-data/last-data:', error);
+        res.status(500).json({
+            error: 'Failed to fetch last data',
+            details: error.message
+        });
     }
 });
 
@@ -2029,23 +2478,23 @@ app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
     const { ticker, from, to, interval = 1 } = req.query;
-    
+
     console.log('\n📊 TICK AGGREGATION REQUEST:');
     console.log(`   Ticker: ${ticker}`);
     console.log(`   From: ${from} (${new Date(parseInt(from) * 1000).toISOString()})`);
     console.log(`   To: ${to} (${new Date(parseInt(to) * 1000).toISOString()})`);
     console.log(`   Interval: ${interval}s`);
-    
+
     if (!ticker || !from || !to) {
-        return res.status(400).json({ 
-            error: 'Missing required parameters: ticker, from, to' 
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, from, to'
         });
     }
-    
+
     try {
         const fromDate = new Date(parseInt(from) * 1000);
         const toDate = new Date(parseInt(to) * 1000);
-        
+
         // Формат DateTime64(6) требует точно 6 цифр микросекунд
         const formatDateTime64 = (date) => {
             const isoString = date.toISOString();
@@ -2056,23 +2505,24 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             const microseconds = milliseconds.padEnd(6, '0');
             return `${dateTimePart}.${microseconds}`;
         };
-        
+
         const fromFormatted = formatDateTime64(fromDate);
         const toFormatted = formatDateTime64(toDate);
-        
+
         console.log(`   From formatted: ${fromFormatted}`);
         console.log(`   To formatted: ${toFormatted}`);
-        
-        const intervalSeconds = parseInt(interval);
-        
+
+        //const intervalSeconds = parseInt(interval);
+        const intervalSeconds = 1;
+
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 formatDateTime(toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
-                toFloat64(avg((price) / 2)) as open,
-                toFloat64(max((price) / 2)) as high,
-                toFloat64(min((price) / 2)) as low,
-                toFloat64(argMax((price) / 2, participant_timestamp)) as close,
+                toFloat64(avg((price))) as open,
+                toFloat64(max((price))) as high,
+                toFloat64(min((price))) as low,
+                toFloat64(argMax((price), participant_timestamp)) as close,
                 toUInt64(count()) as volume
             FROM raw_market_data
             WHERE ticker = {ticker:String}
@@ -2082,9 +2532,9 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             ORDER BY timestamp ASC
             LIMIT 10000
         `;
-        
+
         console.log('   📝 Executing query...');
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: {
@@ -2094,11 +2544,11 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             },
             format: 'JSONEachRow'
         });
-        
+
         const rows = await result.json();
-        
+
         console.log(`   ✅ Returned ${rows.length} bars`);
-        
+
         if (rows.length > 0) {
             console.log('   First bar:', rows[0]);
             console.log('   Last bar:', rows[rows.length - 1]);
@@ -2106,14 +2556,14 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             console.log('   ⚠️ No data in this time range');
             console.log('   💡 Tip: Check if raw_market_data table has data for this period');
         }
-        
+
         res.json(rows);
-        
+
     } catch (error) {
         console.error('❌ ERROR IN TICK AGGREGATION:');
         console.error('   Message:', error.message);
         console.error('   Stack:', error.stack);
-        
+
         res.status(500).json({
             error: 'Failed to aggregate ticks',
             details: error.message
@@ -2125,10 +2575,10 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/check', requireAuth, async (req, res) => {
     const { ticker = 'C:EUR-USD' } = req.query;
-    
+
     try {
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 count() as total_ticks,
                 formatDateTime(min(participant_timestamp), '%Y-%m-%d %H:%i:%S') as first_tick,
@@ -2138,15 +2588,15 @@ app.get('/api/market-data/ticks/check', requireAuth, async (req, res) => {
             WHERE ticker = {ticker:String}
             GROUP BY ticker
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: { ticker: ticker },
             format: 'JSONEachRow'
         });
-        
+
         const stats = await result.json();
-        
+
         if (stats.length > 0) {
             res.json({
                 success: true,
@@ -2162,7 +2612,7 @@ app.get('/api/market-data/ticks/check', requireAuth, async (req, res) => {
                 hint: 'Check if raw_market_data table has data for this instrument'
             });
         }
-        
+
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -2175,38 +2625,38 @@ app.get('/api/market-data/ticks/check', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
     const { ticker = 'C:EUR-USD' } = req.query;
-    
+
     console.log('\n🧪 TESTING TICK DATA:');
     console.log(`   Ticker: ${ticker}`);
-    
+
     try {
         // Простейший тест - получить последние 10 тиков
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 formatDateTime(participant_timestamp, '%Y-%m-%dT%H:%i:%S.%fZ') as timestamp,
                 toFloat64(ask_price) as ask,
                 toFloat64(bid_price) as bid,
-                toFloat64((price) / 2) as mid
+                toFloat64((price)) as mid
             FROM raw_market_data
             WHERE ticker = {ticker:String}
             ORDER BY participant_timestamp DESC
             LIMIT 10
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: { ticker: ticker },
             format: 'JSONEachRow'
         });
-        
+
         const ticks = await result.json();
-        
+
         console.log(`   ✅ Found ${ticks.length} recent ticks`);
-        
+
         if (ticks.length > 0) {
             console.log('   Latest tick:', ticks[0]);
-            
+
             res.json({
                 success: true,
                 count: ticks.length,
@@ -2220,7 +2670,7 @@ app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
                 hint: 'Check if raw_market_data table has data for this ticker'
             });
         }
-        
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
         res.status(500).json({
@@ -2234,32 +2684,32 @@ app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/stats', requireAuth, async (req, res) => {
     const { ticker = 'C:EUR-USD' } = req.query;
-    
+
     try {
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 count() as total_ticks,
                 formatDateTime(min(participant_timestamp), '%Y-%m-%dT%H:%i:%S.%fZ') as earliest_tick,
                 formatDateTime(max(participant_timestamp), '%Y-%m-%dT%H:%i:%S.%fZ') as latest_tick,
-                toFloat64(min((price) / 2)) as min_price,
-                toFloat64(max((price) / 2)) as max_price,
-                toFloat64(avg((price) / 2)) as avg_price
+                toFloat64(min((price))) as min_price,
+                toFloat64(max((price))) as max_price,
+                toFloat64(avg((price))) as avg_price
             FROM raw_market_data
             WHERE ticker = {ticker:String}
             GROUP BY ticker
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: { ticker: ticker },
             format: 'JSONEachRow'
         });
-        
+
         const stats = await result.json();
-        
+
         res.json(stats[0] || { message: 'No data found' });
-        
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -2268,23 +2718,23 @@ app.get('/api/market-data/ticks/stats', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/aggregated-v2', requireAuth, async (req, res) => {
     const { ticker, from, to, interval = 1 } = req.query;
-    
+
     console.log('\n📊 TICK AGGREGATION V2 REQUEST:');
-    
+
     if (!ticker || !from || !to) {
         return res.status(400).json({ error: 'Missing parameters' });
     }
-    
+
     try {
         const fromDate = new Date(parseInt(from) * 1000);
         const toDate = new Date(parseInt(to) * 1000);
-        
+
         // Более простой запрос - без toStartOfInterval
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 formatDateTime(participant_timestamp, '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
-                toFloat64((price) / 2) as price
+                toFloat64((price)) as price
             FROM raw_market_data
             WHERE ticker = '${ticker}'
               AND participant_timestamp >= '${fromDate.toISOString()}'
@@ -2293,33 +2743,33 @@ app.get('/api/market-data/ticks/aggregated-v2', requireAuth, async (req, res) =>
             LIMIT 50000
             FORMAT JSONEachRow
         `;
-        
+
         console.log('   Executing simple query...');
-        
+
         const result = await clickhouse.query(query);
         const text = await result.text();
-        
+
         if (!text || text.trim().length === 0) {
             return res.json([]);
         }
-        
+
         const ticks = text
             .trim()
             .split('\n')
             .filter(line => line.trim())
             .map(line => JSON.parse(line));
-        
+
         console.log(`   Got ${ticks.length} raw ticks`);
-        
+
         // Агрегируем на стороне Node.js
         const intervalMs = parseInt(interval) * 1000;
         const bars = {};
-        
+
         ticks.forEach(tick => {
             const tickTime = new Date(tick.timestamp).getTime();
             const barTime = Math.floor(tickTime / intervalMs) * intervalMs;
             const barKey = new Date(barTime).toISOString();
-            
+
             if (!bars[barKey]) {
                 bars[barKey] = {
                     ticker: tick.ticker,
@@ -2338,15 +2788,15 @@ app.get('/api/market-data/ticks/aggregated-v2', requireAuth, async (req, res) =>
                 bar.volume += 1;
             }
         });
-        
-        const result_bars = Object.values(bars).sort((a, b) => 
+
+        const result_bars = Object.values(bars).sort((a, b) =>
             new Date(a.timestamp) - new Date(b.timestamp)
         );
-        
+
         console.log(`   ✅ Aggregated to ${result_bars.length} bars`);
-        
+
         res.json(result_bars);
-        
+
     } catch (error) {
         console.error('❌ ERROR:', error.message);
         res.status(500).json({
@@ -2360,13 +2810,13 @@ app.get('/api/market-data/ticks/aggregated-v2', requireAuth, async (req, res) =>
 
 app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
     const { ticker = 'C:EUR-USD' } = req.query;
-    
+
     console.log('\n🧪 TICK DATA TEST:');
-    
+
     try {
         // Простейший запрос - просто COUNT
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 count() as total_ticks,
                 min(participant_timestamp) as earliest,
@@ -2376,29 +2826,29 @@ app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
             GROUP BY ticker
             FORMAT JSONEachRow
         `;
-        
+
         console.log('   Query:', query);
-        
+
         const result = await clickhouse.query(query);
         const text = await result.text();
-        
+
         if (!text || text.trim().length === 0) {
-            return res.json({ 
-                success: false, 
-                message: 'No data in raw_market_data table for this ticker' 
+            return res.json({
+                success: false,
+                message: 'No data in raw_market_data table for this ticker'
             });
         }
-        
+
         const stats = JSON.parse(text.trim().split('\n')[0]);
-        
+
         console.log('   ✅ Stats:', stats);
-        
+
         res.json({
             success: true,
             stats: stats,
             message: `Found ${stats.total_ticks} ticks for ${ticker}`
         });
-        
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
         res.json({
@@ -2411,10 +2861,10 @@ app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
 
 app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
     const { ticker } = req.query;
-    
+
     try {
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 price ask_price,
                 price bid_price,
@@ -2424,16 +2874,16 @@ app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
             ORDER BY participant_timestamp DESC
             LIMIT 1
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: { ticker },
             format: 'JSONEachRow'
         });
-        
+
         const rows = await result.json();
         res.json(rows.length > 0 ? rows[0] : { latest_timestamp: null });
-        
+
     } catch (error) {
         console.error('Error fetching latest tick:', error);
         res.status(500).json({ error: 'Failed to fetch latest tick' });
@@ -2459,7 +2909,7 @@ app.get('/api/intervals', requireAuth, async (req, res) => {
 // Создать интервал
 app.post('/api/intervals', requireAuth, async (req, res) => {
     const { code, name, tradingview_code, clickhouse_table, duration_seconds } = req.body;
-    
+
     try {
         const result = await greenplumPool.query(`
             INSERT INTO intervals (
@@ -2476,7 +2926,7 @@ app.post('/api/intervals', requireAuth, async (req, res) => {
             )
             RETURNING *
         `, [code, name, tradingview_code, clickhouse_table, duration_seconds]);
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error creating interval:', error);
@@ -2498,9 +2948,9 @@ app.get('/api/sl-modes', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch SL modes' });
     }
 });
- 
+
 // ==================== TP MODES ====================
- 
+
 app.get('/api/tp-modes', requireAuth, async (req, res) => {
     try {
         const result = await greenplumPool.query(
@@ -2515,9 +2965,9 @@ app.get('/api/tp-modes', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch TP modes' });
     }
 });
- 
+
 // ==================== TIME EXIT MODES ====================
- 
+
 app.get('/api/time-exit-modes', requireAuth, async (req, res) => {
     try {
         const result = await greenplumPool.query(
@@ -2537,7 +2987,7 @@ app.get('/api/time-exit-modes', requireAuth, async (req, res) => {
 app.put('/api/intervals/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
     const { code, name, tradingview_code, clickhouse_table, duration_seconds, is_active } = req.body;
-    
+
     try {
         const result = await greenplumPool.query(`
             UPDATE intervals
@@ -2551,7 +3001,7 @@ app.put('/api/intervals/:id', requireAuth, async (req, res) => {
             WHERE id = $7
             RETURNING *
         `, [code, name, tradingview_code, clickhouse_table, duration_seconds, is_active, id]);
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error updating interval:', error);
@@ -2562,7 +3012,7 @@ app.put('/api/intervals/:id', requireAuth, async (req, res) => {
 // Удалить интервал
 app.delete('/api/intervals/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
-    
+
     try {
         await greenplumPool.query('DELETE FROM intervals WHERE id = $1', [id]);
         res.json({ success: true });
@@ -2584,57 +3034,53 @@ app.delete('/api/intervals/:id', requireAuth, async (req, res) => {
  */
 app.get('/api/market-data/ticks', requireAuth, async (req, res) => {
     const { ticker, from, to } = req.query;
-    
-    console.log(`📊 Tick data request: ${ticker} from ${from} to ${to}`);
-    
+
     if (!ticker || !from || !to) {
-        return res.status(400).json({
-            error: 'Missing required parameters: ticker, from, to'
-        });
+        return res.status(400).json({ error: 'Missing required parameters: ticker, from, to' });
     }
-    
+
     try {
-        const fromDate = new Date(parseInt(from) * 1000).toISOString();
-        const toDate = new Date(parseInt(to) * 1000).toISOString();
-        
-        // Запрос к ClickHouse для получения тиков 
+        // ✅ Конвертируем Unix seconds → DateTime64 строку для ClickHouse
+        const formatForClickHouse = (unixSeconds) => {
+            const d = new Date(parseInt(unixSeconds) * 1000);
+            const iso = d.toISOString(); // "2026-04-24T06:23:38.000Z"
+            const [datePart, timePart] = iso.split('T');
+            const timeClean = timePart.replace('Z', '');
+            const [hms, ms = '000'] = timeClean.split('.');
+            return `${datePart} ${hms}.${ms.padEnd(6, '0')}`;
+            // → "2026-04-24 06:23:38.000000"
+        };
+
+        const fromFormatted = formatForClickHouse(from);
+        const toFormatted = formatForClickHouse(to);
+
         const query = `
-            SELECT 
+            SELECT
                 ticker,
-                price ask_price,
-                price bid_price,
-                participant_timestamp
-            FROM default.raw_market_data
+                participant_timestamp,
+                price
+            FROM raw_market_data
             WHERE ticker = {ticker:String}
-              AND participant_timestamp >= toDateTime({from:UInt64})
-              AND participant_timestamp <= toDateTime({to:UInt64})
+              AND participant_timestamp >= {from:DateTime64(6, 'UTC')}
+              AND participant_timestamp <= {to:DateTime64(6, 'UTC')}
             ORDER BY participant_timestamp ASC
             LIMIT 10000
         `;
-        
+
         const result = await clickhouse.query({
-            query: query,
+            query,
             query_params: {
-                ticker: ticker,
-                from: fromDate,
-                to: toDate
+                ticker,
+                from: fromFormatted,   // ✅ "2026-04-24 06:23:38.000000"
+                to: toFormatted,
             },
             format: 'JSONEachRow'
         });
-        
+
         const rows = await result.json();
-        
-        console.log(`✅ Fetched ${rows.length} ticks for ${ticker}`);
-        
-        if (rows.length > 0) {
-            console.log(`   First tick: ${rows[0].participant_timestamp}`);
-            console.log(`   Last tick: ${rows[rows.length - 1].participant_timestamp}`);
-        }
-        
         res.json(rows);
-        
+
     } catch (error) {
-        console.error('❌ Error fetching tick data:', error);
         res.status(500).json({
             error: 'Failed to fetch tick data',
             details: error.message
@@ -2648,16 +3094,16 @@ app.get('/api/market-data/ticks', requireAuth, async (req, res) => {
  */
 app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
     const { ticker } = req.query;
-    
+
     if (!ticker) {
         return res.status(400).json({
             error: 'Missing required parameter: ticker'
         });
     }
-    
+
     try {
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 price ask_price,
                 price bid_price,
@@ -2667,7 +3113,7 @@ app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
             ORDER BY participant_timestamp DESC
             LIMIT 1
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: {
@@ -2675,15 +3121,15 @@ app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
             },
             format: 'JSONEachRow'
         });
-        
+
         const rows = await result.json();
-        
+
         if (rows.length > 0) {
             res.json(rows[0]);
         } else {
             res.json({ latest_timestamp: null });
         }
-        
+
     } catch (error) {
         console.error('Error fetching latest tick:', error);
         res.status(500).json({
@@ -2700,27 +3146,27 @@ app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
  */
 app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
     const { ticker, from, to, interval = 1 } = req.query;
-    
+
     if (!ticker || !from || !to) {
         return res.status(400).json({
             error: 'Missing required parameters: ticker, from, to'
         });
     }
-    
+
     try {
         const fromDate = new Date(parseInt(from) * 1000).toISOString();
         const toDate = new Date(parseInt(to) * 1000).toISOString();
         const intervalSeconds = parseInt(interval);
-        
+
         // Агрегируем тики в OHLC свечи прямо в ClickHouse
         const query = `
-            SELECT 
+            SELECT
                 ticker,
                 toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND) as timestamp,
-                avg((price) / 2) as open,
-                max((price) / 2) as high,
-                min((price) / 2) as low,
-                argMax((price) / 2, participant_timestamp) as close,
+                avg((price)) as open,
+                max((price)) as high,
+                min((price)) as low,
+                argMax((price), participant_timestamp) as close,
                 count() as volume
             FROM default.raw_market_data
             WHERE ticker = {ticker:String}
@@ -2730,7 +3176,7 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             ORDER BY timestamp ASC
             LIMIT 10000
         `;
-        
+
         const result = await clickhouse.query({
             query: query,
             query_params: {
@@ -2740,13 +3186,13 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             },
             format: 'JSONEachRow'
         });
-        
+
         const rows = await result.json();
-        
+
         console.log(`✅ Aggregated ${rows.length} bars from ticks for ${ticker}`);
-        
+
         res.json(rows);
-        
+
     } catch (error) {
         console.error('Error aggregating tick data:', error);
         res.status(500).json({
@@ -2760,22 +3206,22 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
 
 /**
  * ИСПОЛЬЗОВАНИЕ:
- * 
+ *
  * 1. Обычные тики (сырые данные):
  *    GET /api/market-data/ticks?ticker=C:EUR-USD&from=1735689540&to=1735690000
- * 
+ *
  * 2. Последний тик:
  *    GET /api/market-data/ticks/latest?ticker=C:EUR-USD
- * 
+ *
  * 3. Агрегированные в OHLC (рекомендуется для графика):
  *    GET /api/market-data/ticks/aggregated?ticker=C:EUR-USD&from=1735689540&to=1735690000&interval=1
- * 
+ *
  * ПАРАМЕТРЫ:
  * - ticker: строка, например "C:EUR-USD"
  * - from: timestamp в секундах
  * - to: timestamp в секундах
  * - interval: интервал агрегации в секундах (по умолчанию 1)
- * 
+ *
  * ПРИМЕЧАНИЕ:
  * Для лучшей производительности используйте /ticks/aggregated
  * вместо /ticks с последующей конвертацией на клиенте
@@ -2794,7 +3240,7 @@ app.get('/api/indicators', requireAuth, async (req, res) => {
 
 app.post('/api/indicators', requireAuth, async (req, res) => {
     const { name, code, description, parameters } = req.body;
-    
+
     try {
         const result = await greenplumPool.query(`
             INSERT INTO indicators (status_id, name, code, description, parameters, is_active)
@@ -2804,7 +3250,7 @@ app.post('/api/indicators', requireAuth, async (req, res) => {
             )
             RETURNING *
         `, [name, code, description, JSON.stringify(parameters)]);
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         res.status(500).json({ error: 'Failed to create indicator' });
@@ -2815,11 +3261,11 @@ app.post('/api/indicators', requireAuth, async (req, res) => {
 
 app.get('/api/scripts', requireAuth, async (req, res) => {
     const { type } = req.query; // 'pine' or 'javascript'
-    
+
     try {
         let query = 'SELECT * FROM javascript_scripts WHERE 1=1';
         const params = [];
-        
+
         if (type === 'pine') {
             query += ' AND script_type = $1';
             params.push('pine');
@@ -2827,9 +3273,9 @@ app.get('/api/scripts', requireAuth, async (req, res) => {
             query += ' AND script_type = $2';
             params.push('javascript');
         }
-        
+
         query += ' ORDER BY created_at DESC';
-        
+
         const result = await greenplumPool.query(query, params);
         res.json(result.rows);
     } catch (error) {
@@ -2853,33 +3299,33 @@ app.post('/api/scripts1', requireAuth, async (req, res) => {
         is_public,
         pine_version // 5 или 6
     } = req.body;
-    
+
     console.log('\n📝 CREATE SCRIPT:');
     console.log(`   User: ${req.user.username}`);
     console.log(`   Name: ${display_name}`);
     console.log(`   Type: ${type}`);
     console.log(`   Pine Version: ${pine_version || 'N/A'}`);
-    
+
     if (!display_name || !system_name || !code || !type) {
         return res.status(400).json({
             error: 'Missing required fields: display_name, system_name, code, type'
         });
     }
-    
+
     try {
         // Проверяем что system_name уникален для этого пользователя
         const existing = await db.query(
-            `SELECT id FROM user_scripts 
+            `SELECT id FROM user_scripts
              WHERE user_id = $1 AND system_name = $2`,
             [req.user.id, system_name]
         );
-        
+
         if (existing.rows.length > 0) {
             return res.status(409).json({
                 error: 'Script with this system_name already exists'
             });
         }
-        
+
         // Создаём скрипт
         const result = await db.query(
             `INSERT INTO user_scripts (
@@ -2906,14 +3352,14 @@ app.post('/api/scripts1', requireAuth, async (req, res) => {
                 pine_version || null
             ]
         );
-        
+
         console.log(`   ✅ Script created: ID ${result.rows[0].id}`);
-        
+
         res.json({
             success: true,
             script: result.rows[0]
         });
-        
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
         res.status(500).json({
@@ -2934,28 +3380,28 @@ app.put('/api/scripts/:system_name', requireAuth, async (req, res) => {
         is_public,
         pine_version
     } = req.body;
-    
+
     console.log('\n📝 UPDATE SCRIPT:');
     console.log(`   User: ${req.user.username}`);
     console.log(`   System Name: ${system_name}`);
-    
+
     try {
         // Проверяем что скрипт принадлежит пользователю
         const existing = await db.query(
-            `SELECT id FROM user_scripts 
+            `SELECT id FROM user_scripts
              WHERE user_id = $1 AND system_name = $2`,
             [req.user.id, system_name]
         );
-        
+
         if (existing.rows.length === 0) {
             return res.status(404).json({
                 error: 'Script not found or access denied'
             });
         }
-        
+
         // Обновляем скрипт
         const result = await db.query(
-            `UPDATE user_scripts 
+            `UPDATE user_scripts
              SET display_name = COALESCE($1, display_name),
                  description = COALESCE($2, description),
                  code = COALESCE($3, code),
@@ -2974,14 +3420,14 @@ app.put('/api/scripts/:system_name', requireAuth, async (req, res) => {
                 system_name
             ]
         );
-        
+
         console.log(`   ✅ Script updated`);
-        
+
         res.json({
             success: true,
             script: result.rows[0]
         });
-        
+
     } catch (error) {
         console.error('   ❌ Error:', error.message);
         res.status(500).json({
@@ -2995,10 +3441,10 @@ app.put('/api/scripts/:system_name', requireAuth, async (req, res) => {
 
 app.get('/api/scripts/my', requireAuth, async (req, res) => {
     const { type } = req.query; // 'pine' или 'javascript'
-    
+
     try {
         let query = `
-            SELECT 
+            SELECT
                 id,
                 display_name,
                 system_name,
@@ -3012,20 +3458,20 @@ app.get('/api/scripts/my', requireAuth, async (req, res) => {
             FROM user_scripts
             WHERE user_id = $1
         `;
-        
+
         const params = [req.user.id];
-        
+
         if (type) {
             query += ` AND type = $2`;
             params.push(type);
         }
-        
+
         query += ` ORDER BY updated_at DESC`;
-        
+
         const result = await db.query(query, params);
-        
+
         res.json(result.rows);
-        
+
     } catch (error) {
         console.error('Error fetching user scripts:', error);
         res.status(500).json({
@@ -3038,26 +3484,26 @@ app.get('/api/scripts/my', requireAuth, async (req, res) => {
 
 app.delete('/api/scripts/:system_name', requireAuth, async (req, res) => {
     const { system_name } = req.params;
-    
+
     try {
         const result = await db.query(
-            `DELETE FROM user_scripts 
+            `DELETE FROM user_scripts
              WHERE user_id = $1 AND system_name = $2
              RETURNING id`,
             [req.user.id, system_name]
         );
-        
+
         if (result.rowCount === 0) {
             return res.status(404).json({
                 error: 'Script not found'
             });
         }
-        
+
         res.json({
             success: true,
             message: 'Script deleted'
         });
-        
+
     } catch (error) {
         res.status(500).json({
             error: 'Failed to delete script'
@@ -3069,14 +3515,14 @@ app.delete('/api/scripts/:system_name', requireAuth, async (req, res) => {
 
 app.post('/api/scripts', requireAuth, async (req, res) => {
     const { system_name, display_name, description, code, script_type, is_public, user_id } = req.body;
-    
+
     try {
         let id = 1
-        
-        if(req.hasOwnProperty("user") && req.user.hasOwnProperty("id")){
+
+        if (req.hasOwnProperty("user") && req.user.hasOwnProperty("id")) {
             id = req.user.id
         }
-        if(req.hasOwnProperty("user_id")){
+        if (req.hasOwnProperty("user_id")) {
             id = req.user.id
         }
 
@@ -3096,7 +3542,7 @@ app.post('/api/scripts', requireAuth, async (req, res) => {
             )
             RETURNING *
         `, [user_id, system_name, display_name, description, code, script_type || 'javascript', is_public || false]);
-        
+
         res.json(result.rows[0]);
     } catch (error) {
         console.log("error__error__error__error", error)
@@ -3116,7 +3562,7 @@ app.get('/api/1.1/study_templates', requireAuth, (req, res) => {
 });
 
 /**
- 
+
  * Эндпоинты Алертов:
  *
  *   POST /api/alerts/init
@@ -3203,15 +3649,15 @@ app.patch('/api/alerts/:id', requireAuth, async (req, res) => {
     try {
         const fields = [], vals = [];
         let i = 1;
-        if (name      !== undefined) { fields.push(`name=$${i++}`);      vals.push(name); }
-        if (active    !== undefined) { fields.push(`active=$${i++}`);    vals.push(active); }
+        if (name !== undefined) { fields.push(`name=$${i++}`); vals.push(name); }
+        if (active !== undefined) { fields.push(`active=$${i++}`); vals.push(active); }
         if (condition !== undefined) { fields.push(`condition=$${i++}`); vals.push(JSON.stringify(condition)); }
-        if (once      !== undefined) { fields.push(`once=$${i++}`);      vals.push(once); }
+        if (once !== undefined) { fields.push(`once=$${i++}`); vals.push(once); }
         if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
 
         vals.push(id, req.session.userId);
         const result = await greenplumPool.query(
-            `UPDATE smart_alerts SET ${fields.join(',')} WHERE id=$${i} AND user_id=$${i+1} RETURNING *`,
+            `UPDATE smart_alerts SET ${fields.join(',')} WHERE id=$${i} AND user_id=$${i + 1} RETURNING *`,
             vals
         );
         if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
@@ -3306,18 +3752,18 @@ app.post('/api/alerts/context', requireAuth, async (req, res) => {
     try {
         let fromTs, toTs;
         if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
-        if (toDate)   toTs   = Math.floor(new Date(toDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
 
         const bars = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
         if (bars.length < 2) return res.status(400).json({ error: 'Not enough bars' });
 
-        const bar     = bars[bars.length - 1];
+        const bar = bars[bars.length - 1];
         const prevBar = bars[bars.length - 2];
-        const cfg     = { setupCols, capital, ticker, table };
+        const cfg = { setupCols, capital, ticker, table };
 
         // Синтетический алерт для generateContext
         const fakeAlert = { name: 'Manual Context', condition: { type: 'manual' } };
-        const context   = generateContext(fakeAlert, bar, bars, cfg, trades);
+        const context = generateContext(fakeAlert, bar, bars, cfg, trades);
 
         res.json({ ...context, totalBars: bars.length });
 
@@ -3333,17 +3779,17 @@ app.post('/api/ai/optimize', requireAuth, async (req, res) => {
     const {
         ticker, table,
         fromDate, toDate,
-        capital   = 10000,
-        riskPct   = 1,
-        leverage  = 1,
-        slMode    = 'pct',
-        tpMode    = 'rr',
-        maxBars   = 200,
+        capital = 10000,
+        riskPct = 1,
+        leverage = 1,
+        slMode = 'pct',
+        tpMode = 'rr',
+        maxBars = 200,
         direction = 'both',
         useColExit = true,
-        setupCols  = {},
+        setupCols = {},
         paramSpace = {},
-        options    = {},
+        options = {},
     } = req.body;
 
     if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
@@ -3354,7 +3800,7 @@ app.post('/api/ai/optimize', requireAuth, async (req, res) => {
         // Загружаем бары
         let fromTs, toTs;
         if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
-        if (toDate)   toTs   = Math.floor(new Date(toDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
 
         console.log(`[AI/Optimize] ${ticker} @ ${table}, space: ${JSON.stringify(paramSpace)}`);
 
@@ -3372,8 +3818,8 @@ app.post('/api/ai/optimize', requireAuth, async (req, res) => {
 
         const result = await bayesianOptimize(bars, cfg, ps, {
             initPoints: options.initPoints || 8,
-            maxIter:    options.maxIter    || 40,
-            ls:         options.ls         || 0.4,
+            maxIter: options.maxIter || 40,
+            ls: options.ls || 0.4,
         });
 
         console.log(`[AI/Optimize] Done. Best: ${JSON.stringify(result.bestParams)}, score=${result.bestScore}`);
@@ -3391,7 +3837,7 @@ app.post('/api/ai/regime', requireAuth, async (req, res) => {
         ticker, table,
         fromDate, toDate,
         windowSize = 50,
-        stepSize   = 10,
+        stepSize = 10,
     } = req.body;
 
     if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
@@ -3399,7 +3845,7 @@ app.post('/api/ai/regime', requireAuth, async (req, res) => {
     try {
         let fromTs, toTs;
         if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
-        if (toDate)   toTs   = Math.floor(new Date(toDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
 
         console.log(`[AI/Regime] ${ticker} @ ${table}, window=${windowSize}`);
 
@@ -3412,11 +3858,11 @@ app.post('/api/ai/regime', requireAuth, async (req, res) => {
 
         // Не возвращаем timeline (может быть очень большим) — только regimes[]
         res.json({
-            regimes:         result.regimes,
-            current:         result.current,
+            regimes: result.regimes,
+            current: result.current,
             currentFeatures: result.currentFeatures,
-            distribution:    result.distribution,
-            totalBars:       result.totalBars,
+            distribution: result.distribution,
+            totalBars: result.totalBars,
         });
 
     } catch (err) {
@@ -3430,9 +3876,9 @@ app.post('/api/ai/regime-analysis', requireAuth, async (req, res) => {
     const {
         ticker, table,
         fromDate, toDate,
-        trades     = [],
+        trades = [],
         windowSize = 50,
-        stepSize   = 10,
+        stepSize = 10,
     } = req.body;
 
     if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
@@ -3441,21 +3887,21 @@ app.post('/api/ai/regime-analysis', requireAuth, async (req, res) => {
     try {
         let fromTs, toTs;
         if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
-        if (toDate)   toTs   = Math.floor(new Date(toDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
 
         console.log(`[AI/RegimeAnalysis] ${ticker} @ ${table}, ${trades.length} trades`);
 
-        const bars       = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
+        const bars = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
         const regimeData = classifyMarketRegimes(bars, { windowSize, stepSize });
-        const analysis   = analyzeSetupByRegime(trades, regimeData);
+        const analysis = analyzeSetupByRegime(trades, regimeData);
 
         res.json({
             ...analysis,
             regimeMeta: {
-                current:         regimeData.current,
+                current: regimeData.current,
                 currentFeatures: regimeData.currentFeatures,
-                distribution:    regimeData.distribution,
-                totalBars:       regimeData.totalBars,
+                distribution: regimeData.distribution,
+                totalBars: regimeData.totalBars,
             },
         });
 
@@ -3469,8 +3915,8 @@ app.post('/api/ai/regime-analysis', requireAuth, async (req, res) => {
 app.post('/api/correlation/matrix', requireAuth, async (req, res) => {
     const {
         tickers = [],
-        table   = 'market_data_day',
-        days    = 90,
+        table = 'market_data_day',
+        days = 90,
     } = req.body;
 
     if (!tickers.length || tickers.length < 2) {
@@ -3487,20 +3933,20 @@ app.post('/api/correlation/matrix', requireAuth, async (req, res) => {
 
     try {
         console.log(`[Correlation/Matrix] ${tickers.length} tickers, ${table}, ${days}d`);
-        const t0     = Date.now();
+        const t0 = Date.now();
         const result = await buildCorrelationMatrix(clickhouse, tickers, table, days);
-        const ms     = Date.now() - t0;
+        const ms = Date.now() - t0;
         console.log(`[Correlation/Matrix] Done in ${ms}ms, ${result.tickers.length} valid tickers`);
 
         // Не отдаём Map — конвертируем returns в объект
         res.json({
-            tickers:         result.tickers,
-            matrix:          result.matrix,
+            tickers: result.tickers,
+            matrix: result.matrix,
             avgCorrelations: result.avgCorrelations,
-            clusters:        result.clusters,
-            days:            result.days,
-            bars:            result.bars,
-            queryMs:         ms,
+            clusters: result.clusters,
+            days: result.days,
+            bars: result.bars,
+            queryMs: ms,
         });
     } catch (err) {
         console.error('[Correlation/Matrix]', err);
@@ -3512,10 +3958,10 @@ app.post('/api/correlation/matrix', requireAuth, async (req, res) => {
 app.post('/api/correlation/portfolio', requireAuth, async (req, res) => {
     const {
         tickers = [],
-        table   = 'market_data_day',
-        days    = 90,
-        method  = 'min_corr',   // min_corr | max_div | risk_parity | equal_weight
-        n       = 5,
+        table = 'market_data_day',
+        days = 90,
+        method = 'min_corr',   // min_corr | max_div | risk_parity | equal_weight
+        n = 5,
     } = req.body;
 
     if (tickers.length < 2) {
@@ -3545,9 +3991,9 @@ app.post('/api/correlation/portfolio', requireAuth, async (req, res) => {
         res.json({
             portfolio,
             allCorrelations: corrData.avgCorrelations,
-            allVols:         vols,
-            tickers:         corrData.tickers,
-            clusters:        corrData.clusters,
+            allVols: vols,
+            tickers: corrData.tickers,
+            clusters: corrData.clusters,
         });
     } catch (err) {
         console.error('[Correlation/Portfolio]', err);
@@ -3558,9 +4004,9 @@ app.post('/api/correlation/portfolio', requireAuth, async (req, res) => {
 // ── /api/correlation/frontier ─────────────────────────────────
 app.post('/api/correlation/frontier', requireAuth, async (req, res) => {
     const {
-        tickers     = [],
-        table       = 'market_data_day',
-        days        = 90,
+        tickers = [],
+        table = 'market_data_day',
+        days = 90,
         simulations = 500,
     } = req.body;
 
@@ -3590,8 +4036,8 @@ app.post('/api/correlation/frontier', requireAuth, async (req, res) => {
 app.post('/api/correlation/mode', requireAuth, async (req, res) => {
     const {
         assetGroups = {},
-        table       = 'market_data_day',
-        days        = 30,
+        table = 'market_data_day',
+        days = 30,
     } = req.body;
 
     const allTickers = Object.values(assetGroups).flat();
@@ -3613,7 +4059,7 @@ app.get('/api/correlation/volatilities', requireAuth, async (req, res) => {
     const {
         tickers: tickersCsv = '',
         table = 'market_data_day',
-        days  = 90,
+        days = 90,
     } = req.query;
 
     const tickers = tickersCsv.split(',').map(t => t.trim()).filter(Boolean);
@@ -3633,9 +4079,9 @@ app.get('/api/correlation/volatilities', requireAuth, async (req, res) => {
 
 app.post('/api/alpha-decay/analyze', requireAuth, async (req, res) => {
     const {
-        trades      = [],
-        windowSize  = 'month',
-        minWindows  = 3,
+        trades = [],
+        windowSize = 'month',
+        minWindows = 3,
         setupFilter = null,
     } = req.body;
 
@@ -3649,10 +4095,10 @@ app.post('/api/alpha-decay/analyze', requireAuth, async (req, res) => {
     }
 
     try {
-        const t0     = Date.now();
+        const t0 = Date.now();
         const result = analyzeDecay(trades, {
-            windowSize:  typeof windowSize === 'string' ? windowSize : Number(windowSize),
-            minWindows:  Number(minWindows) || 3,
+            windowSize: typeof windowSize === 'string' ? windowSize : Number(windowSize),
+            minWindows: Number(minWindows) || 3,
             setupFilter: setupFilter || null,
         });
         const ms = Date.now() - t0;
@@ -3661,6 +4107,77 @@ app.post('/api/alpha-decay/analyze', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('[AlphaDecay]', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+
+app.post('/api/user/favorites', requireAuth, async (req, res) => {
+    const userId = req.session.userId;
+    const { favorites } = req.body;
+
+    if (!Array.isArray(favorites)) {
+        return res.status(400).json({ error: 'Favorites must be an array' });
+    }
+
+    try {
+        await greenplumPool.query('BEGIN');
+
+        await greenplumPool.query(
+            'DELETE FROM public.user_favorite_drawings WHERE user_id = $1',
+            [userId]
+        );
+
+        const insertQuery = `
+            INSERT INTO public.user_favorite_drawings (user_id, favorites, updated_at)
+            VALUES ($1, $2, NOW())
+            RETURNING *;
+        `;
+        const result = await greenplumPool.query(insertQuery, [userId, JSON.stringify(favorites)]);
+
+        await greenplumPool.query('COMMIT');
+
+        res.json({ success: true, data: result.rows[0] });
+
+    } catch (error) {
+        await greenplumPool.query('ROLLBACK');
+        console.error('❌ Error saving favorites:', error);
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+app.get('/api/user/favorites', requireAuth, async (req, res) => {
+    const userId = req.session.userId;
+
+    if (!userId) {
+        console.error('❌ No userId in session');
+        return res.status(401).json({ error: 'User not identified' });
+    }
+
+    console.log('User ID:', userId);
+
+    try {
+        const query = `
+            SELECT favorites
+            FROM public.user_favorite_drawings
+            WHERE user_id = $1;
+        `;
+
+        const result = await greenplumPool.query(query, [userId]);  // ✅ используем greenplumPool
+
+        if (result.rows.length === 0) {
+            console.log('No favorites found in DB, returning empty array');
+            return res.json({ favorites: [] });
+        }
+
+        console.log('Successfully fetched favorites');
+        res.json(result.rows[0]);
+
+    } catch (error) {
+        console.error('❌ CRITICAL ERROR in /api/favorites:', error);
+        res.status(500).json({
+            error: 'Database error',
+            details: error.message
+        });
     }
 });
 

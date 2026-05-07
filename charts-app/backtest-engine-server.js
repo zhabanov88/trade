@@ -70,8 +70,76 @@ function runScriptOnBars(scriptCode, bars) {
         Infinity,
         NaN,
         undefined,
-        setTimeout: () => {},
+        setTimeout:  () => {},
         clearTimeout: () => {},
+     
+        // ── Server-side TVEngine stub ──────────────────────────────────
+        // Перехватывает TVEngine.define({...}) из скриптов-индикаторов.
+        // Два режима работы:
+        //
+        //   1. analyze(bars, cfg) — батч-режим: скрипт сам обходит все бары
+        //      и записывает результаты в bar[fieldName] = value
+        //      Пример: { name:'RSI', analyze: function(bars,cfg){ bars.forEach(... )} }
+        //
+        //   2. calc(bar, index, bars, cfg) — per-bar режим: вызывается для каждого бара
+        //      Пример: { name:'MA', calc: function(bar,i,bars,cfg){ bar.ma_14 = ...; } }
+        //
+        //   3. Гибридный: если скрипт пишет в window.app.setups — дополнительно
+        //      регистрирует сигнальные колонки (совместимость со старым форматом).
+        //
+        TVEngine: {
+            define: function(def) {
+                if (!def) return;
+     
+                const name       = def.name       || 'indicator';
+                const buildCfg   = def.buildCfg   || (() => ({}));
+                const defInputs  = def.defaultInputs || {};
+                const cfg        = (() => { try { return buildCfg(defInputs); } catch(_) { return {}; } })();
+     
+                logs.push(['log', `[TVEngine stub] define: ${name}`]);
+     
+                // Режим 1: analyze(bars, cfg) — батч
+                if (typeof def.analyze === 'function') {
+                    try {
+                        def.analyze(bars, cfg);
+                        logs.push(['log', `[TVEngine stub] analyze() done for ${name}, bars=${bars.length}`]);
+                    } catch (e) {
+                        logs.push(['error', `[TVEngine stub] analyze() error in ${name}: ${e.message}`]);
+                    }
+                    return;
+                }
+     
+                // Режим 2: calc(bar, index, bars, cfg) — per-bar
+                if (typeof def.calc === 'function') {
+                    for (let i = 0; i < bars.length; i++) {
+                        try {
+                            def.calc(bars[i], i, bars, cfg);
+                        } catch (e) {
+                            // Пропускаем ошибки на отдельных барах (могут быть на первых)
+                        }
+                    }
+                    logs.push(['log', `[TVEngine stub] calc() loop done for ${name}, bars=${bars.length}`]);
+                    return;
+                }
+     
+                // Режим 3: нет analyze/calc — скрипт может использовать
+                // window.app.activedata напрямую (старый формат).
+                // Ничего не делаем — код скрипта уже мог обработать бары.
+                logs.push(['log', `[TVEngine stub] ${name}: no analyze/calc, using direct activedata mode`]);
+            },
+     
+            // Stub остальных методов чтобы скрипты не падали
+            instances:         () => [],
+            registry:          () => ({}),
+            redraw:            () => {},
+            redrawAll:         () => {},
+            destroy:           () => {},
+            clearAll:          () => {},
+            state:             () => null,
+            cleanGhosts:       () => {},
+            updateLegendColor: () => {},
+            setViewportBuffer: () => {},
+        },
     };
 
     try {

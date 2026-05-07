@@ -1,5 +1,4 @@
 
-
 class TradingApp {
     constructor() {
         this.widget = null;
@@ -350,6 +349,31 @@ class TradingApp {
                             var dd = ('0' + date.getDate()).slice(-2);
                             var yy = ('0' + (date.getFullYear() % 100)).slice(-2);
                             return D[date.getDay()] + ' ' + dd + ' ' + M[date.getMonth()] + " '" + yy;
+                        },
+                        parse: function (dateStr) {
+                            // TV передаёт строку вида "Thu 11 Sep '25" или "2025-09-11"
+                            // Парсим месяц вручную чтобы получить UTC полночь без смещения
+                            console.log('🔍 parse raw:', JSON.stringify(dateStr), typeof dateStr);
+                            const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+
+                            // Формат "Thu 11 Sep '25" или "11 Sep '25"
+                            const m = String(dateStr).match(/(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+'(\d{2})/i);
+                            let ts = 0;
+                            if (m) {
+                                ts = Math.floor(Date.UTC(2000 + parseInt(m[3]), months[m[2]], parseInt(m[1])) / 1000);
+                            } else {
+                                // ISO формат "2025-09-11"
+                                const iso = String(dateStr).match(/(\d{4})-(\d{2})-(\d{2})/);
+                                if (iso) {
+                                    ts = Math.floor(Date.UTC(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3])) / 1000);
+                                }
+                            }
+
+                            if (ts > 0 && window.app?.datafeed) {
+                                console.log('🗓️ dateFormatter.parse:', dateStr, '→', ts, new Date(ts * 1000).toISOString());
+                                window.app.datafeed._pendingGotoTs = ts;
+                            }
+                            return new Date(ts * 1000);
                         }
                     }
                 },
@@ -392,6 +416,7 @@ class TradingApp {
 
                         return Object.entries(raw).map(([key, val], i) => ({
                             id: `in_${i}`,
+                            system_name: system_name,
                             name: key,
                             defval: val,
                             type: typeof val === 'number'
@@ -426,11 +451,14 @@ class TradingApp {
                                     // Выполняем код напрямую: new Function('PineJS', code)(PineJS)
                                     // Код должен содержать return { name, metainfo, constructor }
                                     // БЕЗ лишней IIFE обёртки
+                                    window._current_system_name = script.system_name;
                                     const factory = new Function('PineJS', script.code);
                                     const built = factory(PineJS);
                                     if (built && built.metainfo && built.constructor) {
                                         built.metainfo.id = tvId;
                                         built.metainfo.isCustomIndicator = true;
+                                        built.metainfo.system_name = script.system_name;
+                                        built.system_name = script.system_name;
                                         result.push(built);
                                         continue;
                                     }
@@ -465,10 +493,12 @@ class TradingApp {
 
                         result.push({
                             name: name,
+                            system_name: script.system_name,
                             metainfo: {
                                 _metainfoVersion: 53,
                                 id: tvId,
                                 description: desc,
+                                system_name: script.system_name,
                                 shortDescription: name.substring(0, 24),
                                 is_price_study: overlay,
                                 isCustomIndicator: true,
@@ -553,6 +583,9 @@ class TradingApp {
 
             // Store widget globally
             window.app.widget = this.widget;
+
+            window.app.reloadToDate = this.reloadToDate.bind(this);
+
             if (window.chartSession) window.chartSession.subscribe(this.widget);
             window.app.defaultInterval = defaultInterval
             window.app.activeTimeFrame = defaultInterval
@@ -656,6 +689,19 @@ class TradingApp {
         }
     }
 
+    // Добавить в class TradingApp, после метода initTradingView:
+    async reloadToDate(targetTs) {
+        if (this.datafeed) {
+            this.datafeed._tickStartTs = targetTs;
+            this.datafeed.loadedRanges.clear();
+        }
+        if (this.widget) {
+            this.widget.remove();
+            this.widget = null;
+        }
+        await this.initTradingView();
+    }
+
     async initializeManagers() {
 
         try {
@@ -693,6 +739,26 @@ class TradingApp {
             console.error('Logout failed:', error);
             alert('Failed to logout');
         }
+    }
+
+    async reloadToDate(targetTs) {
+        console.log('🔄 reloadToDate:', new Date(targetTs * 1000).toISOString());
+        // Сохраняем целевую дату в datafeed
+        if (this.datafeed) {
+            this.datafeed._tickStartTs = targetTs;
+            this.datafeed.loadedRanges.clear();
+            this.datafeed._tickStepsBack = 0;
+        }
+        // Удаляем старый виджет
+        if (this.widget) {
+            try { this.widget.remove(); } catch (_) { }
+            this.widget = null;
+            window.app.widget = null;
+        }
+        // Пересоздаём виджет — datafeed уже имеет _tickStartTs
+        await this.initTradingView();
+        // После создания подключаем менеджеры заново
+        await this.initializeManagers();
     }
 
     showError(message) {

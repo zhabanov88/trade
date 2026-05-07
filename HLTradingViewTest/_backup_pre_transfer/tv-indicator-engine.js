@@ -10,8 +10,8 @@
 (function () {
     'use strict';
 
-    if (!window._tve)         window._tve         = {};
-    if (!window._tveRegistry) window._tveRegistry  = {};
+    if (!window._tve) window._tve = {};
+    if (!window._tveRegistry) window._tveRegistry = {};
 
     // ── Утилиты ──────────────────────────────────────────────────
     function _chart() {
@@ -31,10 +31,10 @@
         var bars = [];
         for (var i = 0; i < raw.length; i++) {
             var b = raw[i];
-            var t  = Math.floor(new Date(b.timestamp).getTime() / 1000);
-            var h  = parseFloat(b.high), l = parseFloat(b.low);
+            var t = Math.floor(new Date(b.timestamp).getTime() / 1000);
+            var h = parseFloat(b.high), l = parseFloat(b.low);
             var cl = parseFloat(b.close), op = parseFloat(b.open);
-            if (!isNaN(h) && !isNaN(l)) bars.push({ t:t, h:h, l:l, c:cl, o:op, v:parseFloat(b.volume)||0 });
+            if (!isNaN(h) && !isNaN(l)) bars.push({ t: t, h: h, l: l, c: cl, o: op, v: parseFloat(b.volume) || 0 });
         }
         bars.sort(function (a, b) { return a.t - b.t; });
         return bars;
@@ -45,9 +45,9 @@
         var raw = window.app && window.app.activedata;
         if (!raw || raw.length === 0) return null;
         return {
-            len:    raw.length,
+            len: raw.length,
             firstT: raw[0].timestamp,
-            lastT:  raw[raw.length - 1].timestamp,
+            lastT: raw[raw.length - 1].timestamp,
         };
     }
 
@@ -57,7 +57,7 @@
     }
 
     function _cfgHash(cfg) {
-        try { return JSON.stringify(cfg); } catch(e) { return ''; }
+        try { return JSON.stringify(cfg); } catch (e) { return ''; }
     }
 
     // ── Shapes ───────────────────────────────────────────────────
@@ -65,7 +65,7 @@
         var st = window._tve[key]; if (!st) return;
         var c = _chart();
         if (c) for (var i = 0; i < st.shapeIds.length; i++) {
-            try { c.removeEntity(st.shapeIds[i]); } catch (e) {}
+            try { c.removeEntity(st.shapeIds[i]); } catch (e) { }
         }
         st.shapeIds = [];
     }
@@ -84,51 +84,51 @@
 
         var c = _chart(); if (!c) return;
         var end = Math.min(idx + BATCH_SIZE, list.length);
-        var ok  = true;
+        var ok = true;
 
         for (var i = idx; i < end && ok; i++) {
-            var s     = list[i];
+            var s = list[i];
             var shape = s.shape || 'rectangle';
             var ov;
 
             if (shape === 'rectangle') {
                 ov = {
                     backgroundColor: s.color,
-                    color:           s.color,
-                    linewidth:       s.linewidth !== undefined ? s.linewidth : 0,
-                    fillBackground:  true,
-                    transparency:    0,
-                    showLabel:       !!s.label,
-                    text:            s.label || '',
+                    color: s.color,
+                    linewidth: s.linewidth !== undefined ? s.linewidth : 0,
+                    fillBackground: true,
+                    transparency: 0,
+                    showLabel: !!s.label,
+                    text: s.label || '',
                 };
             } else if (shape === 'trend_line' || shape === 'horizontal_line') {
                 ov = {
-                    linecolor:   s.color,
-                    linewidth:   s.linewidth !== undefined ? s.linewidth : 2,
-                    linestyle:   s.linestyle !== undefined ? s.linestyle : 0,
-                    showLabel:   false,
-                    extendLeft:  false,
+                    linecolor: s.color,
+                    linewidth: s.linewidth !== undefined ? s.linewidth : 2,
+                    linestyle: s.linestyle !== undefined ? s.linestyle : 0,
+                    showLabel: false,
+                    extendLeft: false,
                     extendRight: false,
                 };
             } else {
                 // arrow_up, arrow_down, и прочие маркеры
                 ov = {
-                    color:     s.color,
+                    color: s.color,
                     textColor: s.color,
-                    text:      s.label || '',
-                    fontsize:  s.fontsize || 12,
+                    text: s.label || '',
+                    fontsize: s.fontsize || 12,
                 };
             }
 
             try {
                 var r = c.createMultipointShape(s.points, {
-                    shape:            shape,
-                    lock:             s.lock !== undefined ? s.lock : true,
+                    shape: shape,
+                    lock: s.lock !== undefined ? s.lock : true,
                     disableSelection: true,
-                    disableSave:      true,
-                    disableUndo:      true,
-                    zOrder:           s.zOrder || 'bottom',
-                    overrides:        ov,
+                    disableSave: true,
+                    disableUndo: true,
+                    zOrder: s.zOrder || 'bottom',
+                    overrides: ov,
                 });
                 if (r && typeof r.then === 'function') {
                     (function (ids, p) { p.then(function (id) { if (id != null) ids.push(id); }); })(st.shapeIds, r);
@@ -172,8 +172,8 @@
         if (bars.length < 3) { _scheduleRedraw(key, 500); return; }
 
         // ОПТИМ 1: Проверяем кэш — если данные и cfg не изменились, не пересчитываем
-        var snap    = _dataSnapshot();
-        var cfgStr  = _cfgHash(st.cfg);
+        var snap = _dataSnapshot();
+        var cfgStr = _cfgHash(st.cfg);
         if (st._cache &&
             _snapshotEqual(st._cache.snap, snap) &&
             st._cache.cfgStr === cfgStr) {
@@ -230,7 +230,7 @@
             try {
                 var entity = c.getStudyById(found.entityId || found.id);
                 if (entity && typeof entity.isVisible === 'function') vis = entity.isVisible();
-            } catch (e) {}
+            } catch (e) { }
             if (!vis && !st._hidden) { st._hidden = true; _clearShapes(key); }
             else if (vis && st._hidden) { st._hidden = false; _scheduleRedraw(key, 50); }
         }, 500);
@@ -296,12 +296,14 @@
         try { allShapes = c.getAllShapes ? c.getAllShapes() : []; } catch (e) { return; }
         if (!allShapes || allShapes.length === 0) { _ghostCleanDone = true; return; }
         var removed = 0;
-        var KNOWN = { rectangle:1, rect:1, trend_line:1, trendline:1,
-                      arrow_up:1, arrow_down:1, horizontal_line:1 };
+        var KNOWN = {
+            rectangle: 1, rect: 1, trend_line: 1, trendline: 1,
+            arrow_up: 1, arrow_down: 1, horizontal_line: 1
+        };
         for (var i = 0; i < allShapes.length; i++) {
             var sh = allShapes[i];
             if (KNOWN[(sh.name || '').toLowerCase()]) {
-                try { c.removeEntity(sh.id); removed++; } catch (e) {}
+                try { c.removeEntity(sh.id); removed++; } catch (e) { }
             }
         }
         _ghostCleanDone = true;
@@ -367,11 +369,11 @@
 
     // ════════════════════════════════════════════════════════════════
     function define(def) {
-        var name    = def.name        || 'Custom Indicator';
-        var tvId    = def.id          || (name.toLowerCase().replace(/\W+/g, '_') + '@tv-basicstudies-1');
-        var desc    = def.description || name;
+        var name = def.name || 'Custom Indicator';
+        var tvId = def.id || (name.toLowerCase().replace(/\W+/g, '_') + '@tv-basicstudies-1');
+        var desc = def.description || name;
         var overlay = def.overlay !== undefined ? def.overlay : true;
-        var inputs  = def.inputs       || [];
+        var inputs = def.inputs || [];
         var defInps = def.defaultInputs || {};
 
         var tvObj = {
@@ -384,8 +386,12 @@
                 plots: [{ id: 'p0', type: 'line' }],
                 format: { type: overlay ? 'inherit' : 'price' },
                 defaults: {
-                    styles: { p0: { linestyle: 0, linewidth: 0, plottype: 0,
-                        trackPrice: false, transparency: 100, visible: false, color: 'rgba(0,0,0,0)' } },
+                    styles: {
+                        p0: {
+                            linestyle: 0, linewidth: 0, plottype: 0,
+                            trackPrice: false, transparency: 100, visible: false, color: 'rgba(0,0,0,0)'
+                        }
+                    },
                     inputs: defInps,
                 },
                 styles: { p0: { title: '', histogramBase: 0 } },
@@ -399,7 +405,7 @@
                     }
                     var st = window._tve[_key]; if (!st) return [NaN];
                     var cfg = {};
-                    try { cfg = def.buildCfg ? def.buildCfg(inp) : {}; } catch (e) {}
+                    try { cfg = def.buildCfg ? def.buildCfg(inp) : {}; } catch (e) { }
 
                     // ОПТИМ 1: Инвалидируем кэш если cfg изменился
                     var newCfgStr = _cfgHash(cfg);
@@ -424,14 +430,14 @@
     }
 
     window.TVEngine = {
-        define:    define,
+        define: define,
         instances: function () { return Object.keys(window._tve); },
-        registry:  function () { return window._tveRegistry; },
-        redraw:    function (key) { if(window._tve[key]) { window._tve[key]._cache=null; } _scheduleRedraw(key, 0); },
-        redrawAll: function () { Object.keys(window._tve).forEach(function (k) { if(window._tve[k]) window._tve[k]._cache=null; _scheduleRedraw(k, 0); }); },
-        destroy:   function (key) { _destroy(key); },
-        clearAll:  function () { Object.keys(window._tve).forEach(function (k) { _destroy(k); }); },
-        state:     function (key) { return window._tve[key]; },
+        registry: function () { return window._tveRegistry; },
+        redraw: function (key) { if (window._tve[key]) { window._tve[key]._cache = null; } _scheduleRedraw(key, 0); },
+        redrawAll: function () { Object.keys(window._tve).forEach(function (k) { if (window._tve[k]) window._tve[k]._cache = null; _scheduleRedraw(k, 0); }); },
+        destroy: function (key) { _destroy(key); },
+        clearAll: function () { Object.keys(window._tve).forEach(function (k) { _destroy(k); }); },
+        state: function (key) { return window._tve[key]; },
     };
 
     console.log('[TVEngine] v11 loaded ✅');

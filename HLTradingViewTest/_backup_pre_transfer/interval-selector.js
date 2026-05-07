@@ -1,25 +1,25 @@
 class IntervalSelector {
     constructor() {
-        this.currentInterval  = null;
-        this.intervals        = {};
-        this.widget           = null;
-        this._ivSeconds       = 60;
-        this._pollTimer       = null;
-        this._lastRenderedTs  = null;
+        this.currentInterval = null;
+        this.intervals = {};
+        this.widget = null;
+        this._ivSeconds = 60;
+        this._pollTimer = null;
+        this._lastRenderedTs = null;
 
         // ── Настройки отображаемых полей ──────────────────────────────────
         // Каждый элемент: { key, label, color, decimals }
-        this._displayFields   = [];
-        this._defaultFields   = [
-            { key: 'open',  label: 'Open',  color: null,      decimals: 5 },
-            { key: 'close', label: 'Close', color: null,      decimals: 5 },
-            { key: '#',     label: '#',     color: '#787b86', decimals: 0 },
-            { key: 'atr',   label: 'ATR',   color: '#f5a623', decimals: 5 },
+        this._displayFields = [];
+        this._defaultFields = [
+            { key: 'open', label: 'Open', color: null, decimals: 5 },
+            { key: 'close', label: 'Close', color: null, decimals: 5 },
+            { key: '#', label: '#', color: '#787b86', decimals: 0 },
+            { key: 'atr', label: 'ATR', color: '#f5a623', decimals: 5 },
         ];
 
         // ── Фильтр дат ────────────────────────────────────────────────────
-        this._dateFrom  = null;  // Date | null
-        this._dateTo    = null;  // Date | null
+        this._dateFrom = null;  // Date | null
+        this._dateTo = null;  // Date | null
         this._availDays = new Set(); // 'YYYY-MM-DD' строки из activedata
 
         // ── Ключ настроек в localStorage ─────────────────────────────────
@@ -43,13 +43,13 @@ class IntervalSelector {
 
         try {
             this.currentInterval = chart.resolution();
-            this._ivSeconds      = this._res2sec(this.currentInterval);
+            this._ivSeconds = this._res2sec(this.currentInterval);
             this._markActive();
-        } catch(_) {}
+        } catch (_) { }
 
         chart.onIntervalChanged().subscribe(null, (iv) => {
             this.currentInterval = iv;
-            this._ivSeconds      = this._res2sec(iv);
+            this._ivSeconds = this._res2sec(iv);
             this._markActive();
             this._resetInfo();
         });
@@ -72,7 +72,7 @@ class IntervalSelector {
         try {
             const session = JSON.parse(localStorage.getItem('tv_session') || '{}');
             if (session.layoutId) return `${this._LS_KEY}_layout_${session.layoutId}`;
-        } catch(_) {}
+        } catch (_) { }
         return this._LS_KEY;
     }
 
@@ -89,7 +89,7 @@ class IntervalSelector {
                 : JSON.parse(JSON.stringify(this._defaultFields));
 
             // Даты не восстанавливаем — они будут выбраны из последнего периода
-        } catch(_) {
+        } catch (_) {
             this._displayFields = JSON.parse(JSON.stringify(this._defaultFields));
         }
     }
@@ -101,7 +101,7 @@ class IntervalSelector {
 
             // При смене layout — обновляем ключ (layout-state-sync может вызвать этот метод)
             console.log('[ISP] Settings saved');
-        } catch(e) {
+        } catch (e) {
             console.warn('[ISP] Could not save settings:', e);
         }
     }
@@ -118,22 +118,22 @@ class IntervalSelector {
 
     async _loadIntervals() {
         try {
-            const res  = await fetch('/api/intervals', { credentials: 'include' });
+            const res = await fetch('/api/intervals', { credentials: 'include' });
             const list = await res.json();
             this.intervals = { ticks: [], minutes: [], hours: [], days: [] };
             list.filter(i => i.is_active).forEach(i => {
                 const c = i.tradingview_code;
-                if      (c.includes('T') || c.includes('t'))                    this.intervals.ticks.push(c);
-                else if (['1','2','3','5','15','30'].includes(c))                this.intervals.minutes.push(c);
-                else if (['60','120','180','240'].includes(c))                   this.intervals.hours.push(c);
+                if (c.includes('T') || c.includes('t')) this.intervals.ticks.push(c);
+                else if (['1', '2', '3', '5', '15', '30'].includes(c)) this.intervals.minutes.push(c);
+                else if (['60', '120', '180', '240'].includes(c)) this.intervals.hours.push(c);
                 else if (c.includes('D') || c.includes('W') || c.includes('M')) this.intervals.days.push(c);
             });
-        } catch(_) {
+        } catch (_) {
             this.intervals = {
-                ticks:   ['1T'],
-                minutes: ['1','3','5','15','30'],
-                hours:   ['60','240'],
-                days:    ['1D','1W']
+                ticks: ['1T'],
+                minutes: ['1', '3', '5', '15', '30'],
+                hours: ['60', '240'],
+                days: ['1D', '1W']
             };
         }
     }
@@ -149,16 +149,16 @@ class IntervalSelector {
         document.querySelector('.interval-selector-panel')?.remove();
 
         const names = {
-            '1T':'1T','1':'1m','2':'2m','3':'3m','5':'5m','15':'15m',
-            '30':'30m','60':'1h','120':'2h','180':'3h','240':'4h',
-            '1D':'1D','1W':'1W','1M':'1M'
+            '1T': '1T', '1': '1m', '2': '2m', '3': '3m', '5': '5m', '10': '10m', '15': '15m',
+            '30': '30m', '60': '1h', '120': '2h', '180': '3h', '240': '4h',
+            '1D': '1D', '1W': '1W', '1M': '1M'
         };
 
-        const btns = [...(this.intervals.ticks||[]),
-                      ...(this.intervals.minutes||[]),
-                      ...(this.intervals.hours||[]),
-                      ...(this.intervals.days||[])]
-            .map(c => `<button class="isb" data-iv="${c}">${names[c]||c}</button>`)
+        const btns = [...(this.intervals.ticks || []),
+        ...(this.intervals.minutes || []),
+        ...(this.intervals.hours || []),
+        ...(this.intervals.days || [])]
+            .map(c => `<button class="isb" data-iv="${c}">${names[c] || c}</button>`)
             .join('');
 
         const panel = document.createElement('div');
@@ -268,7 +268,7 @@ class IntervalSelector {
 
     _getAvailableFieldKeys() {
         const data = window.app?.activedata;
-        if (!data?.length) return ['open','high','low','close','volume','atr'];
+        if (!data?.length) return ['open', 'high', 'low', 'close', 'volume', 'atr'];
         const sample = data[data.length - 1];
         // '#' — виртуальное поле (номер бара), всегда доступно
         return ['#', ...Object.keys(sample).filter(k => k !== 'timestamp' && k !== 'time')];
@@ -285,10 +285,10 @@ class IntervalSelector {
                 <span class="isp-cfg-drag" title="Перетащить">⠿</span>
                 <input class="isp-cfg-label" type="text" value="${this._esc(f.label)}" data-idx="${i}" placeholder="Метка">
                 <select class="isp-cfg-key" data-idx="${i}">
-                    ${allKeys.map(k => `<option value="${k}" ${k===f.key?'selected':''}>${k}</option>`).join('')}
+                    ${allKeys.map(k => `<option value="${k}" ${k === f.key ? 'selected' : ''}>${k}</option>`).join('')}
                 </select>
-                <input class="isp-cfg-color" type="color" value="${f.color||'#d1d4dc'}" data-idx="${i}" title="Цвет">
-                <input class="isp-cfg-dec" type="number" min="0" max="10" value="${f.decimals??5}" data-idx="${i}" title="Знаков" style="width:40px">
+                <input class="isp-cfg-color" type="color" value="${f.color || '#d1d4dc'}" data-idx="${i}" title="Цвет">
+                <input class="isp-cfg-dec" type="number" min="0" max="10" value="${f.decimals ?? 5}" data-idx="${i}" title="Знаков" style="width:40px">
                 <button class="isp-cfg-del" data-idx="${i}" title="Удалить">✕</button>
             </div>
         `).join('');
@@ -333,10 +333,10 @@ class IntervalSelector {
             const newFields = [];
             rows2.forEach(row => {
                 const idx = parseInt(row.dataset.idx);
-                const key   = row.querySelector('.isp-cfg-key').value;
+                const key = row.querySelector('.isp-cfg-key').value;
                 const label = row.querySelector('.isp-cfg-label').value || key;
                 const color = row.querySelector('.isp-cfg-color').value;
-                const dec   = parseInt(row.querySelector('.isp-cfg-dec').value) || 5;
+                const dec = parseInt(row.querySelector('.isp-cfg-dec').value) || 5;
                 newFields.push({
                     key,
                     label,
@@ -362,7 +362,7 @@ class IntervalSelector {
 
     _bindDateRange() {
         const toggle = document.getElementById('isp-drp-toggle');
-        const popup  = document.getElementById('isp-drp-popup');
+        const popup = document.getElementById('isp-drp-popup');
 
         toggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -376,9 +376,9 @@ class IntervalSelector {
 
         document.getElementById('isp-drp-apply').addEventListener('click', () => {
             const fromVal = document.getElementById('isp-date-from').value;
-            const toVal   = document.getElementById('isp-date-to').value;
+            const toVal = document.getElementById('isp-date-to').value;
             this._dateFrom = fromVal ? new Date(fromVal + 'T00:00:00Z') : null;
-            this._dateTo   = toVal   ? new Date(toVal   + 'T23:59:59Z') : null;
+            this._dateTo = toVal ? new Date(toVal + 'T23:59:59Z') : null;
             this._updateDrpLabel();
             this._applyDateFilter();
             popup.classList.remove('open');
@@ -386,9 +386,9 @@ class IntervalSelector {
 
         document.getElementById('isp-drp-reset').addEventListener('click', () => {
             this._dateFrom = null;
-            this._dateTo   = null;
+            this._dateTo = null;
             document.getElementById('isp-date-from').value = '';
-            document.getElementById('isp-date-to').value   = '';
+            document.getElementById('isp-date-to').value = '';
             this._updateDrpLabel();
             this._applyDateFilter();
             popup.classList.remove('open');
@@ -439,11 +439,11 @@ class IntervalSelector {
             const fromDay = daysArr.length > 30 ? daysArr[daysArr.length - 30] : daysArr[0];
 
             this._dateFrom = new Date(fromDay + 'T00:00:00Z');
-            this._dateTo   = new Date(lastDay + 'T23:59:59Z');
+            this._dateTo = new Date(lastDay + 'T23:59:59Z');
             this._updateDrpLabel();
             // НЕ применяем фильтр сразу при инициализации — только обновляем UI
             document.getElementById('isp-date-from').value = fromDay;
-            document.getElementById('isp-date-to').value   = lastDay;
+            document.getElementById('isp-date-to').value = lastDay;
         }
     }
 
@@ -455,12 +455,12 @@ class IntervalSelector {
         const maxDay = sorted[sorted.length - 1];
 
         const fromInput = document.getElementById('isp-date-from');
-        const toInput   = document.getElementById('isp-date-to');
+        const toInput = document.getElementById('isp-date-to');
 
         fromInput.min = minDay;
         fromInput.max = maxDay;
-        toInput.min   = minDay;
-        toInput.max   = maxDay;
+        toInput.min = minDay;
+        toInput.max = maxDay;
 
         // Добавляем подсказку о доступных датах
         const hint = document.getElementById('isp-drp-hint');
@@ -475,8 +475,8 @@ class IntervalSelector {
 
     _validateDateInputs() {
         const fromVal = document.getElementById('isp-date-from').value;
-        const toVal   = document.getElementById('isp-date-to').value;
-        const hint    = document.getElementById('isp-drp-hint');
+        const toVal = document.getElementById('isp-date-to').value;
+        const hint = document.getElementById('isp-drp-hint');
 
         let msg = '';
         if (fromVal && !this._availDays.has(fromVal)) {
@@ -515,8 +515,8 @@ class IntervalSelector {
         if (!this._dateFrom && !this._dateTo) {
             label.textContent = 'Все даты';
         } else {
-            const f = this._dateFrom ? this._dateFrom.toISOString().slice(0,10) : '...';
-            const t = this._dateTo   ? this._dateTo.toISOString().slice(0,10)   : '...';
+            const f = this._dateFrom ? this._dateFrom.toISOString().slice(0, 10) : '...';
+            const t = this._dateTo ? this._dateTo.toISOString().slice(0, 10) : '...';
             label.textContent = `${f} → ${t}`;
         }
     }
@@ -528,13 +528,13 @@ class IntervalSelector {
             const chart = this.widget.activeChart();
             if (this._dateFrom && this._dateTo) {
                 const fromSec = Math.floor(this._dateFrom.getTime() / 1000);
-                const toSec   = Math.floor(this._dateTo.getTime()   / 1000);
+                const toSec = Math.floor(this._dateTo.getTime() / 1000);
                 chart.setVisibleRange({ from: fromSec, to: toSec });
             } else {
                 // Сброс — показать все данные
                 chart.resetData?.();
             }
-        } catch(e) {
+        } catch (e) {
             console.warn('[ISP] setVisibleRange error:', e);
         }
     }
@@ -556,10 +556,10 @@ class IntervalSelector {
         try {
             this.widget.activeChart().setResolution(iv);
             this.currentInterval = iv;
-            this._ivSeconds      = this._res2sec(iv);
+            this._ivSeconds = this._res2sec(iv);
             this._markActive();
             localStorage.setItem('tradingview_interval', iv);
-        } catch(e) { console.error(e); }
+        } catch (e) { console.error(e); }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -574,7 +574,7 @@ class IntervalSelector {
                 });
                 return;
             }
-        } catch(_) {}
+        } catch (_) { }
         try {
             if (typeof chart.crosshairMoved === 'function') {
                 chart.crosshairMoved().subscribe(null, ({ time }) => {
@@ -582,7 +582,7 @@ class IntervalSelector {
                 });
                 return;
             }
-        } catch(_) {}
+        } catch (_) { }
         console.warn('[BarInfo] crosshair API not available — using polling only');
     }
 
@@ -616,7 +616,7 @@ class IntervalSelector {
         const idx = this._findBar(data, tsMs);
         if (idx === -1) return;
 
-        const bar    = data[idx];
+        const bar = data[idx];
         const openMs = new Date(bar.timestamp).getTime();
 
         if (openMs === this._lastRenderedTs && !isCurrent) return;
@@ -653,14 +653,14 @@ class IntervalSelector {
     _findBar(data, targetMs) {
         let lo = 0, hi = data.length - 1;
         while (lo <= hi) {
-            const m  = (lo + hi) >> 1;
+            const m = (lo + hi) >> 1;
             const bm = new Date(data[m].timestamp).getTime();
             if (bm === targetMs) return m;
             bm < targetMs ? (lo = m + 1) : (hi = m - 1);
         }
         const c = lo - 1;
         if (c >= 0) {
-            const bm  = new Date(data[c].timestamp).getTime();
+            const bm = new Date(data[c].timestamp).getTime();
             const end = bm + this._ivSeconds * 1000;
             if (targetMs >= bm && targetMs < end) return c;
         }
@@ -681,23 +681,23 @@ class IntervalSelector {
     // ─────────────────────────────────────────────────────────────────────
 
     _esc(s) {
-        return String(s||'').replace(/[&<>"']/g, c =>
-            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        return String(s || '').replace(/[&<>"']/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     _fmt(ms) {
         const d = new Date(ms);
-        const p = n => String(n).padStart(2,'0');
-        return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} `
-             + `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} `
+            + `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
     }
 
     _res2sec(r) {
         return ({
-            '1T':1,'1t':1,
-            '1':60,'2':120,'3':180,'5':300,'15':900,'30':1800,
-            '60':3600,'120':7200,'180':10800,'240':14400,
-            '1D':86400,'1W':604800,'1M':2592000
+            '1T': 1, '1t': 1,
+            '1': 60, '2': 120, '3': 180, '5': 300, '15': 900, '30': 1800,
+            '60': 3600, '120': 7200, '180': 10800, '240': 14400,
+            '1D': 86400, '1W': 604800, '1M': 2592000
         })[r] || 60;
     }
 
@@ -714,8 +714,8 @@ class IntervalSelector {
 .interval-selector-panel {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;         
-    min-height: 34px;        
+    flex-wrap: wrap;
+    min-height: 34px;
     padding: 0 8px;
     gap: 0;
     background: var(--bg-primary, #131722);

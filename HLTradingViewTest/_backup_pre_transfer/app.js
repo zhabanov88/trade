@@ -14,13 +14,13 @@ class TradingApp {
         try {
             const response = await fetch('/api/intervals', { credentials: 'include' });
             const intervals = await response.json();
-            
+
             // Фильтруем только активные
             const activeIntervals = intervals
                 .filter(i => i.is_active)
                 .map(i => i.tradingview_code)
                 .filter(Boolean);
-            
+
 
             console.log("intervals__intervals__intervals__intervals", intervals)
             console.log("activeIntervals__activeIntervals__activeIntervals")
@@ -42,17 +42,17 @@ class TradingApp {
             console.log(`✓ Using saved interval from localStorage: ${savedInterval}`);
             return savedInterval;
         }
-        
+
         // 2. Проверяем настройки в базе данных (можно добавить позже)
         // const userSettings = await apiClient.getUserSettings();
         // if (userSettings.default_interval) return userSettings.default_interval;
-        
+
         // 3. Используем дефолтный интервал из intervals (первый активный)
         if (this.intervals && this.intervals.length > 0) {
             console.log(`✓ Using first available interval: ${this.intervals[0]}`);
             return this.intervals[0];
         }
-        
+
         // 4. Fallback
         console.log('✓ Using fallback interval: 1');
         return '1';
@@ -101,7 +101,7 @@ class TradingApp {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 authStatus = await this.checkAuth();
             }
-            
+
             if (!authStatus.authenticated) {
                 console.log('❌ User not authenticated');
                 this.showAuthContainer();
@@ -162,7 +162,7 @@ class TradingApp {
         const authContainer = document.getElementById('authContainer');
         const appContainer = document.getElementById('appContainer');
         const loadingOverlay = document.getElementById('loading-overlay');
-        
+
         document.title = 'Bot32 dashboard'
         if (authContainer) authContainer.style.display = 'none';
         if (loadingOverlay) loadingOverlay.style.display = 'flex';
@@ -176,7 +176,7 @@ class TradingApp {
         const usernameEl = document.getElementById('username');
         if (usernameEl && this.currentUser) {
             usernameEl.textContent = this.currentUser.username;
-            
+
             if (this.currentUser.isAdmin) {
                 usernameEl.innerHTML = `${this.currentUser.username} <span style="background: #ffa726; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; margin-left: 5px;">ADMIN</span>`;
             }
@@ -192,7 +192,7 @@ class TradingApp {
         try {
             console.log('🔄 Creating DatabaseIntegratedDatafeed...');
             this.datafeed = new DatabaseIntegratedDatafeed();
-            
+
             // Инициализируем datafeed
             await this.datafeed.initialize();
             console.log('✅ Datafeed initialized with ClickHouse data');
@@ -207,7 +207,7 @@ class TradingApp {
             try {
                 const _raw = localStorage.getItem('tv_session');
                 if (_raw) _savedSession = JSON.parse(_raw);
-            } catch (_) {}
+            } catch (_) { }
 
             let defaultSymbol = _savedSession?.symbol || 'EUR';
             if (!_savedSession?.symbol && this.datafeed.instruments?.length > 0) {
@@ -222,7 +222,7 @@ class TradingApp {
 
             // Создаём виджет
             const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
-            
+
             this.widget = new TradingView.widget({
                 debug: false,
                 symbol: defaultSymbol,
@@ -232,29 +232,29 @@ class TradingApp {
                 library_path: 'charting_library/charting_library/',
                 locale: 'en',
                 theme: currentTheme === 'light' || currentTheme === 'Light' ? 'Light' : 'Dark',
-                
+
                 disabled_features: [
                     "header_resolutions"
                     //'use_localstorage_for_settings'
                 ],
-                
+
                 enabled_features: [
                     'study_templates',
                     'side_toolbar_in_fullscreen_mode'
                 ],
-                
+
                 fullscreen: false,
                 autosize: true,
-                theme: currentTheme, // Используем тему из localStorage 
+                theme: currentTheme, // Используем тему из localStorage
                 timezone: 'America/New_York',
-                
+
                 //custom_indicators_getter: function(PineJS) {
                 //    return Promise.resolve([]);
                 //},
 
                 custom_indicators_getter: async function (PineJS) {
                     window.PineJS = PineJS;
-                 
+
                     // ── Загружаем скрипты из БД ──────────────────────────────────────────
                     let dbScripts = [];
                     try {
@@ -267,7 +267,7 @@ class TradingApp {
                     } catch (e) {
                         console.error('[CIG] Fetch error:', e);
                     }
-                 
+
                     // ── Хелперы для парсинга inputs ──────────────────────────────────────
                     function parseInputs(script) {
                         // default_inputs может быть строкой JSON или объектом
@@ -275,41 +275,41 @@ class TradingApp {
                         if (typeof raw === 'string') {
                             try { raw = JSON.parse(raw); } catch (_) { raw = {}; }
                         }
-                 
+
                         // Поддерживаем два формата:
                         // 1. Массив: [{id, name, type, defval, ...}]
                         // 2. Объект: { length: 14, source: "close" }
                         if (Array.isArray(raw)) return raw;
-                 
+
                         return Object.entries(raw).map(([key, val], i) => ({
-                            id:     `in_${i}`,
-                            name:   key,
+                            id: `in_${i}`,
+                            name: key,
                             defval: val,
-                            type:   typeof val === 'number'
-                                        ? (Number.isInteger(val) ? 'integer' : 'float')
-                                        : typeof val === 'boolean'
-                                            ? 'bool'
-                                            : 'text',
+                            type: typeof val === 'number'
+                                ? (Number.isInteger(val) ? 'integer' : 'float')
+                                : typeof val === 'boolean'
+                                    ? 'bool'
+                                    : 'text',
                         }));
                     }
-                 
+
                     function buildDefaultInputs(inputsArr) {
                         const obj = {};
                         inputsArr.forEach(inp => { obj[inp.id] = inp.defval; });
                         return obj;
                     }
-                 
+
                     // ── Строим определения ───────────────────────────────────────────────
                     const result = [];
-                 
+
                     for (const script of dbScripts) {
-                        const id      = script.system_name   || `indicator_${script.id}`;
-                        const name    = script.display_name  || id;
-                        const desc    = script.description   || name;
+                        const id = script.system_name || `indicator_${script.id}`;
+                        const name = script.display_name || id;
+                        const desc = script.description || name;
                         const overlay = !!(script.is_overlay);
-                        const inputs  = parseInputs(script);
-                        const tvId    = `${id}@tv-basicstudies-1`;
-                 
+                        const inputs = parseInputs(script);
+                        const tvId = `${id}@tv-basicstudies-1`;
+
                         // ── Попытка 1: код скрипта возвращает готовый TV-объект ───────────
                         if (script.code && script.code.trim()) {
                             if (script.code && script.code.trim()) {
@@ -320,7 +320,7 @@ class TradingApp {
                                     const factory = new Function('PineJS', script.code);
                                     const built = factory(PineJS);
                                     if (built && built.metainfo && built.constructor) {
-                                        built.metainfo.id                = tvId;
+                                        built.metainfo.id = tvId;
                                         built.metainfo.isCustomIndicator = true;
                                         result.push(built);
                                         console.log(`[CIG] ✅ "${name}" — из кода`);
@@ -331,7 +331,7 @@ class TradingApp {
                                 }
                             }
                         }
-                 
+
                         // ── Попытка 2: минимальная заглушка с параметрами из БД ──────────
                         // КРИТИЧНО: компилируем функцию main ОДИН РАЗ, не на каждом баре!
                         let mainFn;
@@ -352,54 +352,54 @@ class TradingApp {
                                 mainFn = null;
                             }
                         }
-                 
+
                         const capturedMainFn = mainFn; // замыкание
-                 
+
                         result.push({
                             name: name,
                             metainfo: {
                                 _metainfoVersion: 53,
-                                id:               tvId,
-                                description:      desc,
+                                id: tvId,
+                                description: desc,
                                 shortDescription: name.substring(0, 24),
-                                is_price_study:   overlay,
+                                is_price_study: overlay,
                                 isCustomIndicator: true,
                                 format: { type: overlay ? 'inherit' : 'price', precision: 4 },
-                 
+
                                 // ── Параметры из БД ──────────────────────────────────────
                                 inputs: inputs.map(inp => ({
-                                    id:     inp.id,
-                                    name:   inp.name    || inp.id,
-                                    defval: inp.defval  !== undefined ? inp.defval : 0,
-                                    type:   inp.type    || 'integer',
-                                    ...(inp.min  !== undefined ? { min: inp.min }  : {}),
-                                    ...(inp.max  !== undefined ? { max: inp.max }  : {}),
-                                    ...(inp.step !== undefined ? { step: inp.step }: {}),
-                                    ...(inp.options        ? { options: inp.options }       : {}),
-                                    ...(inp.tooltip        ? { tooltip: inp.tooltip }       : {}),
+                                    id: inp.id,
+                                    name: inp.name || inp.id,
+                                    defval: inp.defval !== undefined ? inp.defval : 0,
+                                    type: inp.type || 'integer',
+                                    ...(inp.min !== undefined ? { min: inp.min } : {}),
+                                    ...(inp.max !== undefined ? { max: inp.max } : {}),
+                                    ...(inp.step !== undefined ? { step: inp.step } : {}),
+                                    ...(inp.options ? { options: inp.options } : {}),
+                                    ...(inp.tooltip ? { tooltip: inp.tooltip } : {}),
                                 })),
-                 
+
                                 plots: [{ id: 'plot_0', type: 'line' }],
-                 
+
                                 defaults: {
                                     styles: {
                                         plot_0: {
-                                            linestyle:    0,
-                                            linewidth:    2,
-                                            plottype:     0,
-                                            trackPrice:   false,
+                                            linestyle: 0,
+                                            linewidth: 2,
+                                            plottype: 0,
+                                            trackPrice: false,
                                             transparency: 0,
-                                            visible:      true,
-                                            color:        '#2962FF',
+                                            visible: true,
+                                            color: '#2962FF',
                                         },
                                     },
                                     precision: 4,
-                                    inputs:    buildDefaultInputs(inputs),
+                                    inputs: buildDefaultInputs(inputs),
                                 },
-                 
+
                                 styles: { plot_0: { title: 'Value', histogramBase: 0 } },
                             },
-                 
+
                             constructor: function () {
                                 this.main = function (ctx, inputCallback) {
                                     if (capturedMainFn) {
@@ -407,27 +407,27 @@ class TradingApp {
                                             const r = capturedMainFn(ctx, inputCallback);
                                             if (Array.isArray(r)) return r;
                                             if (typeof r === 'number') return [r];
-                                        } catch (_) {}
+                                        } catch (_) { }
                                     }
                                     return [0];
                                 };
                             },
                         });
-                 
+
                         console.log(`[CIG] ⚙️ "${name}" — заглушка, inputs: ${inputs.length}`);
                     }
-                 
+
                     // Добавляем то что добавили через Pine Editor
                     const fromRegistry = (window.customPineIndicators || []).filter(Boolean);
                     const all = [...result, ...fromRegistry];
                     console.log(`[CIG] Итого индикаторов для TV: ${all.length}`);
                     return all;
                 },
-                
+
                 save_load_adapter: {
                     charts: [],
                     studyTemplates: [],
-                    
+
                     getAllCharts: async () => {
                         try {
                             const layouts = await apiClient.getLayouts();
@@ -443,7 +443,7 @@ class TradingApp {
                             return [];
                         }
                     },
-                    
+
                     removeChart: async (id) => {
                         try {
                             await apiClient.deleteLayout(parseInt(id));
@@ -451,35 +451,35 @@ class TradingApp {
                             console.error('Failed to remove chart:', error);
                         }
                     },
-                    
+
                     saveChart: async (chartData) => {
                         try {
                             let content = chartData.content;
                             if (typeof content === 'string') {
-                                try { content = JSON.parse(content); } catch(_) {}
+                                try { content = JSON.parse(content); } catch (_) { }
                             }
                             const extendedContent = {
                                 ...(typeof content === 'object' && content !== null ? content : { raw: content }),
                                 _appState: {
                                     activeDataKey: window.app?._activeDataKey || null,
-                                    tableState:    window.dataTable?.getState ? window.dataTable.getState() : null,
-                                    savedAt:       Date.now(),
+                                    tableState: window.dataTable?.getState ? window.dataTable.getState() : null,
+                                    savedAt: Date.now(),
                                 }
                             };
                             const result = await apiClient.createLayout({
-                                name:        chartData.name,
+                                name: chartData.name,
                                 layout_data: extendedContent,
-                                symbol:      chartData.symbol,
-                                interval:    chartData.resolution,
-                                is_default:  false
+                                symbol: chartData.symbol,
+                                interval: chartData.resolution,
+                                is_default: false
                             });
                             if (window.layoutManager) {
                                 window.layoutManager._saveSession({
-                                    layoutId:   result.id,
+                                    layoutId: result.id,
                                     layoutName: chartData.name,
-                                    symbol:     chartData.symbol,
-                                    interval:   chartData.resolution,
-                                    appState:   extendedContent._appState,
+                                    symbol: chartData.symbol,
+                                    interval: chartData.resolution,
+                                    appState: extendedContent._appState,
                                 });
                                 window.layoutManager._pushRecent({ id: result.id, name: chartData.name, symbol: chartData.symbol, interval: chartData.resolution });
                                 window.layoutManager._renderRecentMenu();
@@ -490,23 +490,23 @@ class TradingApp {
                             throw error;
                         }
                     },
-                    
+
                     getChartContent: async (id) => {
                         try {
                             const layout = await apiClient.getLayout(parseInt(id));
                             let data = layout.layout_data;
-                    
+
                             if (data && typeof data === 'object' && data._appState) {
                                 const appState = data._appState;
                                 const { _appState, ...pureTvData } = data;
                                 data = pureTvData;
-                    
+
                                 if (window.layoutManager) {
                                     window.layoutManager._saveSession({
-                                        layoutId:   layout.id,
+                                        layoutId: layout.id,
                                         layoutName: layout.name,
-                                        symbol:     layout.symbol,
-                                        interval:   layout.interval,
+                                        symbol: layout.symbol,
+                                        interval: layout.interval,
                                         appState,
                                     });
                                     window.layoutManager._restoreAppState(appState);
@@ -521,13 +521,13 @@ class TradingApp {
                             return null;
                         }
                     },
-                    
+
                     getAllStudyTemplates: () => Promise.resolve([]),
                     removeStudyTemplate: () => Promise.resolve(),
                     saveStudyTemplate: () => Promise.resolve(),
                     getStudyTemplateContent: () => Promise.resolve('')
                 },
-                
+
                 overrides: {
                     'mainSeriesProperties.candleStyle.upColor': '#26a69a',
                     'mainSeriesProperties.candleStyle.downColor': '#ef5350',
@@ -552,7 +552,7 @@ class TradingApp {
             await new Promise((resolve) => {
                 this.widget.onChartReady(() => {
                     console.log('✅ TradingView chart ready');
-                    
+
                     // Подписываемся на изменение интервала
                     const chart = this.widget.activeChart();
 
@@ -562,28 +562,28 @@ class TradingApp {
                         try {
                             this.widget.applyOverrides({
                                 // Фон графика
-                                'paneProperties.background':             '#ffffff',
-                                'paneProperties.backgroundType':         'solid',
+                                'paneProperties.background': '#ffffff',
+                                'paneProperties.backgroundType': 'solid',
                                 'paneProperties.backgroundGradientStartColor': '#ffffff',
-                                'paneProperties.backgroundGradientEndColor':   '#f8f9fd',
+                                'paneProperties.backgroundGradientEndColor': '#f8f9fd',
                                 // Сетка
-                                'paneProperties.vertGridProperties.color':  '#e8edf2',
-                                'paneProperties.horzGridProperties.color':  '#e8edf2',
+                                'paneProperties.vertGridProperties.color': '#e8edf2',
+                                'paneProperties.horzGridProperties.color': '#e8edf2',
                                 // Крестик
                                 'paneProperties.crossHairProperties.color': '#758696',
                                 // Шкала цены
-                                'scalesProperties.textColor':    '#131722',
-                                'scalesProperties.lineColor':    '#d1d4dc',
+                                'scalesProperties.textColor': '#131722',
+                                'scalesProperties.lineColor': '#d1d4dc',
                                 'scalesProperties.backgroundColor': '#ffffff',
                                 // Легенда
                                 'legendProperties.showStudyArguments': true,
-                                'legendProperties.showStudyTitles':    true,
-                                'legendProperties.showStudyValues':    true,
-                                'legendProperties.showSeriesTitle':    true,
-                                'legendProperties.showSeriesOHLC':     true,
+                                'legendProperties.showStudyTitles': true,
+                                'legendProperties.showStudyValues': true,
+                                'legendProperties.showSeriesTitle': true,
+                                'legendProperties.showSeriesOHLC': true,
                             });
                             console.log('✅ Light theme overrides applied');
-                        } catch(e) {
+                        } catch (e) {
                             console.warn('⚠️ applyOverrides failed:', e.message);
                         }
                     }
@@ -592,7 +592,7 @@ class TradingApp {
                         console.log(`✓ Interval changed to: ${interval}`);
                         this.saveCurrentInterval(interval);
                     });
-                    
+
                     if (window.intervalSelector) {
                         console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
                         console.log(`✓ Interval changed to !!!!!!!!!!!!!!!!!:`);
@@ -606,14 +606,14 @@ class TradingApp {
                     // Hide loading overlay
                     const loadingOverlay = document.getElementById('loading-overlay');
                     const appContainer = document.getElementById('appContainer');
-                    
+
                     if (loadingOverlay) {
                         loadingOverlay.style.display = 'none';
                     }
                     if (appContainer) {
                         appContainer.style.visibility = 'visible';
                     }
-                    
+
                     window.indicatorHelpers = {
                         // Найти study по имени (частичное совпадение)
                         findByName(name) {
@@ -625,7 +625,7 @@ class TradingApp {
                                 );
                             } catch (_) { return []; }
                         },
-                 
+
                         // Скрыть индикатор
                         hideByName(name) {
                             const chart = window.app?.widget?.activeChart();
@@ -635,11 +635,11 @@ class TradingApp {
                                     const entity = chart.getStudyById(s.entityId);
                                     entity?.setVisible(false);
                                 } catch (_) {
-                                    try { chart.setEntityVisibility(s.entityId, false); } catch (__) {}
+                                    try { chart.setEntityVisibility(s.entityId, false); } catch (__) { }
                                 }
                             });
                         },
-                 
+
                         // Показать индикатор
                         showByName(name) {
                             const chart = window.app?.widget?.activeChart();
@@ -649,20 +649,20 @@ class TradingApp {
                                     const entity = chart.getStudyById(s.entityId);
                                     entity?.setVisible(true);
                                 } catch (_) {
-                                    try { chart.setEntityVisibility(s.entityId, true); } catch (__) {}
+                                    try { chart.setEntityVisibility(s.entityId, true); } catch (__) { }
                                 }
                             });
                         },
-                 
+
                         // Удалить индикатор с графика
                         removeByName(name) {
                             const chart = window.app?.widget?.activeChart();
                             if (!chart) return;
                             this.findByName(name).forEach(s => {
-                                try { chart.removeStudy(s.entityId); } catch (_) {}
+                                try { chart.removeStudy(s.entityId); } catch (_) { }
                             });
                         },
-                 
+
                         // Список всех активных индикаторов
                         listAll() {
                             const chart = window.app?.widget?.activeChart();
@@ -674,7 +674,7 @@ class TradingApp {
                     resolve();
                 });
 
-                
+
             });
 
         } catch (error) {
@@ -701,7 +701,7 @@ class TradingApp {
                 window.codePanelManager.init(this.widget);
                 console.log('✅ Code Panel Manager initialized');
             }
-            
+
             if (window.currencySelector && this.datafeed) {
                 window.currencySelector.init(this.widget);
                 console.log('✅ Currency Selector initialized');
@@ -765,11 +765,11 @@ function toggleTheme() {
 // Auth handlers
 async function handleLogin(event) {
     event.preventDefault();
-    
+
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
-    
+
     try {
         const response = await fetch('/api/auth/login', {
             method: 'POST',
@@ -777,9 +777,9 @@ async function handleLogin(event) {
             credentials: 'include',
             body: JSON.stringify({ username, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
             console.log('✅ Login successful:', data.user);
             await app.init(data.user);
@@ -800,12 +800,12 @@ async function handleLogin(event) {
 
 async function handleRegister(event) {
     event.preventDefault();
-    
+
     const username = document.getElementById('registerUsername').value;
     const email = document.getElementById('registerEmail').value;
     const password = document.getElementById('registerPassword').value;
     const errorDiv = document.getElementById('registerError');
-    
+
     try {
         const response = await fetch('/api/auth/register', {
             method: 'POST',
@@ -813,9 +813,9 @@ async function handleRegister(event) {
             credentials: 'include',
             body: JSON.stringify({ username, email, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok && data.success) {
             console.log('✅ Registration successful:', data.user);
             await app.init(data.user);
@@ -836,7 +836,7 @@ async function handleRegister(event) {
 function toggleAuthForm() {
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
-    
+
     if (loginForm.style.display === 'none') {
         loginForm.style.display = 'block';
         registerForm.style.display = 'none';
@@ -849,9 +849,9 @@ function toggleAuthForm() {
 // Auto-initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📄 DOM Content Loaded');
-    
+
     const authStatus = await app.checkAuth();
-    
+
     if (authStatus.authenticated) {
         console.log('✅ User already authenticated, auto-initializing...');
         await app.init();

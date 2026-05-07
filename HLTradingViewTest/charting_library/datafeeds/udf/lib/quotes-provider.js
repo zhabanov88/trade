@@ -8,18 +8,18 @@ export class QuotesProvider {
         return new Promise((resolve, reject) => {
             this._requester.sendRequest(this._datafeedUrl, 'quotes', { symbols: symbols })
                 .then((response) => {
-                if (response.s === 'ok') {
-                    resolve(response.d);
-                }
-                else {
-                    reject(response.errmsg);
-                }
-            })
+                    if (response.s === 'ok') {
+                        resolve(response.d);
+                    }
+                    else {
+                        reject(response.errmsg);
+                    }
+                })
                 .catch((error) => {
-                const errorMessage = getErrorMessage(error);
-                logMessage(`QuotesProvider: getQuotes failed, error=${errorMessage}`);
-                reject(`network error: ${errorMessage}`);
-            });
+                    const errorMessage = getErrorMessage(error);
+                    logMessage(`QuotesProvider: getQuotes failed, error=${errorMessage}`);
+                    reject(`network error: ${errorMessage}`);
+                });
         });
     }
 }

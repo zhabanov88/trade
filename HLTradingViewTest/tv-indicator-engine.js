@@ -1,21 +1,70 @@
 /**
- * tv-indicator-engine.js  v11.4
+ * tv-indicator-engine.js  v11.25
  * Подключить в index.html ДО app.js
  *
- * v11 changelog:
- *  - [HIGH]   Fix #1:  Cache buster mismatch (index.html ?v=5 → ?v=11)
- *  - [HIGH]   Fix #2:  _cleanGhostShapes no longer destroys FVG / user shapes
- *  - [HIGH]   Fix #3:  Retry limits on all setTimeout/setInterval chains
- *  - [HIGH]   Fix #4:  Race condition — shape ID leak from async _clearShapes
- *  - [MEDIUM] Fix #5:  fillBackground now configurable per shape
- *  - [MEDIUM] Fix #6:  Removed DEBUG console.log from production
- *  - [MEDIUM] Fix #7:  NaN/Infinity timestamp no longer corrupts sort
- *  - [MEDIUM] Fix #8:  Unhandled promise rejection on createShape
- *  - [MEDIUM] Fix #10: Hooks self-deactivate when no instances remain
- *  - [MEDIUM] Fix #14: Study matching uses longer substring
- *  - [LOW]    Fix #11: Counter-based key prevents same-ms collision
- *  - [LOW]    Fix #13: appendActiveData returns original result
- *  - [LOW]    Fix #15: Discovery interval cleaned on destroy
+ * v11.18 changelog (поверх v11.15):
+ *  - [FIX]  _getBars: timestamps без Z парсились как локальное время браузера.
+ *           Симптом: все шейпы смещены на UTC offset (напр. UTC+3 → шейпы -3ч).
+ *           Фикс: добавляем Z к строкам без timezone suffix перед парсингом.
+ *  - [FIX]  isMarker (arrow_up/down/flag): добавлены fontsize и arrowColor.
+ *           fontsize контролирует размер маркера (verified via getProperties()).
+ *           tiny≈8, small≈10, normal=14 (TV default), large≈18.
+ *
+ * v11.15 changelog (поверх v11.14):
+ *  - [FIX]  fontsize → fontSize (заглавная S) в overrides для ВСЕХ типов шейпов
+ *           Входное поле в скрипте по-прежнему s.fontsize (строчная) — удобнее писать
+ *           В overrides TV всегда передаётся fontSize (верифицировано через getProperties())
+ *
+ * v11.14 changelog (поверх v11.13):
+ *  - [FIX]  Баг смещения шейпов при прокрутке влево:
+ *           _drawIncrementalBatch теперь проверяет что viewport не изменился
+ *           между итерациями батча. Если viewport сдвинулся — батч отменяется
+ *           и запускается новый _incrementalRedraw с актуальным vrKey.
+ *  - [PERF] Размер батча увеличен с 30 до 100 шейпов за итерацию —
+ *           меньше setTimeout прерываний, меньше шансов поймать смещение viewport.
+ *
+ * v11.13 changelog (поверх v11.12):
+ *  - [FIX]  linestyle: 1=dotted, 2=dashed (было перепутано: 1=dashed, 2=dotted)
+ *          Верифицировано визуально через createMultipointShape
+ *
+ * v11.12 changelog (поверх v11.12):
+ *  - [DOC]  vertLabelsAlign ИНВЕРТИРОВАН: top=снизу снаружи, bottom=сверху снаружи, middle=центр
+ *          aboveBar/belowBar не работают в TV Advanced Charts
+ *
+ * v11.11 changelog (поверх v11.10):
+ *  - [FIX]  rectangle: правильные имена ключей выравнивания:
+ *           horzLabelsAlign (не horzAlign), vertLabelsAlign (не vertAlign)
+ *           textColor (заглавная C, не textcolor)
+ *           Все три ключа работают через overrides при createMultipointShape
+ *  - [FIX]  rectangle: удалён механизм postOverrides — не нужен,
+ *           setProperties/applyOverrides на entity не требуются
+ *  - [FIX]  Значения horzLabelsAlign/vertLabelsAlign — строки (right/middle),
+ *           не числа как предполагалось ранее
+ *
+ * v11.10 changelog (поверх v11.9):
+ *  - [NEW]  postOverrides: после создания шейпа вызывается entity.applyOverrides()
+ *           Это единственный способ установить horzAlign/vertAlign для rectangle —
+ *           TV игнорирует их при createMultipointShape, но принимает через entity API.
+ *           Использование: добавь поле postOverrides:{horzAlign:2,vertAlign:1} в шейп.
+ *
+ * v11.9 changelog (поверх v11.8):
+ *  - [FIX]  rectangle: horzAlign/vertAlign теперь числа (0/1/2), не строки
+ *           TV Advanced Charts отклоняет строковые значения — текст не выравнивался
+ *  - [FIX]  rectangle: textcolor больше не падает на s.color (цвет зоны с малой
+ *           альфой делал текст невидимым). Дефолт: rgba(255,255,255,0.90)
+ *  - [NEW]  rectangle: поля horzAlign/vertAlign доступны прямо в шейпе
+ *           (0=left/top, 1=center/middle, 2=right/bottom)
+ *
+ * v11.8 changelog (поверх v11.7):
+ *  - [FIX]  rectangle/zone: добавлены textcolor, fontsize, bold в overrides
+ *           TV нативно поддерживает текст внутри прямоугольника через showLabel+text
+ *           Теперь можно задавать label прямо на rectangle без отдельного text-шейпа
+ *  - [NEW]  Универсальный механизм label для ВСЕХ шейпов:
+ *           Любой шейп принимает label, textcolor, fontsize, bold
+ *           rectangle → текст внутри зоны (нативно TV)
+ *           text      → отдельный шейп с координатой
+ *           остальные → showLabel + text через overrides
+ *  - [NEW]  _TVE_SHAPE_TYPES расширен: text, balloon, label_up, label_down, note
  */
 (function () {
     'use strict';
@@ -30,9 +79,52 @@
     var _LEGEND_COLORS = { dark: '#b2b5be', light: '#131722' };
     var _VIEWPORT_BUFFER_PCT = 0.15;
 
+    // ── Global indicator opacity ──────────────────────────────────
+    // Per-indicator opacity multiplier (0.0 = invisible, 1.0 = full).
+    // Applied to all rgba() colors in shapes before passing to TV API.
+    var _indicatorOpacity = {};  // key → 0.0..1.0
+
+    function _scaleAlpha(rgba, multiplier) {
+        if (multiplier === 1) return rgba;
+        var m = rgba.match(/^rgba?\(([^)]+)\)$/);
+        if (!m) return rgba;
+        var p = m[1].split(',');
+        if (p.length < 3) return rgba;
+        var a = p.length >= 4 ? parseFloat(p[3]) : 1.0;
+        var newA = Math.max(0, Math.min(1, a * multiplier));
+        // Round to 2 decimal places to avoid float noise
+        newA = Math.round(newA * 100) / 100;
+        return 'rgba(' + p[0].trim() + ',' + p[1].trim() + ',' + p[2].trim() + ',' + newA + ')';
+    }
+
+    function _applyOpacityToShape(s, multiplier) {
+        if (multiplier === 1) return s;
+        // Shallow clone shape, scale all color fields
+        var out = {};
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            var v = s[k];
+            if (typeof v === 'string' && /^rgba?\(/.test(v)) {
+                out[k] = _scaleAlpha(v, multiplier);
+            } else if (k === 'overrides' && v && typeof v === 'object') {
+                var ov = {};
+                for (var ok in v) {
+                    if (!v.hasOwnProperty(ok)) continue;
+                    ov[ok] = (typeof v[ok] === 'string' && /^rgba?\(/.test(v[ok]))
+                        ? _scaleAlpha(v[ok], multiplier)
+                        : v[ok];
+                }
+                out[k] = ov;
+            } else {
+                out[k] = v;
+            }
+        }
+        return out;
+    }
+
     function _currentLegendColor() {
         var theme = 'dark';
-        try { theme = localStorage.getItem('tradingview_theme') || 'dark'; } catch (e) {}
+        try { theme = localStorage.getItem('tradingview_theme') || 'dark'; } catch (e) { }
         return _LEGEND_COLORS[theme] || _LEGEND_COLORS.dark;
     }
 
@@ -48,7 +140,7 @@
                     if (study && typeof study.applyOverrides === 'function') {
                         study.applyOverrides({ 'styles.p0.color': color });
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
         }
     }
@@ -74,11 +166,23 @@
         var bars = [];
         for (var i = 0; i < raw.length; i++) {
             var b = raw[i];
-            var t  = Math.floor(new Date(b.timestamp).getTime() / 1000);
-            var h  = parseFloat(b.high), l = parseFloat(b.low);
+            // FIX: timestamps без timezone ("2025-11-20 23:00:00" без Z) парсятся
+            // браузером как локальное время → смещение на UTC offset пользователя.
+            // Добавляем Z чтобы всегда парсить как UTC.
+            var ts = b.timestamp;
+            if (ts && ts.indexOf('Z') === -1 && ts.indexOf('+') === -1) {
+                ts = ts.replace(' ', 'T') + 'Z';
+            }
+            var t = Math.floor(new Date(ts).getTime() / 1000);
+            var h = parseFloat(b.high), l = parseFloat(b.low);
             var cl = parseFloat(b.close), op = parseFloat(b.open);
-            if (isFinite(t) && !isNaN(h) && !isNaN(l))
-                bars.push({ t:t, h:h, l:l, c:cl, o:op, v:parseFloat(b.volume)||0 });
+            if (isFinite(t) && !isNaN(h) && !isNaN(l)) {
+                var bar = { t: t, h: h, l: l, c: cl, o: op, v: parseFloat(b.volume) || 0 };
+                // FIX: копируем MTF данные если они есть
+                if (b.tf_up) bar.tf_up = b.tf_up;
+                if (b.tf_down) bar.tf_down = b.tf_down;
+                bars.push(bar);
+            }
         }
         bars.sort(function (a, b) { return a.t - b.t; });
         return bars;
@@ -90,23 +194,23 @@
             var c = _chart(); if (!c) return null;
             var vr = c.getVisibleRange();
             if (vr && isFinite(vr.from) && isFinite(vr.to)) return { from: vr.from, to: vr.to };
-        } catch (e) {}
+        } catch (e) { }
         return null;
     }
 
     function _visibleIndices(allShapes, vr) {
         var result = new Set ? new Set() : _makeSet();
         if (!vr || !allShapes.length) return result;
-        var span  = vr.to - vr.from;
-        var buf   = span * _VIEWPORT_BUFFER_PCT;
+        var span = vr.to - vr.from;
+        var buf = span * _VIEWPORT_BUFFER_PCT;
         var tFrom = vr.from - buf;
-        var tTo   = vr.to   + buf;
+        var tTo = vr.to + buf;
         for (var i = 0; i < allShapes.length; i++) {
-            var s   = allShapes[i];
+            var s = allShapes[i];
             var pts = s.points;
             if (!pts || !pts.length) { result.add(i); continue; }
             var sFrom = pts[0].time;
-            var sTo   = pts[pts.length - 1].time;
+            var sTo = pts[pts.length - 1].time;
             if (sFrom > sTo) { var tmp = sFrom; sFrom = sTo; sTo = tmp; }
             if (sTo >= tFrom && sFrom <= tTo) result.add(i);
         }
@@ -116,8 +220,8 @@
     function _makeSet() {
         var items = {};
         return {
-            add:    function (v) { items[v] = true; },
-            has:    function (v) { return !!items[v]; },
+            add: function (v) { items[v] = true; },
+            has: function (v) { return !!items[v]; },
             delete: function (v) { delete items[v]; },
             forEach: function (fn) { for (var k in items) if (items.hasOwnProperty(k)) fn(+k); },
             get size() { return Object.keys(items).length; }
@@ -139,7 +243,7 @@
             });
             _vrHookInstalled = true;
             console.log('[TVEngine] visibleRange hook installed');
-        } catch (e) {}
+        } catch (e) { }
     }
 
     function _onViewportChanged() {
@@ -148,7 +252,7 @@
         var keys = Object.keys(window._tve);
         for (var i = 0; i < keys.length; i++) {
             var key = keys[i];
-            var st  = window._tve[key];
+            var st = window._tve[key];
             if (!st || st._hidden || !st.cfg) continue;
             if (st._cache && st._cache.allShapes && st._cache.vrKey !== vrKey) {
                 _incrementalRedraw(key, vr, vrKey);
@@ -177,27 +281,32 @@
     //   extendRight  — bool (для ray, extended_line)
     // ══════════════════════════════════════════════════════════════
     function _buildShapeOpts(s) {
-        var shapeName  = s.shape || 'rectangle';
-        var isText     = shapeName === 'text';
-        var isRect     = shapeName === 'rectangle' || shapeName === 'rect';
-        var isLineType = /^(trend_line|ray|extended_line|parallel_channel|disjoint_angle)$/.test(shapeName);
-        var isMarker   = /^(arrow_up|arrow_down|arrow_left|arrow_right|flag|cross|circle)$/.test(shapeName);
+        var shapeName = s.shape || 'rectangle';
+        var isText = shapeName === 'text';
+        var isRect = shapeName === 'rectangle' || shapeName === 'rect';
+        var isLineType = /^(trend_line|ray|extended_line|parallel_channel|disjoint_angle|flat_top|flat_bottom)$/.test(shapeName);
+        var isMarker = /^(arrow_up|arrow_down|arrow_left|arrow_right|arrow|flag|cross|circle|triangle_up|triangle_down)$/.test(shapeName);
         var isLabelShape = /^(label_up|label_down|balloon|note|price_label)$/.test(shapeName);
 
         var overrides;
 
         if (isText) {
-            // ── text шейп: отдельный объект с координатой ──────────
-            // Фон прозрачный, цвет и размер задаются напрямую
+            // ── text шейп ──────────────────────────────────────────
+            // fillBackground:true → цветной фон (как SH/SL метки)
+            // fillBackground:false → прозрачный фон (обычный текст)
+            var textFill = s.fillBackground !== undefined ? s.fillBackground : false;
+            // Если есть s.overrides.fillBackground — приоритет за ним
+            if (s.overrides && s.overrides.fillBackground !== undefined) textFill = s.overrides.fillBackground;
+            var textBg = s.backgroundColor || (s.overrides && s.overrides.backgroundColor) || 'rgba(0,0,0,0)';
             overrides = {
-                color:           s.color     || 'rgba(255,255,255,0.90)',
-                textcolor:       s.textcolor || s.color || 'rgba(255,255,255,0.90)',
-                fontSize:        s.fontsize  !== undefined ? s.fontsize : 12,
-                bold:            s.bold      !== undefined ? !!s.bold : false,
-                fillBackground:  false,
-                backgroundColor: 'rgba(0,0,0,0)',
-                transparency:    0,
-                text:            s.label || '',
+                color: s.color || 'rgba(255,255,255,0.90)',
+                textcolor: s.textcolor || s.color || 'rgba(255,255,255,0.90)',
+                fontSize: s.fontsize !== undefined ? s.fontsize : 12,
+                bold: s.bold !== undefined ? !!s.bold : false,
+                fillBackground: textFill,
+                backgroundColor: textFill ? textBg : 'rgba(0,0,0,0)',
+                transparency: 0,
+                text: s.label || '',
             };
 
         } else if (isRect) {
@@ -208,83 +317,95 @@
             // textColor — ЗАГЛАВНАЯ C
             // Все три работают напрямую через overrides при createMultipointShape
             overrides = {
-                backgroundColor:  s.color,
-                color:            s.color,
-                linecolor:        s.color,
-                linewidth:        s.linewidth      !== undefined ? s.linewidth      : 0,
-                linestyle:        s.linestyle      !== undefined ? s.linestyle      : 0,
-                fillBackground:   s.fillBackground !== undefined ? s.fillBackground : true,
-                transparency:     s.transparency   !== undefined ? s.transparency   : 0,
+                backgroundColor: s.color,
+                color: s.color,
+                linecolor: s.color,
+                linewidth: s.linewidth !== undefined ? s.linewidth : 0,
+                linestyle: s.linestyle !== undefined ? s.linestyle : 0,
+                fillBackground: s.fillBackground !== undefined ? s.fillBackground : true,
+                transparency: s.transparency !== undefined ? s.transparency : 0,
                 // ── Текст внутри прямоугольника ──
-                showLabel:        !!(s.label),
-                text:             s.label          || '',
+                showLabel: !!(s.label),
+                text: s.label || '',
                 // textColor — ЗАГЛАВНАЯ C. НЕ падать на s.color (малая альфа → невидимый текст)
-                textColor:        s.textcolor || s.textColor || 'rgba(255,255,255,0.90)',
-                fontSize:         s.fontsize  !== undefined ? s.fontsize : 12,
-                bold:             s.bold      !== undefined ? !!s.bold   : false,
+                textColor: s.textcolor || s.textColor || 'rgba(255,255,255,0.90)',
+                fontSize: s.fontsize !== undefined ? s.fontsize : 12,
+                bold: s.bold !== undefined ? !!s.bold : false,
                 // Выравнивание — строки, не числа.
                 // vertLabelsAlign ИНВЕРТИРОВАН в TV: 'top'=снизу снаружи, 'bottom'=сверху снаружи, 'middle'=центр
                 // horzLabelsAlign: 'left' | 'center' | 'right'
-                horzLabelsAlign:  s.horzLabelsAlign || s.horzAlign || 'right',
-                vertLabelsAlign:  s.vertLabelsAlign || s.vertAlign || 'middle',
+                horzLabelsAlign: s.horzLabelsAlign || s.horzAlign || 'right',
+                vertLabelsAlign: s.vertLabelsAlign || s.vertAlign || 'middle',
             };
         } else if (isLineType) {
-            // ── Линии: trend_line, ray, extended_line и т.д. ───────
+            // ── Линии: trend_line, ray, extended_line, flat_top, flat_bottom ─
+            //
+            // Верифицированные ключи для ray (из entity.getProperties()):
+            //   linecolor, linewidth, linestyle, extendLeft, extendRight
+            //   НЕТ полей: fillBackground, backgroundColor, color (только linecolor)
+            //
+            // ray всегда рисует линию — fillBackground не нужен и игнорируется.
+            // Проблема с прямоугольниками была в старом коде где color → backgroundColor.
             overrides = {
-                color:           s.color,
-                linecolor:       s.color,
-                linewidth:       s.linewidth  !== undefined ? s.linewidth  : 2,
-                linestyle:       s.linestyle  !== undefined ? s.linestyle  : 0,
-                fillBackground:  false,
-                transparency:    s.transparency !== undefined ? s.transparency : 0,
-                extendLeft:      s.extendLeft  !== undefined ? !!s.extendLeft  : false,
-                extendRight:     s.extendRight !== undefined ? !!s.extendRight : false,
+                color: s.color,       // для trend_line / extended_line
+                linecolor: s.color,        // для ray (верифицировано)
+                linewidth: s.linewidth !== undefined ? s.linewidth : 2,
+                linestyle: s.linestyle !== undefined ? s.linestyle : 0,
+                fillBackground: false,          // безопасно передать — ray игнорирует
+                transparency: s.transparency !== undefined ? s.transparency : 0,
+                extendLeft: s.extendLeft !== undefined ? !!s.extendLeft : false,
+                extendRight: s.extendRight !== undefined ? !!s.extendRight : false,
                 // Подпись на линии
-                showLabel:       !!(s.label),
-                text:            s.label     || '',
-                textcolor:       s.textcolor || s.color || 'rgba(255,255,255,0.90)',
-                fontSize:        s.fontsize  !== undefined ? s.fontsize : 12,
-                bold:            s.bold      !== undefined ? !!s.bold   : false,
+                showLabel: !!(s.label),
+                text: s.label || '',
+                textcolor: s.textcolor || s.color || 'rgba(255,255,255,0.90)',
+                fontSize: s.fontsize !== undefined ? s.fontsize : 12,
+                bold: s.bold !== undefined ? !!s.bold : false,
             };
 
         } else if (isMarker) {
             // ── Маркеры: стрелки, флаги, кресты ────────────────────
+            // fontsize контролирует размер (verified via getProperties(): fontsize:14 default)
+            // arrowColor — отдельный ключ для стрелок помимо color
+            // Размеры: tiny≈8, small≈10, normal=14, large≈18
             overrides = {
-                color:           s.color,
+                color: s.color,
+                arrowColor: s.color,
                 backgroundColor: s.color,
-                linecolor:       s.color,
-                fillBackground:  true,
-                transparency:    s.transparency !== undefined ? s.transparency : 0,
+                linecolor: s.color,
+                fillBackground: true,
+                transparency: s.transparency !== undefined ? s.transparency : 0,
+                fontsize: s.fontsize !== undefined ? s.fontsize : 14,
             };
 
         } else if (isLabelShape) {
             // ── label_up / label_down / balloon / note ──────────────
             // Эти шейпы сами по себе текстовые — color = цвет фона/стрелки
             overrides = {
-                color:           s.color     || 'rgba(41,98,255,0.90)',
-                backgroundColor: s.color     || 'rgba(41,98,255,0.90)',
-                textcolor:       s.textcolor || 'rgba(255,255,255,0.90)',
-                fontSize:        s.fontsize  !== undefined ? s.fontsize : 12,
-                bold:            s.bold      !== undefined ? !!s.bold   : false,
-                transparency:    s.transparency !== undefined ? s.transparency : 0,
-                text:            s.label || '',
+                color: s.color || 'rgba(41,98,255,0.90)',
+                backgroundColor: s.color || 'rgba(41,98,255,0.90)',
+                textcolor: s.textcolor || 'rgba(255,255,255,0.90)',
+                fontSize: s.fontsize !== undefined ? s.fontsize : 12,
+                bold: s.bold !== undefined ? !!s.bold : false,
+                transparency: s.transparency !== undefined ? s.transparency : 0,
+                text: s.label || '',
             };
 
         } else {
             // ── Fallback для всех прочих типов (fib, pitchfork и т.д.) ──
             overrides = {
                 backgroundColor: s.color,
-                color:           s.color,
-                linecolor:       s.color,
-                linewidth:       s.linewidth    !== undefined ? s.linewidth    : 1,
-                linestyle:       s.linestyle    !== undefined ? s.linestyle    : 0,
-                fillBackground:  s.fillBackground !== undefined ? s.fillBackground : false,
-                transparency:    s.transparency !== undefined ? s.transparency : 0,
-                showLabel:       !!(s.label),
-                text:            s.label     || '',
-                textcolor:       s.textcolor || s.color,
-                fontSize:        s.fontsize  !== undefined ? s.fontsize : 12,
-                bold:            s.bold      !== undefined ? !!s.bold   : false,
+                color: s.color,
+                linecolor: s.color,
+                linewidth: s.linewidth !== undefined ? s.linewidth : 1,
+                linestyle: s.linestyle !== undefined ? s.linestyle : 0,
+                fillBackground: s.fillBackground !== undefined ? s.fillBackground : false,
+                transparency: s.transparency !== undefined ? s.transparency : 0,
+                showLabel: !!(s.label),
+                text: s.label || '',
+                textcolor: s.textcolor || s.color,
+                fontSize: s.fontsize !== undefined ? s.fontsize : 12,
+                bold: s.bold !== undefined ? !!s.bold : false,
             };
         }
 
@@ -297,35 +418,67 @@
         }
 
         return {
-            shape:            shapeName,
-            lock:             true,
+            shape: shapeName,
+            lock: true,
             disableSelection: true,
-            disableSave:      true,
-            disableUndo:      true,
-            zOrder:           s.zOrder || (isText || isLabelShape ? 'top' : (isRect ? 'bottom' : 'top')),
-            overrides:        overrides,
+            disableSave: true,
+            disableUndo: true,
+            zOrder: s.zOrder || (isText || isLabelShape ? 'top' : (isRect ? 'bottom' : 'top')),
+            overrides: overrides,
         };
     }
 
     // ── Создание одного шейпа на чарте ───────────────────────────
     function _createOneShape(c, s) {
         var shapeName = s.shape || 'rectangle';
-        var isText    = shapeName === 'text';
-        var opts      = _buildShapeOpts(s);
+        var isText = shapeName === 'text';
+        var opts = _buildShapeOpts(s);
 
         var r;
 
-        // text шейп: TV ожидает createShape(point) с одной точкой
-        if (isText) {
+        // text / anchored_text: TV ожидает createShape(point) с одной точкой
+        var isAnchoredText = shapeName === 'anchored_text';
+        if (isText || isAnchoredText) {
             var pt = s.point || (s.points && s.points[0]);
             if (!pt) return null;
             r = c.createShape(pt, opts);
         } else if (s.point) {
+            // Явно одноточечный шейп
             r = c.createShape(s.point, opts);
         } else if (s.points && s.points.length) {
+            // 2+ точечные шейпы через createMultipointShape
+            // Включая: trend_line, ray, extended_line, rectangle, fibonacci_retracement,
+            //          flat_top, brush, highlighter и 3-точечные: parallel_channel, arc, ellipse
             r = c.createMultipointShape(s.points, opts);
         } else {
             return null;
+        }
+
+        // postCreate: после получения ID шейпа вызываем setProperties
+        // Используется для свойств которые TV не принимает при создании
+        // (например центрирование text шейпа)
+        if (s.postProperties && r) {
+            var pp = s.postProperties;
+            var applyPost = function (id) {
+                if (id == null) return;
+                try {
+                    var after = c.getAllShapes();
+                    for (var ai = 0; ai < after.length; ai++) {
+                        if (after[ai].id === id) {
+                            var entity = c.getShapeById(id);
+                            if (entity && typeof entity.setProperties === 'function') {
+                                entity.setProperties(pp);
+                            }
+                            break;
+                        }
+                    }
+                } catch (e) { }
+            };
+            if (typeof r.then === 'function') {
+                r.then(function (id) { setTimeout(function () { applyPost(id); }, 50); }).catch(function () { });
+            } else {
+                setTimeout(function () { applyPost(r); }, 50);
+            }
         }
 
         return r;
@@ -337,14 +490,14 @@
         if (!st || st._hidden || !st._cache) return;
         var c = _chart(); if (!c) return;
 
-        var allShapes  = st._cache.allShapes;
-        var maxShapes  = st.def.maxShapes || 500;
-        var nextSet    = _visibleIndices(allShapes, vr);
+        var allShapes = st._cache.allShapes;
+        var maxShapes = st.def.maxShapes || 500;
+        var nextSet = _visibleIndices(allShapes, vr);
         var prevActive = st._activeSet || _makeSet();
 
         if (!st._activeSet) {
             st._activeSet = _makeSet();
-            st._shapeMap  = {};
+            st._shapeMap = {};
         }
 
         var nextArr = [];
@@ -369,7 +522,7 @@
         for (var ri = 0; ri < toRemove.length; ri++) {
             var removeIdx = toRemove[ri];
             var eid = st._shapeMap[removeIdx];
-            if (eid != null) { try { c.removeEntity(eid); } catch (e) {} }
+            if (eid != null) { try { c.removeEntity(eid); } catch (e) { } }
             delete st._shapeMap[removeIdx];
             st._activeSet.delete(removeIdx);
         }
@@ -418,10 +571,15 @@
 
         for (var i = offset; i < end; i++) {
             var item = list[i];
-            var idx  = item.idx;
-            var s    = item.shape;
+            var idx = item.idx;
+            var s = item.shape;
             try {
-                var r = _createOneShape(c, s);
+                // Apply per-indicator opacity multiplier to all colors
+                var opacity = _indicatorOpacity[key];
+                var sToRender = (opacity !== undefined && opacity !== 1)
+                    ? _applyOpacityToShape(s, opacity)
+                    : s;
+                var r = _createOneShape(c, sToRender);
                 if (!r) continue;
 
                 if (typeof r.then === 'function') {
@@ -431,7 +589,7 @@
                                 stRef._shapeMap[captIdx] = id;
                                 stRef._activeSet.add(captIdx);
                             }
-                        }).catch(function () {});
+                        }).catch(function () { });
                     })(idx, r, st, gen);
                 } else {
                     st._shapeMap[idx] = r;
@@ -456,17 +614,17 @@
                 for (var idx in st._shapeMap) {
                     if (st._shapeMap.hasOwnProperty(idx)) {
                         var eid = st._shapeMap[idx];
-                        if (eid != null) try { c.removeEntity(eid); } catch (e) {}
+                        if (eid != null) try { c.removeEntity(eid); } catch (e) { }
                     }
                 }
             }
-            st._shapeMap  = {};
+            st._shapeMap = {};
             st._activeSet = _makeSet();
         }
 
         if (st.shapeIds && st.shapeIds.length) {
             if (c) for (var i = 0; i < st.shapeIds.length; i++) {
-                try { c.removeEntity(st.shapeIds[i]); } catch (e) {}
+                try { c.removeEntity(st.shapeIds[i]); } catch (e) { }
             }
             st.shapeIds.length = 0;
         }
@@ -479,8 +637,8 @@
             for (var j = 0; j < copy.length; j++) {
                 (function (p) {
                     p.then(function (id) {
-                        if (id != null && chartRef) try { chartRef.removeEntity(id); } catch (e) {}
-                    }).catch(function () {});
+                        if (id != null && chartRef) try { chartRef.removeEntity(id); } catch (e) { }
+                    }).catch(function () { });
                 })(copy[j]);
             }
         }
@@ -492,7 +650,7 @@
         _clearShapes(key);
         if (!allShapes.length) return;
 
-        st._shapeMap  = {};
+        st._shapeMap = {};
         st._activeSet = _makeSet();
 
         var toDrawList = [];
@@ -514,28 +672,28 @@
 
         if (!_chartReady()) {
             if (retryCount < _MAX_CHART_RETRIES) _scheduleRedraw(key, 800, retryCount + 1);
-            else { console.warn('[TVEngine:'+key+'] redraw aborted: chart not ready'); _clearShapes(key); }
+            else { console.warn('[TVEngine:' + key + '] redraw aborted: chart not ready'); _clearShapes(key); }
             return;
         }
 
         var bars = _getBars();
         if (bars.length < 3) {
             if (retryCount < _MAX_CHART_RETRIES) _scheduleRedraw(key, 500, retryCount + 1);
-            else console.warn('[TVEngine:'+key+'] redraw aborted: insufficient bars');
+            else console.warn('[TVEngine:' + key + '] redraw aborted: insufficient bars');
             return;
         }
 
         _installViewportHook();
 
         var dataKey = bars.length + ':' + bars[0].t + ':' + bars[bars.length - 1].t;
-        var cfgKey  = '';
-        try { cfgKey = JSON.stringify(st.cfg); } catch (e) {}
+        var cfgKey = '';
+        try { cfgKey = JSON.stringify(st.cfg); } catch (e) { }
 
         var allShapes;
         var isFullRedraw = true;
 
         if (st._cache && st._cache.dataKey === dataKey && st._cache.cfgKey === cfgKey) {
-            allShapes    = st._cache.allShapes;
+            allShapes = st._cache.allShapes;
             isFullRedraw = false;
         } else {
             allShapes = [];
@@ -544,7 +702,7 @@
             st._cache = { dataKey: dataKey, cfgKey: cfgKey, allShapes: allShapes, vrKey: null };
         }
 
-        var vr    = _getVisibleRange();
+        var vr = _getVisibleRange();
         var vrKey = vr ? (Math.floor(vr.from) + ':' + Math.floor(vr.to)) : 'null';
 
         if (!isFullRedraw && st._cache.vrKey === vrKey && st._activeSet) {
@@ -587,9 +745,15 @@
             try {
                 var entity = c.getStudyById(found.entityId || found.id);
                 if (entity && typeof entity.isVisible === 'function') vis = entity.isVisible();
-            } catch (e) {}
-            if (!vis && !st._hidden)    { st._hidden = true;  _clearShapes(key); }
-            else if (vis && st._hidden) { st._hidden = false; _scheduleRedraw(key, 50); }
+            } catch (e) { }
+            if (!vis && !st._hidden) { st._hidden = true; _clearShapes(key); }
+            else if (vis && st._hidden) {
+                st._hidden = false;
+                _clearShapes(key);
+                if (st._cache) st._cache.vrKey = null;
+                st._activeSet = null;
+                _scheduleRedraw(key, 50);
+            }
 
             if (!_vrHookInstalled) {
                 vrPollCounter++;
@@ -669,8 +833,8 @@
             if (st._iv) clearInterval(st._iv);
             if (st._discoveryIv) clearInterval(st._discoveryIv);
             _clearShapes(key);
-            st._cache     = null;
-            st._shapeMap  = {};
+            st._cache = null;
+            st._shapeMap = {};
             st._activeSet = null;
             if (st.tvId) delete window._tveRegistry[st.tvId];
         }
@@ -688,13 +852,25 @@
 
     // Расширенный список всех shape types которые TVEngine создаёт
     var _TVE_SHAPE_TYPES = {
-        trend_line:1, extended_line:1, ray:1,
-        rectangle:1, rect:1,
-        parallel_channel:1, rotated_rectangle:1,
-        vertical_line:1, horizontal_line:1,
-        arrow:1, arrow_up:1, arrow_down:1, arrow_left:1, arrow_right:1,
-        flag:1, cross:1, circle:1,
-        text:1, balloon:1, label_up:1, label_down:1, note:1, price_label:1,
+        // 2-точечные линии
+        trend_line: 1, extended_line: 1, ray: 1,
+        flat_top: 1, flat_bottom: 1,
+        fibonacci_retracement: 1, fib_retracement: 1,
+        brush: 1, highlighter: 1,
+        // 3-точечные
+        parallel_channel: 1, rotated_rectangle: 1, disjoint_angle: 1,
+        arc: 1, ellipse: 1,
+        // Зоны
+        rectangle: 1, rect: 1,
+        // Вертикальные/горизонтальные
+        vertical_line: 1, horizontal_line: 1,
+        // Маркеры
+        arrow: 1, arrow_up: 1, arrow_down: 1, arrow_left: 1, arrow_right: 1,
+        flag: 1, cross: 1, circle: 1,
+        triangle_up: 1, triangle_down: 1,
+        // Текстовые
+        text: 1, anchored_text: 1, balloon: 1,
+        label_up: 1, label_down: 1, note: 1, price_label: 1,
     };
 
     function _forceCleanGhosts() {
@@ -717,7 +893,7 @@
             var sh = allShapes[i];
             var shName = (sh.name || '').toLowerCase();
             if (_TVE_SHAPE_TYPES[shName] && !knownIds[String(sh.id)]) {
-                try { c.removeEntity(sh.id); removed++; } catch (e) {}
+                try { c.removeEntity(sh.id); removed++; } catch (e) { }
             }
         }
         if (removed > 0) console.log('[TVEngine] cleaned ' + removed + ' ghost shapes');
@@ -732,7 +908,7 @@
         var key = 'tve_' + (++_keyCounter) + '_' + Date.now();
         window._tve[key] = {
             shapeIds: [],
-            _shapeMap:  {},
+            _shapeMap: {},
             _activeSet: null,
             _pendingPromises: [],
             _hidden: false, def: def, cfg: null,
@@ -754,8 +930,7 @@
             for (var i = studies.length - 1; i >= 0; i--) {
                 var sn = studies[i].name || '';
                 if (sn === studyDesc || sn === studyName ||
-                    (studyDesc && matchLen > 0 && sn.indexOf(studyDesc.substring(0, matchLen)) !== -1))
-                    { found = studies[i]; break; }
+                    (studyDesc && matchLen > 0 && sn.indexOf(studyDesc.substring(0, matchLen)) !== -1)) { found = studies[i]; break; }
             }
             if (!found && attempts < 30) return;
             clearInterval(t);
@@ -773,24 +948,38 @@
 
     /* ═══════════════════════════════════════════════════════════ */
     function define(def) {
-        var name    = def.name        || 'Custom Indicator';
-        var tvId    = def.id          || (name.toLowerCase().replace(/\W+/g, '_') + '@tv-basicstudies-1');
-        var desc    = def.description || name;
+        var system_name = def.system_name || window._current_system_name || '';
+        var name = def.name || 'Custom Indicator';
+
+        // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ:
+        // Используем стабильный 'name' (FVG__Test_4) для ID, а не динамичный 'system_name'.
+        // Это предотвратит пересоздание индикатора (init/destroyed).
+        var tvId = def.id || (name.toLowerCase().replace(/\W+/g, '_') + '@tv-basicstudies-1');
+
+        // Оставляем system_name в описании, раз тебе так нравится визуально,
+        // НО только если он не меняется каждую секунду.
+        var desc = system_name;
+
         var overlay = def.overlay !== undefined ? def.overlay : true;
-        var inputs  = def.inputs       || [];
+        var inputs = def.inputs || [];
         var defInps = def.defaultInputs || {};
 
         var tvObj = {
-            name: name,
+            name: system_name,
             metainfo: {
-                _metainfoVersion: 53, id: tvId, description: desc,
-                shortDescription: name.substring(0, 24),
+                _metainfoVersion: 53,
+                id: tvId, description: desc,
+                shortDescription: system_name.substring(0, 24),
                 is_price_study: overlay, isCustomIndicator: true,
                 plots: [{ id: 'p0', type: 'line' }],
                 format: { type: overlay ? 'inherit' : 'price' },
                 defaults: {
-                    styles: { p0: { linestyle: 0, linewidth: 0, plottype: 0,
-                        trackPrice: false, transparency: 100, visible: false, color: _currentLegendColor() } },
+                    styles: {
+                        p0: {
+                            linestyle: 0, linewidth: 0, plottype: 0,
+                            trackPrice: false, transparency: 100, visible: false, color: _currentLegendColor()
+                        }
+                    },
                     inputs: defInps,
                 },
                 styles: { p0: { title: '', histogramBase: 0 } },
@@ -804,12 +993,12 @@
                     }
                     var st = window._tve[_key]; if (!st) return [NaN];
                     var cfg = {};
-                    try { cfg = def.buildCfg ? def.buildCfg(inp) : {}; } catch (e) {}
+                    try { cfg = def.buildCfg ? def.buildCfg(inp) : {}; } catch (e) { }
                     if (st._cache) {
                         var newCfgKey = '';
-                        try { newCfgKey = JSON.stringify(cfg); } catch (e) {}
+                        try { newCfgKey = JSON.stringify(cfg); } catch (e) { }
                         if (st._cache.cfgKey !== newCfgKey) {
-                            st._cache     = null;
+                            st._cache = null;
                             st._activeSet = null;
                         }
                     }
@@ -826,23 +1015,128 @@
             if (window.customPineIndicators[di].name === name) window.customPineIndicators.splice(di, 1);
         }
         window.customPineIndicators.push(tvObj);
+        console.log(tvObj);
         return tvObj;
     }
 
     /* ── Public API ────────────────────────────────────────────── */
     window.TVEngine = {
-        define:      define,
-        instances:   function () { return Object.keys(window._tve); },
-        registry:    function () { return window._tveRegistry; },
-        redraw:      function (key) { if (window._tve[key]) { window._tve[key]._cache = null; window._tve[key]._activeSet = null; } _scheduleRedraw(key, 0); },
-        redrawAll:   function () { Object.keys(window._tve).forEach(function (k) { if (window._tve[k]) { window._tve[k]._cache = null; window._tve[k]._activeSet = null; } _scheduleRedraw(k, 0); }); },
-        destroy:     function (key) { _destroy(key); },
-        clearAll:    function () { Object.keys(window._tve).forEach(function (k) { _destroy(k); }); },
-        state:       function (key) { return window._tve[key]; },
+        define: define,
+        instances: function () { return Object.keys(window._tve); },
+        registry: function () { return window._tveRegistry; },
+        redraw: function (key) { if (window._tve[key]) { window._tve[key]._cache = null; window._tve[key]._activeSet = null; } _scheduleRedraw(key, 0); },
+        redrawAll: function () { Object.keys(window._tve).forEach(function (k) { if (window._tve[k]) { window._tve[k]._cache = null; window._tve[k]._activeSet = null; } _scheduleRedraw(k, 0); }); },
+        destroy: function (key) { _destroy(key); },
+        clearAll: function () { Object.keys(window._tve).forEach(function (k) { _destroy(k); }); },
+        state: function (key) { return window._tve[key]; },
         cleanGhosts: _forceCleanGhosts,
         updateLegendColor: _updateLegendColor,
         setViewportBuffer: function (pct) { _VIEWPORT_BUFFER_PCT = Math.max(0, pct); },
+
+        // ── Indicator opacity API ─────────────────────────────────
+        // Set opacity for a specific indicator instance (0.0 = invisible, 1.0 = full)
+        // key = TVEngine instance key (from TVEngine.instances())
+        // Triggers full redraw.
+        setOpacity: function (key, opacity) {
+            var o = Math.max(0, Math.min(1, parseFloat(opacity) || 1));
+            _indicatorOpacity[key] = o;
+            var st = window._tve[key];
+            if (st) { st._cache = null; st._activeSet = null; _scheduleRedraw(key, 0); }
+        },
+
+        // Set opacity for all indicators at once
+        setOpacityAll: function (opacity) {
+            var o = Math.max(0, Math.min(1, parseFloat(opacity) || 1));
+            Object.keys(window._tve).forEach(function (k) {
+                _indicatorOpacity[k] = o;
+                var st = window._tve[k];
+                if (st) { st._cache = null; st._activeSet = null; }
+            });
+            Object.keys(window._tve).forEach(function (k) { _scheduleRedraw(k, 50); });
+        },
+
+        // Set opacity by indicator name (partial match)
+        setOpacityByName: function (name, opacity) {
+            var o = Math.max(0, Math.min(1, parseFloat(opacity) || 1));
+            Object.keys(window._tve).forEach(function (k) {
+                var st = window._tve[k];
+                if (st && st.def && st.def.name && st.def.name.indexOf(name) !== -1) {
+                    _indicatorOpacity[k] = o;
+                    st._cache = null; st._activeSet = null;
+                    _scheduleRedraw(k, 50);
+                }
+            });
+        },
+
+        getOpacity: function (key) { return _indicatorOpacity[key] !== undefined ? _indicatorOpacity[key] : 1; },
+
+        // ── Layer (candles / background) opacity API ──────────────
+        //
+        // setCandlesOpacity(val)
+        //   val: 0.0 (invisible) .. 1.0 (fully opaque)
+        //   Uses series.setChartStyleProperties(chartType, { transparency })
+        //   transparency in TV = 0 (opaque) .. 100 (invisible) — inverse of 0..1 scale
+        setCandlesOpacity: function (val) {
+            val = Math.max(0, Math.min(1, parseFloat(val) || 1));
+            var tvTransparency = Math.round((1 - val) * 100); // invert: 1.0 → 0, 0.0 → 100
+            try {
+                var c = window.app && window.app.widget && window.app.widget.activeChart();
+                if (!c) { console.warn('[TVEngine] setCandlesOpacity: no active chart'); return; }
+                var series = c.getSeries();
+                if (!series || typeof series.setChartStyleProperties !== 'function') {
+                    console.warn('[TVEngine] setCandlesOpacity: setChartStyleProperties not available');
+                    return;
+                }
+                // chartType 1 = candlestick, 2 = bars, 3 = line, etc.
+                // Read current props to preserve all other settings
+                [1, 2, 3, 4, 8, 9, 10].forEach(function (chartType) {
+                    try {
+                        var props = series.chartStyleProperties(chartType);
+                        if (props) {
+                            props.transparency = tvTransparency;
+                            series.setChartStyleProperties(chartType, props);
+                        }
+                    } catch (e) { }
+                });
+                console.log('[TVEngine] setCandlesOpacity:', val, '(transparency=' + tvTransparency + ')');
+            } catch (e) { console.error('[TVEngine] setCandlesOpacity error:', e); }
+        },
+
+        // setBackgroundOpacity(val)
+        //   Controls chart pane background color opacity
+        //   val: 0.0 (transparent) .. 1.0 (opaque)
+        //   Blends between transparent and the current background color
+        setBackgroundOpacity: function (val) {
+            val = Math.max(0, Math.min(1, parseFloat(val) || 1));
+            try {
+                var c = window.app && window.app.widget && window.app.widget.activeChart();
+                if (!c) { console.warn('[TVEngine] setBackgroundOpacity: no active chart'); return; }
+                // Read current background
+                var isDark = true;
+                try { isDark = localStorage.getItem('tradingview_theme') !== 'light'; } catch (e) { }
+                var baseColor = isDark ? '13,17,28' : '255,255,255';
+                var bgColor = 'rgba(' + baseColor + ',' + val.toFixed(2) + ')';
+                c.applyOverrides({
+                    'paneProperties.background': bgColor,
+                    'paneProperties.backgroundType': 0,
+                    'paneProperties.backgroundGradientStartColor': bgColor,
+                    'paneProperties.backgroundGradientEndColor': bgColor,
+                });
+                console.log('[TVEngine] setBackgroundOpacity:', val, '→', bgColor);
+            } catch (e) { console.error('[TVEngine] setBackgroundOpacity error:', e); }
+        },
+
+        // setLayerOpacity(layer, val) — convenience method
+        //   layer: 'candles' | 'background' | 'indicators'
+        //   val:   0.0..1.0
+        setLayerOpacity: function (layer, val) {
+            val = Math.max(0, Math.min(1, parseFloat(val) || 1));
+            if (layer === 'candles') { window.TVEngine.setCandlesOpacity(val); return; }
+            if (layer === 'background') { window.TVEngine.setBackgroundOpacity(val); return; }
+            if (layer === 'indicators') { window.TVEngine.setOpacityAll(val); return; }
+            console.warn('[TVEngine] setLayerOpacity: unknown layer "' + layer + '"');
+        },
     };
 
-    console.log('[TVEngine] v11.15 loaded');
+    console.log('[TVEngine] v11.25 loaded');
 })();

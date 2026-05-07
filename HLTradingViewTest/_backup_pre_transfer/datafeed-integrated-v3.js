@@ -1,6 +1,6 @@
 /**
  * DatabaseIntegratedDatafeed V2 + activedata
- * 
+ *
  * НОВОЕ: window.app.activedata[]
  * - Хранит все сырые записи с сервера для текущего символа/интервала
  * - Накапливается при прокрутке (назад/вперёд)
@@ -17,15 +17,15 @@ class DatabaseIntegratedDatafeed {
         this.symbols = new Map();
         this.subscribers = new Map();
         this.loadedRanges = new Map();
-        
+
         // Инициализируем activedata — НЕ затираем если уже есть кэш из localStorage
         if (!window.app) window.app = {};
         if (!Array.isArray(window.app.activedata)) window.app.activedata = [];
 
         let _activedata = localStorage.getItem("activedata")
-        if(_activedata){
+        if (_activedata) {
             _activedata = JSON.parse(_activedata)
-            if(_activedata){
+            if (_activedata) {
                 window.app.activedata = _activedata
             }
         }
@@ -38,7 +38,7 @@ class DatabaseIntegratedDatafeed {
         console.log("DatabaseIntegratedDatafeed____")
         if (!window.app._activeDataKey) window.app._activeDataKey = null;
         if (!window.app._activeDataIndex) window.app._activeDataIndex = new Set();
-        
+
         console.log('📡 DatabaseIntegratedDatafeed V2 created');
     }
 
@@ -81,7 +81,7 @@ class DatabaseIntegratedDatafeed {
         try {
             this.instruments = await apiClient.getInstruments();
             this.instruments.forEach(instrument => {
-                this.symbols.set(instrument.symbol, this.buildSymbolInfo(instrument));
+                this.symbols.set(instrument.symbol, instrument.metadata);
             });
             console.log('✓ Loaded instruments:', this.instruments.length);
         } catch (error) {
@@ -90,32 +90,32 @@ class DatabaseIntegratedDatafeed {
         }
     }
 
-    buildSymbolInfo(instrument) {
-        return {
-            name: instrument.symbol,
-            full_name: instrument.tradingview_symbol || `${instrument.symbol}USD`,
-            description: instrument.description || instrument.name || `${instrument.symbol}/USD`,
-            type: instrument.type || 'crypto',
-            session: '24x7',
-            timezone: 'Etc/UTC',
-            exchange: instrument.provider_name || 'CLICKHOUSE',
-            minmov: 1,
-            pricescale: 10000,
-            has_intraday: true,
-            has_weekly_and_monthly: true,
-            has_seconds: true,
-            seconds_multipliers: ['1'],
-            supported_resolutions: this.supportedResolutions,
-            volume_precision: 8,
-            data_status: 'streaming',
-            currency_code: instrument.quote_currency || 'USD',
-            provider_id: instrument.provider_id,
-            clickhouse_ticker: instrument.clickhouse_ticker,
-            base_currency: instrument.base_currency,
-            quote_currency: instrument.quote_currency,
-            metadata: instrument.metadata
-        };
-    }
+    // buildSymbolInfo(instrument) {
+    //     return {
+    //         name: instrument.symbol,
+    //         full_name: instrument.tradingview_symbol || `${instrument.symbol}USD`,
+    //         description: instrument.description || instrument.name || `${instrument.symbol}/USD`,
+    //         type: instrument.type || 'crypto',
+    //         session: '24x7',
+    //         timezone: 'Etc/UTC',
+    //         exchange: instrument.provider_name || 'CLICKHOUSE',
+    //         minmov: 1,
+    //         pricescale: 10000,
+    //         has_intraday: true,
+    //         has_weekly_and_monthly: true,
+    //         has_seconds: true,
+    //         seconds_multipliers: ['1'],
+    //         supported_resolutions: this.supportedResolutions,
+    //         volume_precision: 8,
+    //         data_status: 'streaming',
+    //         currency_code: instrument.quote_currency || 'USD',
+    //         provider_id: instrument.provider_id,
+    //         clickhouse_ticker: instrument.clickhouse_ticker,
+    //         base_currency: instrument.base_currency,
+    //         quote_currency: instrument.quote_currency,
+    //         metadata: instrument.metadata
+    //     };
+    // }
 
     createDefaultSymbols() {
         [
@@ -172,59 +172,59 @@ class DatabaseIntegratedDatafeed {
      * Инициализация/сброс activedata при смене символа или интервала
      */
     // СТАЛО:
-initActiveData(symbol, resolution) {
-    const key = `${symbol}_${resolution}`;
+    initActiveData(symbol, resolution) {
+        const key = `${symbol}_${resolution}`;
 
-    // Ключ не изменился — ничего не делаем
+        // Ключ не изменился — ничего не делаем
 
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData", key, '----', window.app._activeDataKey, "!!!!!!")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    console.log("initActiveData")
-    window.app._key = key
-    if(!window.app._activeDataKey){
-        window.app._activeDataKey = localStorage.getItem("_activeDataKey")
-        
-    }
-    localStorage.setItem("_activeDataKey", key)
-    console.log("iAD", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
-    if (window.app._activeDataKey === key) return;
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData", key, '----', window.app._activeDataKey, "!!!!!!")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        console.log("initActiveData")
+        window.app._key = key
+        if (!window.app._activeDataKey) {
+            window.app._activeDataKey = localStorage.getItem("_activeDataKey")
+
+        }
+        localStorage.setItem("_activeDataKey", key)
+        console.log("iAD", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
+        if (window.app._activeDataKey === key) return;
 
 
-    console.log("iAD___222222", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
+        console.log("iAD___222222", key, '----', window.app._activeDataKey, "!!!!!!", window.app._activeDataKey === key)
 
-    const prevKey = window.app._activeDataKey; // null при первом запуске
+        const prevKey = window.app._activeDataKey; // null при первом запуске
 
-    // Первый запуск после загрузки страницы (prevKey === null).
-    // Если activedata уже содержит данные — они восстановлены из localStorage.
-    // Сбрасывать нельзя — просто принимаем ключ и перестраиваем индекс.
-    if (prevKey === null && window.app.activedata.length > 0) {
-        console.log(`🔄 activedata INIT: keeping ${window.app.activedata.length} cached bars, key → [${key}]`);
+        // Первый запуск после загрузки страницы (prevKey === null).
+        // Если activedata уже содержит данные — они восстановлены из localStorage.
+        // Сбрасывать нельзя — просто принимаем ключ и перестраиваем индекс.
+        if (prevKey === null && window.app.activedata.length > 0) {
+            console.log(`🔄 activedata INIT: keeping ${window.app.activedata.length} cached bars, key → [${key}]`);
+            window.app._activeDataKey = key;
+            // Перестраиваем индекс из существующих данных
+            window.app._activeDataIndex = new Set(
+                window.app.activedata.map(item => item.timestamp)
+            );
+            return;
+        }
+
+        // Настоящая смена символа или интервала — сбрасываем
+        console.log(`🔄 activedata RESET: [${prevKey ?? 'none'}] → [${key}]`);
+        window.app.activedata = [];
         window.app._activeDataKey = key;
-        // Перестраиваем индекс из существующих данных
-        window.app._activeDataIndex = new Set(
-            window.app.activedata.map(item => item.timestamp)
-        );
-        return;
+        window.app._activeDataIndex = new Set();
     }
-
-    // Настоящая смена символа или интервала — сбрасываем
-    console.log(`🔄 activedata RESET: [${prevKey ?? 'none'}] → [${key}]`);
-    window.app.activedata = [];
-    window.app._activeDataKey = key;
-    window.app._activeDataIndex = new Set();
-}
 
     /**
      * Добавление новых сырых записей в activedata (без дублей)
@@ -232,19 +232,19 @@ initActiveData(symbol, resolution) {
      */
     appendActiveData(rawItems) {
         if (!rawItems || rawItems.length === 0) return 0;
-     
+
         if (!window.app.activedata) {
             window.app.activedata = [];
             window.app._activeDataIndex = new Set();
         }
-     
+
         // Восстанавливаем индекс если он пустой но данные есть
         if (window.app._activeDataIndex.size === 0 && window.app.activedata.length > 0) {
             window.app.activedata.forEach(item => {
                 window.app._activeDataIndex.add(item.timestamp);
             });
         }
-     
+
         let added = 0;
         rawItems.forEach(item => {
             const ts = item.timestamp;
@@ -254,7 +254,7 @@ initActiveData(symbol, resolution) {
                 added++;
             }
         });
-     
+
         if (added > 0) {
             console.log(`📦 activedata: +${added} new | total: ${window.app.activedata.length}`);
         }
@@ -268,8 +268,8 @@ initActiveData(symbol, resolution) {
         const config = this.intervals.find(i => {
             const tvCode = i.tradingview_code;
             return tvCode === tvResolution ||
-                   tvCode === normalized ||
-                   tvCode.toUpperCase() === normalized;
+                tvCode === normalized ||
+                tvCode.toUpperCase() === normalized;
         });
         return config;
     }
@@ -323,7 +323,7 @@ initActiveData(symbol, resolution) {
             );
 
             symbolInfo = instrument
-                ? this.buildSymbolInfo(instrument)
+                ? instrument.metadata
                 : {
                     name: symbol,
                     full_name: `CLICKHOUSE:${symbol}USD`,
@@ -377,7 +377,7 @@ initActiveData(symbol, resolution) {
 
             // ── Сохраняем текущий контекст для бектеста ───────────────────
             window.app._currentTicker = ticker;
-            window.app._currentTable  = table;
+            window.app._currentTable = table;
             window.app._currentResolution = resolution;
 
             // Сбрасываем мета-данные диапазона дат при смене инструмента/ТФ
@@ -440,9 +440,9 @@ initActiveData(symbol, resolution) {
 
             // ── Запрос данных ─────────────────────────────────────────────
             const isTick = table === 'raw_market_data' ||
-                           table.includes('tick') ||
-                           resolution === '1t' ||
-                           resolution === '1T';
+                table.includes('tick') ||
+                resolution === '1t' ||
+                resolution === '1T';
 
             let response;
 
@@ -500,20 +500,20 @@ initActiveData(symbol, resolution) {
             const bars = data
                 .map(bar => ({
                     time: new Date(bar.timestamp).getTime(),
-                    open:   parseFloat(bar.open),
-                    high:   parseFloat(bar.high),
-                    low:    parseFloat(bar.low),
-                    close:  parseFloat(bar.close),
+                    open: parseFloat(bar.open),
+                    high: parseFloat(bar.high),
+                    low: parseFloat(bar.low),
+                    close: parseFloat(bar.close),
                     volume: parseFloat(bar.volume || 0)
                 }))
                 .sort((a, b) => a.time - b.time);
 
             // ── Обновляем кеш диапазонов ──────────────────────────────────
             const firstTs = Math.floor(bars[0].time / 1000);
-            const lastTs  = Math.floor(bars[bars.length - 1].time / 1000);
+            const lastTs = Math.floor(bars[bars.length - 1].time / 1000);
 
             if (!cache.firstBar || firstTs < cache.firstBar) cache.firstBar = firstTs;
-            if (!cache.lastBar  || lastTs  > cache.lastBar)  cache.lastBar  = lastTs;
+            if (!cache.lastBar || lastTs > cache.lastBar) cache.lastBar = lastTs;
 
             console.log(`✅ ${bars.length} bars | activedata: ${window.app.activedata.length} records total\n`);
 
@@ -561,7 +561,7 @@ initActiveData(symbol, resolution) {
             } else {
                 const b = bars[barTime];
                 b.high = Math.max(b.high, mid);
-                b.low  = Math.min(b.low,  mid);
+                b.low = Math.min(b.low, mid);
                 b.close = mid;
                 b.volume++;
             }
@@ -578,22 +578,22 @@ initActiveData(symbol, resolution) {
 
             const now = Math.floor(Date.now() / 1000);
             const ticker = symbolInfo.clickhouse_ticker || `C:${symbolInfo.name}-USD`;
-            const table  = this.getClickHouseTable(resolution);
+            const table = this.getClickHouseTable(resolution);
 
             try {
                 let response = {}
-                if(table == "raw_market_data"){
+                if (table == "raw_market_data") {
                     response = await fetch( //if (isTick) {
-                    `/api/market-data/ticks?ticker=${ticker}&table=${table}&from=${now - 300}&to=${now}`,
-                    { credentials: 'include' }
-                );
-                } else{
+                        `/api/market-data/ticks?ticker=${ticker}&table=${table}&from=${now - 300}&to=${now}`,
+                        { credentials: 'include' }
+                    );
+                } else {
                     response = await fetch( //if (isTick) {
                         `/api/market-data?ticker=${ticker}&table=${table}&from=${now - 300}&to=${now}`,
                         { credentials: 'include' }
                     );
                 }
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     if (data && data.length > 0) {
@@ -602,11 +602,11 @@ initActiveData(symbol, resolution) {
 
                         const latestBar = data[data.length - 1];
                         onRealtimeCallback({
-                            time:   new Date(latestBar.timestamp).getTime(),
-                            open:   parseFloat(latestBar.open),
-                            high:   parseFloat(latestBar.high),
-                            low:    parseFloat(latestBar.low),
-                            close:  parseFloat(latestBar.close),
+                            time: new Date(latestBar.timestamp).getTime(),
+                            open: parseFloat(latestBar.open),
+                            high: parseFloat(latestBar.high),
+                            low: parseFloat(latestBar.low),
+                            close: parseFloat(latestBar.close),
                             volume: parseFloat(latestBar.volume || 0)
                         });
                     }

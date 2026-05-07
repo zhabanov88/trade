@@ -18,7 +18,7 @@ class IndicatorManagerUI {
         } catch (error) {
             console.error('Failed to get auth status:', error);
         }
-        
+
         this.createModal();
     }
 
@@ -31,7 +31,7 @@ class IndicatorManagerUI {
                         <h2>Indicator Manager</h2>
                         <button class="indicator-manager-close" onclick="indicatorManagerUI.close()">×</button>
                     </div>
-                    
+
                     <div class="indicator-manager-body">
                         <div class="indicator-manager-toolbar">
                             <button class="indicator-btn indicator-btn-primary" onclick="indicatorManagerUI.openCreateForm()">
@@ -62,30 +62,30 @@ class IndicatorManagerUI {
                         <h2 id="indicatorFormTitle">Create Indicator</h2>
                         <button class="indicator-manager-close" onclick="indicatorManagerUI.closeForm()">×</button>
                     </div>
-                    
+
                     <div class="indicator-manager-body">
                         <form id="indicatorForm" onsubmit="indicatorManagerUI.handleSubmit(event)">
                             <input type="hidden" id="indicatorFormId" value="">
-                            
+
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="indicatorSystemName">System Name *</label>
-                                    <input type="text" id="indicatorSystemName" required 
-                                           placeholder="moving_average" 
-                                           pattern="[a-z0-9_]+" 
+                                    <input type="text" id="indicatorSystemName" required
+                                           placeholder="moving_average"
+                                           pattern="[a-z0-9_]+"
                                            title="Only lowercase, numbers, underscores">
                                 </div>
 
                                 <div class="form-group">
                                     <label for="indicatorDisplayName">Display Name *</label>
-                                    <input type="text" id="indicatorDisplayName" required 
+                                    <input type="text" id="indicatorDisplayName" required
                                            placeholder="Moving Average">
                                 </div>
                             </div>
 
                             <div class="form-group">
                                 <label for="indicatorDescription">Description</label>
-                                <textarea id="indicatorDescription" rows="2" 
+                                <textarea id="indicatorDescription" rows="2"
                                           placeholder="Brief description"></textarea>
                             </div>
 
@@ -110,14 +110,14 @@ class IndicatorManagerUI {
 
                             <div class="form-group" id="tradingviewIdGroup">
                                 <label for="indicatorTradingViewId">TradingView ID</label>
-                                <input type="text" id="indicatorTradingViewId" 
+                                <input type="text" id="indicatorTradingViewId"
                                        placeholder="e.g., Moving Average">
                                 <small>The exact name used in TradingView's createStudy() method</small>
                             </div>
 
                             <div class="form-group" id="algorithmGroup" style="display: none;">
                                 <label for="indicatorAlgorithm">Algorithm / Code</label>
-                                <textarea id="indicatorAlgorithm" rows="10" 
+                                <textarea id="indicatorAlgorithm" rows="10"
                                           placeholder="Pine Script or JavaScript code"
                                           style="font-family: 'Consolas', monospace; font-size: 13px;"></textarea>
                             </div>
@@ -249,7 +249,7 @@ class IndicatorManagerUI {
                         <span class="badge badge-type">${indicator.indicator_type || 'built-in'}</span>
                     </div>
                 </div>
-                
+
                 <div class="indicator-item-meta">
                     <span class="meta-item">System: <code>${this.escapeHtml(indicator.system_name)}</code></span>
                     <span class="meta-item">Category: ${this.escapeHtml(indicator.category_name || 'N/A')}</span>
