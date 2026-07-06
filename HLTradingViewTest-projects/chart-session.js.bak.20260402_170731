@@ -1,0 +1,576 @@
+/**
+ * chart-session.js — unified TradingView save_load_adapter + session + recent menus
+ *
+ * Replaces: app.js adapter section, chart-autosave.js, recent-layouts.js
+ * Load order: api-client.js → chart-session.js → ... → app.js
+ *
+ * Usage in app.js:
+ *   save_load_adapter: window.chartSession.adapter,
+ *   ...
+ *   window.chartSession.subscribe(widget);
+ */
+(function () {
+    'use strict';
+
+    const LS_SESSION = 'tv_session';
+    const LS_RECENT  = 'tv_recent_layouts';
+
+    let _widget    = null;
+    let _isLoading = false;
+
+
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SESSION (localStorage)
+    // ═══════════════════════════════════════════════════════════════════
+
+    function readSession() {
+        try { return JSON.parse(localStorage.getItem(LS_SESSION) || 'null') || {}; }
+        catch (_) { return {}; }
+    }
+
+    function writeSession(patch, caller) {
+        try {
+            const cur = readSession();
+            if (patch && (patch.layoutName !== undefined || patch.layoutId !== undefined)) {
+                console.warn('[CS:session]', caller || 'unknown', '| old:', cur.layoutId, JSON.stringify(cur.layoutName), '→ new:', patch.layoutId !== undefined ? patch.layoutId : '(same)', JSON.stringify(patch.layoutName !== undefined ? patch.layoutName : '(same)'));
+            }
+            localStorage.setItem(LS_SESSION, JSON.stringify({ ...cur, ...patch }));
+        } catch (_) {}
+    }
+
+    function getActiveId()   { return readSession().layoutId   || null; }
+    function getActiveName() { return readSession().layoutName || null; }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // RECENT LAYOUTS (localStorage)
+    // ═══════════════════════════════════════════════════════════════════
+
+    function readRecent() {
+        try { return JSON.parse(localStorage.getItem(LS_RECENT) || '[]'); }
+        catch (_) { return []; }
+    }
+
+    function pushRecent(item) {
+        try {
+            const list = readRecent().filter(r => String(r.id) !== String(item.id));
+            list.unshift({ ...item, usedAt: Date.now() });
+            localStorage.setItem(LS_RECENT, JSON.stringify(list.slice(0, 5)));
+        } catch (_) {}
+    }
+
+    function removeFromRecent(id) {
+        try {
+            const list = readRecent().filter(r => String(r.id) !== String(id));
+            localStorage.setItem(LS_RECENT, JSON.stringify(list));
+        } catch (_) {}
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // HTML ESCAPE
+    // ═══════════════════════════════════════════════════════════════════
+
+    function esc(s) {
+        return String(s || '').replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BADGE — layout name in TV header
+    // ═══════════════════════════════════════════════════════════════════
+
+    function _getTVDoc() {
+        const iframes = document.querySelectorAll('iframe');
+        for (const f of iframes) {
+            try {
+                const doc = f.contentDocument || f.contentWindow?.document;
+                if (doc && doc.getElementById('header-toolbar-save-load')) return doc;
+            } catch (_) {}
+        }
+        if (document.getElementById('header-toolbar-save-load')) return document;
+        return null;
+    }
+
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // RECENT MENU INJECTION (into TV menu)
+    // ═══════════════════════════════════════════════════════════════════
+
+    let _recentInjecting = false;
+    function _injectRecentItems() {
+        if (_recentInjecting) return;
+        var doc = _getTVDoc() || document;
+        const anchor = doc.querySelector('[data-name="save-load-menu-item-load"]');
+        if (!anchor) return;
+
+        var recent = readRecent();
+        if (recent.length === 0) return;
+
+        _recentInjecting = true;
+        adapter.getAllCharts().then(function (charts) {
+            var validIds = {};
+            charts.forEach(function (c) { validIds[String(c.id)] = true; });
+            var filtered = recent.filter(function (r) { return validIds[String(r.id)]; });
+            if (filtered.length !== recent.length) {
+                localStorage.setItem(LS_RECENT, JSON.stringify(filtered));
+            }
+            if (filtered.length === 0) return;
+            var stale = anchor.parentElement?.querySelectorAll('[data-rl-injected]');
+            if (stale && stale.length) stale.forEach(function (el) { el.remove(); });
+            _doInjectRecentItems(anchor, filtered);
+        }).catch(function () {
+            var stale = anchor.parentElement?.querySelectorAll('[data-rl-injected]');
+            if (stale && stale.length) stale.forEach(function (el) { el.remove(); });
+            _doInjectRecentItems(anchor, recent);
+        }).finally(function () {
+            _recentInjecting = false;
+        });
+    }
+
+    function _doInjectRecentItems(anchor, recent) {
+
+        const session  = readSession();
+        const parent   = anchor.parentElement;
+        let insertRef  = anchor.nextSibling;
+
+        // Separator
+        const existingDivider = parent.querySelector('[class*="separator"], [class*="Separator"]');
+        const divider = document.createElement('div');
+        divider.dataset.rlInjected = 'sep';
+        if (existingDivider) {
+            divider.className = existingDivider.className;
+        } else {
+            divider.style.cssText = 'height:1px; background:rgba(255,255,255,.08); margin:4px 0;';
+        }
+        parent.insertBefore(divider, insertRef);
+        insertRef = divider.nextSibling;
+
+        // Recent items
+        recent.forEach(function (item) {
+            const isActive = String(session?.layoutId) === String(item.id);
+            const meta = [item.symbol, item.interval || ''].filter(Boolean).join(' \u00b7 ');
+
+            const el = document.createElement('div');
+            el.dataset.rlInjected = String(item.id);
+            el.className = anchor.className;
+
+            el.style.cssText = 'display:flex; align-items:center; gap:6px; padding:6px 12px; cursor:pointer;';
+            el.innerHTML =
+                '<span style="font-size:13px; flex-shrink:0; opacity:.65">\uD83D\uDD52</span>' +
+                '<span style="flex:1; min-width:0;">' +
+                    '<span style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;' +
+                        (isActive ? ' color:#2962FF; font-weight:600;' : '') + '">' +
+                        esc(item.name) +
+                    '</span>' +
+                    (meta ? '<span style="display:block; font-size:11px; opacity:.45; white-space:nowrap;">' + esc(meta) + '</span>' : '') +
+                '</span>';
+
+            el.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                loadById(item.id, item);
+            });
+
+            parent.insertBefore(el, insertRef);
+            insertRef = el.nextSibling;
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DOM LAYOUT DETECTION
+    // ═══════════════════════════════════════════════════════════════════
+
+    let _domDetectBlocked = 0;
+
+    function _detectLayoutChangeFromDOM() {
+        try {
+            if (Date.now() < _domDetectBlocked) return;
+            const doc = _getTVDoc();
+            if (!doc) return;
+
+            const saveContainer = doc.getElementById('header-toolbar-save-load');
+            if (!saveContainer) return;
+
+            let tvLayoutName = null;
+
+            const saveBtn = saveContainer.querySelector('[data-name="save-button"]') ||
+                            saveContainer.querySelector('button');
+            if (saveBtn) {
+                const textNodes = Array.from(saveBtn.childNodes).filter(function (n) {
+                    return n.nodeType === 3 && n.textContent.trim();
+                });
+                if (textNodes.length) {
+                    tvLayoutName = textNodes[0].textContent.trim();
+                } else {
+                    const spans = saveBtn.querySelectorAll('span');
+                    for (const s of spans) {
+                        const t = s.textContent.trim();
+                        if (t && t !== 'Save' && t.length > 0) {
+                            tvLayoutName = t;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!tvLayoutName) {
+                const titleEl = saveContainer.querySelector('[class*="title"], [class*="name"], [class*="label"]');
+                if (titleEl) tvLayoutName = titleEl.textContent.trim();
+            }
+
+            if (!tvLayoutName || tvLayoutName === 'Save') return;
+
+            const currentName = getActiveName();
+            if (tvLayoutName !== currentName && tvLayoutName !== '\u2014') {
+                writeSession({ layoutName: tvLayoutName }, 'domDetect');
+            }
+        } catch (_) {}
+    }
+
+    async function _renameLayout(id, newName) {
+        try {
+            await apiClient.updateLayout(parseInt(id), { name: newName });
+            writeSession({ layoutName: newName }, 'domRename');
+            pushRecent({ id: id, name: newName, symbol: readSession().symbol || '', interval: readSession().interval || '' });
+        } catch (_) {}
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // LOAD BY ID
+    // ═══════════════════════════════════════════════════════════════════
+
+    function loadById(id, meta) {
+        try {
+            const w = _widget || window.app?.widget;
+            if (!w) return;
+            var layoutName = (meta && meta.name) || 'Untitled';
+            _domDetectBlocked = Date.now() + 5000;
+            writeSession({ layoutId: id, layoutName: layoutName }, 'loadById');
+            pushRecent({ id: id, name: layoutName, symbol: (meta && meta.symbol) || '', resolution: (meta && meta.resolution) || '' });
+            [document, _getTVDoc()].forEach(function (d) {
+                if (d) try { d.querySelectorAll('[data-rl-injected]').forEach(function (el) { el.remove(); }); } catch (_) {}
+            });
+            var record = {
+                id:         String(id),
+                name:       layoutName,
+                symbol:     (meta && meta.symbol) || '',
+                resolution: (meta && meta.interval) || '',
+                timestamp:  Math.floor(Date.now() / 1000)
+            };
+            if (typeof w.loadChartFromServer === 'function') {
+                w.loadChartFromServer(record);
+                // Re-register chart with TV after load so Save button keeps working
+                setTimeout(function () {
+                    try {
+                        if (typeof w.saveChartToServer === 'function') {
+                            w.saveChartToServer(function () {}, function () {}, { chartName: record.name });
+                        }
+                    } catch (_) {}
+                }, 2000);
+            } else {
+                adapter.getChartContent(String(id)).then(function (content) {
+                    if (content && typeof w.load === 'function') w.load(content);
+                });
+            }
+        } catch (err) {
+            console.error('[chart-session] loadById error:', err);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SAVE_LOAD_ADAPTER (created immediately, before widget)
+    // ═══════════════════════════════════════════════════════════════════
+
+    const adapter = {
+        charts: [],
+        studyTemplates: [],
+
+        getAllCharts: async function () {
+            try {
+                const layouts = await apiClient.getLayouts();
+                return layouts.map(function (layout) {
+                    return {
+                        id:         layout.id.toString(),
+                        name:       layout.name,
+                        symbol:     layout.symbol || '',
+                        resolution: layout.interval || '1',
+                        timestamp:  new Date(layout.created_at).getTime() / 1000
+                    };
+                });
+            } catch (error) {
+                console.error('[chart-session] getAllCharts failed:', error);
+                return [];
+            }
+        },
+
+        removeChart: async function (id) {
+            try {
+                await apiClient.deleteLayout(parseInt(id));
+                removeFromRecent(id);
+                // Clear session if active layout was deleted
+                var sess = readSession();
+                if (sess && String(sess.layoutId) === String(id)) {
+                    writeSession(null);
+                }
+            } catch (error) {
+                console.error('[chart-session] removeChart failed:', error);
+            }
+        },
+
+         saveChart: async function (chartData) {
+            try {
+
+
+                // Parse content
+                let content = chartData.content;
+                if (typeof content === 'string') {
+                    try { content = JSON.parse(content); } catch (_) {}
+                }
+
+                // Extend with app state
+                const extendedContent = {
+                    ...(typeof content === 'object' && content !== null ? content : { raw: content }),
+                    _appState: {
+                        activeDataKey: window.app?._activeDataKey || null,
+                        tableState:    window.dataTable?.getState ? window.dataTable.getState() : null,
+                        savedAt:       Date.now()
+                    }
+                };
+
+                const currentId   = getActiveId();
+                const currentName = getActiveName();
+                const saveStartId = currentId;
+
+                if (chartData.id && currentId && String(chartData.id) !== String(currentId)) {
+                    return String(currentId);
+                }
+
+                let resultId;
+
+                var isCopy = !chartData.id && chartData.name && currentName && chartData.name !== currentName;
+                var effectiveId = isCopy ? null : (currentId || chartData.id);
+
+                if (effectiveId) {
+                    try {
+                        await apiClient.updateLayout(parseInt(effectiveId), {
+                            name:        chartData.name || currentName,
+                            layout_data: extendedContent,
+                            symbol:      chartData.symbol,
+                            interval:    chartData.resolution
+                        });
+                        resultId = effectiveId;
+                    } catch (e) {
+                        console.warn('[chart-session] Update failed, creating new:', e.message);
+                        const result = await apiClient.createLayout({
+                            name:        chartData.name || currentName || 'Untitled',
+                            layout_data: extendedContent,
+                            symbol:      chartData.symbol,
+                            interval:    chartData.resolution,
+                            is_default:  false
+                        });
+                        resultId = result.id;
+                    }
+                } else {
+                    const result = await apiClient.createLayout({
+                        name:        chartData.name || currentName || 'Untitled',
+                        layout_data: extendedContent,
+                        symbol:      chartData.symbol,
+                        interval:    chartData.resolution,
+                        is_default:  false
+                    });
+                    resultId = result.id;
+                }
+
+                var postSaveId = getActiveId();
+                if (saveStartId && postSaveId && String(saveStartId) !== String(postSaveId)) {
+                    return String(resultId);
+                }
+
+                var savedName = chartData.name || currentName || 'Untitled';
+                writeSession({
+                    layoutId:   resultId,
+                    layoutName: savedName,
+                    symbol:     chartData.symbol,
+                    interval:   chartData.resolution,
+                    appState:   extendedContent._appState
+                }, 'saveChart');
+                pushRecent({ id: resultId, name: savedName, symbol: chartData.symbol || '', interval: chartData.resolution || '' });
+
+                return String(resultId);
+            } catch (error) {
+                console.error('[chart-session] saveChart failed:', error);
+                throw error;
+            }
+        },
+
+        getChartContent: async function (id) {
+
+            _isLoading = true;
+            try {
+                let layout;
+                const _sess = readSession();
+                if (window._earlyLayout && _sess && String(_sess.layoutId) === String(id)) {
+                    layout = await window._earlyLayout;
+                    window._earlyLayout = null;
+                }
+                if (!layout) layout = await apiClient.getLayout(parseInt(id));
+                let data = layout.layout_data;
+
+                // Extract and restore app state
+                if (data && typeof data === 'object' && data._appState) {
+                    const appState = data._appState;
+                    const pureTvData = Object.assign({}, data);
+                    delete pureTvData._appState;
+                    data = pureTvData;
+
+                    if (window.layoutManager && typeof window.layoutManager._restoreAppState === 'function') {
+                        window.layoutManager._restoreAppState(appState);
+                    }
+                }
+
+                // Update session + recent
+                writeSession({
+                    layoutId:   layout.id,
+                    layoutName: layout.name,
+                    symbol:     layout.symbol,
+                    interval:   layout.interval
+                }, 'getChartContent(id=' + id + ')');
+                pushRecent({
+                    id:       layout.id,
+                    name:     layout.name,
+                    symbol:   layout.symbol || '',
+                    interval: layout.interval || ''
+                });
+
+                // Delete name field — confuses TV
+                if (data && typeof data === 'object' && data.name !== undefined) {
+                    delete data.name;
+                }
+
+                // Content key wrapper — TV expects {content: "..."} in some cases
+                if (data && typeof data === 'object' && !data.content && data.charts) {
+                    return JSON.stringify({ content: JSON.stringify(data) });
+                }
+
+                return typeof data === 'string' ? data : JSON.stringify(data);
+            } catch (error) {
+                console.error('[chart-session] getChartContent failed:', error);
+                return null;
+            } finally {
+                setTimeout(function () { _isLoading = false; }, 15000);
+            }
+        },
+
+        // Study template stubs
+        getAllStudyTemplates:    function () { return Promise.resolve([]); },
+        removeStudyTemplate:    function () { return Promise.resolve(); },
+        saveStudyTemplate:      function () { return Promise.resolve(); },
+        getStudyTemplateContent: function () { return Promise.resolve(''); }
+    };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SUBSCRIBE — called by app.js after widget creation
+    // ═══════════════════════════════════════════════════════════════════
+
+    function subscribe(widget) {
+        _widget = widget;
+
+        widget.onChartReady(function () {
+            const chart = widget.activeChart();
+
+            var _origSave = widget.saveChartToServer.bind(widget);
+            widget.saveChartToServer = function (onComplete, onFail, options) {
+                var opts = options || {};
+                opts.chartName = getActiveName() || 'Untitled';
+                return _origSave(onComplete, onFail, opts);
+            };
+
+            var _sess = readSession();
+            if (_sess && _sess.layoutId) {
+                _domDetectBlocked = Date.now() + 5000;
+                setTimeout(function () {
+                    widget.saveChartToServer(function () {}, function () {}, { chartName: _sess.layoutName || 'Untitled' });
+                }, 2000);
+            }
+
+            // Track symbol/interval changes
+            chart.onSymbolChanged().subscribe(null, function () {
+                if (_isLoading) return;
+                try { writeSession({ symbol: chart.symbol(), interval: chart.resolution() }); } catch (_) {}
+            });
+            chart.onIntervalChanged().subscribe(null, function (iv) {
+                if (_isLoading) return;
+                try { writeSession({ symbol: chart.symbol(), interval: iv }); } catch (_) {}
+            });
+
+            // Write current symbol/interval
+            try { writeSession({ symbol: chart.symbol(), interval: chart.resolution() }); } catch (_) {}
+
+            // DOM layout detection interval
+            setInterval(_detectLayoutChangeFromDOM, 2000);
+
+            // MutationObserver for recent menu items (main doc + iframe)
+            var _recentObsFn = function () { _injectRecentItems(); };
+            new MutationObserver(_recentObsFn).observe(document.body, { childList: true, subtree: true });
+            var _attachRecentObs = function (doc) {
+                if (!doc || doc._csRecentObs) return;
+                doc._csRecentObs = true;
+                try {
+                    new MutationObserver(_recentObsFn).observe(doc.body || doc.documentElement, { childList: true, subtree: true });
+                } catch (_) {}
+            };
+
+            // Attach recent menu observer to iframes too
+            document.querySelectorAll('iframe').forEach(function (f) {
+                const attachToIframe = function () {
+                    try {
+                        const iDoc = f.contentDocument || f.contentWindow?.document;
+                        if (iDoc) {
+                            _attachRecentObs(iDoc);
+                        }
+                    } catch (_) {}
+                };
+                f.addEventListener('load', attachToIframe);
+                attachToIframe();
+            });
+
+            window.addEventListener('beforeunload', function () {
+                if (localStorage.getItem('cs_autosave_on_refresh') !== 'true') return;
+                var id = getActiveId();
+                if (!id || !_widget) return;
+                try {
+                    _widget.save(function (state) {
+                        fetch('/api/layouts/' + id, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ layout_data: state }),
+                            keepalive: true,
+                            credentials: 'include'
+                        });
+                    });
+                } catch (_) {}
+            });
+
+            console.log('[chart-session] Ready | Active layout:', getActiveName() || 'none');
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PUBLIC API
+    // ═══════════════════════════════════════════════════════════════════
+
+    window.chartSession = {
+        adapter:     adapter,
+        subscribe:   subscribe,
+        getActive:   function () { return { id: getActiveId(), name: getActiveName() }; },
+        setActive:   function (id, name) { writeSession({ layoutId: id, layoutName: name }, 'setActive'); },
+        readSession: readSession,
+        readRecent:  readRecent,
+        loadById:    loadById
+    };
+
+})();

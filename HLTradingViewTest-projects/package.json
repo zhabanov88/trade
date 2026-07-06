@@ -1,0 +1,50 @@
+{
+  "name": "hyperliquid-tradingview-demo",
+  "version": "1.0.0",
+  "description": "A sophisticated trading interface integrating TradingView Advanced Charts with HyperLiquid's API for real-time cryptocurrency trading data and analysis",
+  "main": "index.html",
+  "homepage": "https://github.com/DiamondHandsQuant/HLTradingViewTest#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DiamondHandsQuant/HLTradingViewTest.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DiamondHandsQuant/HLTradingViewTest/issues"
+  },
+  "scripts": {
+    "start": "npm run dev",
+    "dev": "npx concurrently -n \"APP,PROXY\" -c \"cyan,magenta\" \"npx http-server -p 8080 -c-1 --cors\" \"node sse-proxy.js\"",
+    "proxy": "node sse-proxy.js",
+    "app": "npx http-server -p 8080 -c-1 --cors",
+    "build": "echo 'No build step required for static files'",
+    "serve": "npx http-server -p 8080 -c-1 --cors",
+    "test": "echo 'No tests specified' && exit 0"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1",
+    "concurrently": "^8.2.2"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "contributors": [],
+  "license": "MIT",
+  "files": [
+    "index.html",
+    "app.js",
+    "datafeed.js",
+    "hyperliquid-api.js",
+    "styles.css",
+    "README.md",
+    "LICENSE",
+    "charting_library/charting_library/OrderBookCharts.png"
+  ],
+  "browserslist": [
+    "Chrome >= 80",
+    "Firefox >= 75",
+    "Safari >= 13",
+    "Edge >= 80"
+  ]
+}

@@ -1,0 +1,415 @@
+/**
+ * ФИНАЛЬНАЯ УПРОЩЁННАЯ ВЕРСИЯ DatabaseIntegratedDatafeed
+ * ГАРАНТИРОВАННАЯ работа исторических данных
+ */
+
+class DatabaseIntegratedDatafeed {
+    constructor() {
+        this.supportedResolutions = [];
+        this.intervals = [];
+        this.instruments = [];
+        this.config = null;
+        this.symbols = new Map();
+        this.subscribers = new Map();
+        
+        // ПРОСТОЙ КЕШ: храним timestamp первого и последнего полученного бара
+        this.barCache = new Map(); // key: "symbol_resolution", value: {first, last}
+    }
+
+    async initialize() {
+        try {
+            console.log('🔄 Initializing DatabaseIntegratedDatafeed...');
+            
+            await this.loadIntervalsFromDatabase();
+            await this.loadInstrumentsFromDatabase();
+            this.buildConfig();
+            
+            console.log('✅ Datafeed initialized');
+            console.log(`   Intervals: ${this.supportedResolutions.length}`);
+            console.log(`   Instruments: ${this.instruments.length}`);
+            
+        } catch (error) {
+            console.error('❌ Failed to initialize:', error);
+            this.loadFallbackConfiguration();
+        }
+    }
+
+    async loadIntervalsFromDatabase() {
+        try {
+            this.intervals = await apiClient.getIntervals();
+            const resolutions = this.intervals
+                .filter(i => i.is_active)
+                .map(i => i.tradingview_code)
+                .filter(Boolean);
+            this.supportedResolutions = [...new Set(resolutions)];
+            console.log('✓ Intervals:', this.supportedResolutions);
+        } catch (error) {
+            console.error('Failed to load intervals:', error);
+            this.supportedResolutions = ['1T', '1', '2', '3',  '5', '15', '30', '60', '240', '1D', '1W'];
+        }
+    }
+
+    async loadInstrumentsFromDatabase() {
+        try {
+            this.instruments = await apiClient.getInstruments();
+            this.instruments.forEach(instrument => {
+                const symbolInfo = this.buildSymbolInfo(instrument);
+                this.symbols.set(instrument.symbol, symbolInfo);
+            });
+            console.log('✓ Instruments:', this.instruments.length);
+        } catch (error) {
+            console.error('Failed to load instruments:', error);
+            this.createDefaultSymbols();
+        }
+    }
+
+    buildSymbolInfo(instrument) {
+        return {
+            name: instrument.symbol,
+            full_name: instrument.tradingview_symbol || `${instrument.symbol}USD`,
+            description: instrument.description || instrument.name || `${instrument.symbol}/USD`,
+            type: instrument.type || 'crypto',
+            session: '24x7',
+            timezone: 'Etc/UTC',
+            exchange: instrument.provider_name || 'CLICKHOUSE',
+            minmov: 1,
+            pricescale: 100000000,
+            has_intraday: true,
+            has_weekly_and_monthly: true,
+            supported_resolutions: this.supportedResolutions,
+            volume_precision: 8,
+            data_status: 'streaming',
+            currency_code: instrument.quote_currency || 'USD',
+            provider_id: instrument.provider_id,
+            clickhouse_ticker: instrument.clickhouse_ticker,
+            base_currency: instrument.base_currency,
+            quote_currency: instrument.quote_currency
+        };
+    }
+
+    createDefaultSymbols() {
+        const defaults = [
+            { symbol: 'EUR', name: 'EUR/USD', type: 'forex', ticker: 'C:EUR-USD' },
+            { symbol: 'GBP', name: 'GBP/USD', type: 'forex', ticker: 'C:GBP-USD' }
+        ];
+        
+        defaults.forEach(item => {
+            const symbolInfo = {
+                name: item.symbol,
+                full_name: `${item.symbol}USD`,
+                description: item.name,
+                type: item.type,
+                session: '24x7',
+                timezone: 'Etc/UTC',
+                exchange: 'CLICKHOUSE',
+                minmov: 1,
+                pricescale: 100000000,
+                has_intraday: true,
+                has_weekly_and_monthly: true,
+                supported_resolutions: this.supportedResolutions,
+                volume_precision: 8,
+                data_status: 'streaming',
+                currency_code: 'USD',
+                clickhouse_ticker: item.ticker
+            };
+            this.symbols.set(item.symbol, symbolInfo);
+        });
+    }
+
+    buildConfig() {
+        this.config = {
+            supported_resolutions: this.supportedResolutions,
+            exchanges: [{ value: 'CLICKHOUSE', name: 'ClickHouse', desc: 'ClickHouse Database' }],
+            symbols_types: [
+                { name: 'crypto', value: 'crypto' },
+                { name: 'forex', value: 'forex' },
+                { name: 'stock', value: 'stock' }
+            ]
+        };
+    }
+
+    loadFallbackConfiguration() {
+        this.supportedResolutions = ['1', '5', '15', '30', '60', '240', '1D', '1W'];
+        this.createDefaultSymbols();
+        this.buildConfig();
+    }
+
+    getClickHouseTable(resolution) {
+        const config = this.intervals.find(i => i.tradingview_code === resolution);
+        if (config) return config.clickhouse_table;
+        
+        if (['1', '3', '5'].includes(resolution)) return 'market_data_minute';
+        if (['15', '30', '60'].includes(resolution)) return 'market_data_hour';
+        if (['1D', '1W'].includes(resolution)) return 'market_data_day';
+        return 'market_data_minute';
+    }
+
+    getIntervalSeconds(resolution) {
+        const map = {
+            '1': 60, '3': 180, '5': 300, '15': 900, '30': 1800,
+            '60': 3600, '240': 14400, '1D': 86400, '1W': 604800
+        };
+        return map[resolution] || 60;
+    }
+
+    onReady(callback) {
+        setTimeout(() => callback(this.config), 0);
+    }
+
+    searchSymbols(userInput, exchange, symbolType, onResultReadyCallback) {
+        const results = [];
+        const searchTerm = userInput.toUpperCase();
+        
+        for (const [symbol, symbolInfo] of this.symbols) {
+            if (symbol.includes(searchTerm) || symbolInfo.description.includes(searchTerm)) {
+                results.push({
+                    symbol: symbolInfo.name,
+                    full_name: symbolInfo.full_name,
+                    description: symbolInfo.description,
+                    exchange: symbolInfo.exchange,
+                    type: symbolInfo.type
+                });
+            }
+        }
+        onResultReadyCallback(results);
+    }
+
+    resolveSymbol(symbolName, onSymbolResolvedCallback, onResolveErrorCallback) {
+        const symbol = symbolName.split(':').pop().replace('USD', '').replace('-USD', '');
+        let symbolInfo = this.symbols.get(symbol);
+        
+        if (!symbolInfo) {
+            const instrument = this.instruments.find(i => 
+                i.tradingview_symbol === symbolName || 
+                i.symbol === symbol ||
+                i.clickhouse_ticker?.includes(symbol)
+            );
+            
+            if (instrument) {
+                symbolInfo = this.buildSymbolInfo(instrument);
+                this.symbols.set(symbol, symbolInfo);
+            } else {
+                symbolInfo = {
+                    name: symbol,
+                    full_name: `CLICKHOUSE:${symbol}USD`,
+                    description: `${symbol}/USD`,
+                    type: 'crypto',
+                    session: '24x7',
+                    timezone: 'Etc/UTC',
+                    exchange: 'CLICKHOUSE',
+                    minmov: 1,
+                    pricescale: 100000000,
+                    has_intraday: true,
+                    has_weekly_and_monthly: true,
+                    supported_resolutions: this.supportedResolutions,
+                    volume_precision: 8,
+                    data_status: 'streaming',
+                    currency_code: 'USD',
+                    clickhouse_ticker: `C:${symbol}-USD`
+                };
+                this.symbols.set(symbol, symbolInfo);
+            }
+        }
+        
+        setTimeout(() => onSymbolResolvedCallback(symbolInfo), 0);
+    }
+
+    /**
+     * ГЛАВНЫЙ МЕТОД - МАКСИМАЛЬНО УПРОЩЁННАЯ ЛОГИКА
+     */
+    async getBars(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
+        const { from, to, firstDataRequest } = periodParams;
+        
+        console.log('\n📊 getBars:', {
+            symbol: symbolInfo.name,
+            resolution,
+            from: new Date(from * 1000).toISOString(),
+            to: new Date(to * 1000).toISOString(),
+            firstDataRequest
+        });
+        
+        try {
+            const ticker = symbolInfo.clickhouse_ticker || `C:${symbolInfo.name}-USD`;
+            const table = this.getClickHouseTable(resolution);
+            const intervalSeconds = this.getIntervalSeconds(resolution);
+            
+            const cacheKey = `${symbolInfo.name}_${resolution}`;
+            let cache = this.barCache.get(cacheKey);
+            
+            if (!cache) {
+                cache = { first: null, last: null };
+                this.barCache.set(cacheKey, cache);
+            }
+            
+            let actualFrom, actualTo;
+            
+            if (firstDataRequest) {
+                // ========== ПЕРВЫЙ ЗАПРОС ==========
+                console.log('🎯 FIRST REQUEST');
+                
+                // Получаем последнюю дату из базы
+                const latestResp = await fetch(`/api/market-data/latest?ticker=${ticker}&table=${table}`, {credentials: 'include'});
+                const latestData = await latestResp.json();
+                const latestTs = Math.floor(new Date(latestData.latest_timestamp).getTime() / 1000);
+                
+                console.log(`   Latest in DB: ${new Date(latestTs * 1000).toISOString()}`);
+                
+                // Грузим 10000 баров назад
+                actualTo = latestTs;
+                actualFrom = latestTs - (10000 * intervalSeconds);
+                
+            } else {
+                // ========== ПОСЛЕДУЮЩИЕ ЗАПРОСЫ ==========
+                
+                if (cache.first === null) {
+                    // Кеш пустой - используем TradingView параметры
+                    console.log('❓ No cache - using TradingView params');
+                    actualFrom = from;
+                    actualTo = to;
+                } else if (to < cache.first) {
+                    // ========== ПРОКРУТКА НАЗАД ==========
+                    console.log('⬅️  SCROLL BACK (historical)');
+                    console.log(`   Current first bar: ${new Date(cache.first * 1000).toISOString()}`);
+                    
+                    // КЛЮЧЕВОЕ: Берём 1000 баров ПЕРЕД первым загруженным
+                    actualTo = cache.first - intervalSeconds;
+                    actualFrom = actualTo - (1000 * intervalSeconds);
+                    
+                    console.log(`   Loading 1000 bars BEFORE current range`);
+                    
+                } else if (from > cache.last) {
+                    // ========== ПРОКРУТКА ВПЕРЁД ==========
+                    console.log('➡️  SCROLL FORWARD');
+                    console.log(`   Current last bar: ${new Date(cache.last * 1000).toISOString()}`);
+                    
+                    actualFrom = cache.last + intervalSeconds;
+                    actualTo = actualFrom + (1000 * intervalSeconds);
+                    
+                    const now = Math.floor(Date.now() / 1000);
+                    if (actualTo > now) actualTo = now;
+                    
+                } else {
+                    // Запрос внутри уже загруженного диапазона
+                    console.log('↔️  Request within loaded range');
+                    actualFrom = from;
+                    actualTo = to;
+                }
+            }
+            
+            console.log(`📡 API call: ${ticker} @ ${table}`);
+            console.log(`   ${new Date(actualFrom * 1000).toISOString()} → ${new Date(actualTo * 1000).toISOString()}`);
+            
+            const response = await fetch(
+                `/api/market-data?ticker=${ticker}&table=${table}&from=${actualFrom}&to=${actualTo}`,
+                { credentials: 'include' }
+            );
+            
+            if (!response.ok) throw new Error(`API ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (!data || data.length === 0) {
+                console.warn('⚠️  No data');
+                onHistoryCallback([], { noData: true });
+                return;
+            }
+            
+            const bars = data.map(bar => ({
+                time: new Date(bar.timestamp).getTime(),
+                open: parseFloat(bar.open),
+                high: parseFloat(bar.high),
+                low: parseFloat(bar.low),
+                close: parseFloat(bar.close),
+                volume: parseFloat(bar.volume || 0)
+            })).sort((a, b) => a.time - b.time);
+            
+            console.log(`✅ ${bars.length} bars`);
+            
+            // Обновляем кеш РЕАЛЬНЫМИ данными
+            if (bars.length > 0) {
+                const firstTs = Math.floor(bars[0].time / 1000);
+                const lastTs = Math.floor(bars[bars.length - 1].time / 1000);
+                
+                if (cache.first === null || firstTs < cache.first) {
+                    cache.first = firstTs;
+                }
+                if (cache.last === null || lastTs > cache.last) {
+                    cache.last = lastTs;
+                }
+                
+                console.log(`   Cache: ${new Date(cache.first * 1000).toISOString()} → ${new Date(cache.last * 1000).toISOString()}\n`);
+            }
+            
+            onHistoryCallback(bars, { noData: false });
+            
+        } catch (error) {
+            console.error('❌ Error:', error);
+            onErrorCallback(error.message);
+        }
+    }
+
+    subscribeBars(symbolInfo, resolution, onRealtimeCallback, subscriberUID, onResetCacheNeededCallback) {
+        this.subscribers.set(subscriberUID, {
+            symbolInfo, resolution, onRealtimeCallback, lastBar: null
+        });
+        
+        const intervalId = setInterval(async () => {
+            try {
+                const subscriber = this.subscribers.get(subscriberUID);
+                if (!subscriber) {
+                    clearInterval(intervalId);
+                    return;
+                }
+                
+                const now = Math.floor(Date.now() / 1000);
+                const from = now - 300;
+                const ticker = symbolInfo.clickhouse_ticker || `C:${symbolInfo.name}-USD`;
+                const table = this.getClickHouseTable(resolution);
+                
+                const response = await fetch(
+                    `/api/market-data?ticker=${ticker}&table=${table}&from=${from}&to=${now}`,
+                    { credentials: 'include' }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        const latestBar = data[data.length - 1];
+                        const bar = {
+                            time: new Date(latestBar.timestamp).getTime(),
+                            open: parseFloat(latestBar.open),
+                            high: parseFloat(latestBar.high),
+                            low: parseFloat(latestBar.low),
+                            close: parseFloat(latestBar.close),
+                            volume: parseFloat(latestBar.volume || 0)
+                        };
+                        onRealtimeCallback(bar);
+                    }
+                }
+            } catch (error) {
+                console.error('Real-time error:', error);
+            }
+        }, 5000);
+        
+        const subscriber = this.subscribers.get(subscriberUID);
+        if (subscriber) subscriber.intervalId = intervalId;
+    }
+
+    unsubscribeBars(subscriberUID) {
+        const subscriber = this.subscribers.get(subscriberUID);
+        if (subscriber && subscriber.intervalId) {
+            clearInterval(subscriber.intervalId);
+        }
+        this.subscribers.delete(subscriberUID);
+    }
+
+    destroy() {
+        for (const [uid, subscriber] of this.subscribers) {
+            if (subscriber.intervalId) clearInterval(subscriber.intervalId);
+        }
+        this.subscribers.clear();
+        this.barCache.clear();
+    }
+}
+
+window.DatabaseIntegratedDatafeed = DatabaseIntegratedDatafeed;

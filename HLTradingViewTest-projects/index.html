@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic</title>
+    <script>try { var _t = localStorage.getItem('tradingview_theme'); if (_t === 'light') { document.documentElement.classList.add('light-loading'); document.documentElement.style.backgroundColor = '#fff' } else { document.documentElement.style.backgroundColor = '#1e1e1e' } } catch (e) { document.documentElement.style.backgroundColor = '#1e1e1e' }</script>
+    <style>
+        html {
+            background: #1e1e1e
+        }
+
+        body {
+            background: #1e1e1e;
+            margin: 0
+        }
+
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 9999
+        }
+
+        .loading-text {
+            color: #888;
+            margin-top: 20px;
+            font-family: sans-serif;
+            font-size: 14px
+        }
+
+        .light-loading,
+        .light-loading body,
+        .light-loading #loading-overlay {
+            background: #fff
+        }
+
+        .light-loading .loading-text {
+            color: #555
+        }
+    </style>
+    <link rel="stylesheet" href="styles.css?v=sq">
+    <link rel="stylesheet" href="theme-styles.css?v=bl2">
+    <link rel="stylesheet" href="code-panel-hotfix.css">
+    <script defer src="charting_library/charting_library/charting_library.standalone.js"></script>
+    <script>
+        // Early pre-fetch: auth + layout in parallel (while scripts download)
+        window._earlyAuth = fetch('/api/auth/status', { credentials: 'include' })
+            .then(function (r) { return r.ok ? r.json() : { authenticated: false } })
+            .catch(function () { return { authenticated: false } });
+        try {
+            var _s = JSON.parse(localStorage.getItem('tv_session'));
+            if (_s && _s.layoutId) {
+                window._earlyLayout = fetch('/api/layouts/' + _s.layoutId, { credentials: 'include' })
+                    .then(function (r) { return r.ok ? r.json() : null })
+                    .catch(function () { return null });
+            }
+        } catch (e) { }
+    </script>
+</head>
+
+<body class="dark-theme">
+    <div class="app-container" id="appContainer" style="display:none">
+        <!-- Top Navigation Bar -->
+        <div class="top-navbar">
+            <div class="navbar-left">
+                <div class="app-logo"><a href="/"><span style="position:relative;top:-3px;right:3px">🤖</span>32</a>
+                </div>
+            </div>
+            <!--
+            <div class="navbar-center">
+                <div class="symbol-info">
+                    <span class="symbol-name" id="symbolName">EURUSD</span>
+                </div>
+            </div>
+            -->
+            <div class="navbar-right">
+                <button class="nav-btn" id="fullscreen-btn" onclick="toggleFullscreen()"
+                    title="Open in full-screen mode"><span
+                        style="font-size:26px;line-height:27px;vertical-align:middle;display:inline-block;text-align:center;width:18px">⭱</span></button>
+                <button class="nav-btn theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+                    🌙
+                </button>
+                <button class="nav-btn" onclick="window.scriptManagerUI.open('javascript')" title="Settings">
+                    ⚙️ Manage Scripts
+                </button>
+                <button class="nav-btn" onclick="settingsPanel.open()" title="Settings">
+                    ⚙️ Settings
+                </button>
+                <div class="user-menu">
+                    <span id="username">Guest</span>
+                    <button class="nav-btn" onclick="app.logout()">Logout</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Chart Container -->
+            <div class="chart-container">
+                <div id="tv_chart_container"></div>
+            </div>
+
+            <!-- Code Panel Toggle Strip (visible when panel is hidden) -->
+            <div class="code-panel-strip" id="codePanelStrip" onclick="toggleCodePanel()" title="Открыть панель кода">
+                <span class="code-panel-strip-arrow">➟</span>
+            </div>
+
+            <!-- Code Editor Container -->
+            <div class="code-panel-container" id="codePanelContainer">
+                <!-- Close button -->
+                <button class="code-panel-close" id="codePanelCloseBtn" onclick="toggleCodePanel()"
+                    title="Скрыть панель">➟</button>
+                <!-- Tabs Header -->
+                <div class="code-panel-header">
+                    <div class="code-panel-tabs">
+                        <button class="code-tab active" data-tab="javascript">
+                            <span class="tab-icon">⚡</span>
+                            <span>JavaScript</span>
+                        </button>
+                        <button class="code-tab" data-tab="pinescript">
+                            <span class="tab-icon">📊</span>
+                            <span>PineScript</span>
+                        </button>
+                        <button class="code-tab" data-tab="pine6">
+                            <span class="tab-icon">📊</span>
+                            <span>PineScript6</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pine Script Tab Content -->
+                <div class="code-tab-content" id="pinescript-tab">
+                    <div class="code-toolbar">
+                        <select class="code-select" id="pineExamples">
+                            <option value="">📚 Select Example...</option>
+                        </select>
+                        <button class="code-btn code-btn-save" id="pineSaveBtn">💾 Save</button>
+                    </div>
+
+                    <div class="code-editor-wrapper">
+                        <textarea class="code-editor" id="pineEditor" placeholder="//@version=5
+indicator(&quot;My Indicator&quot;, overlay=true)
+length = input.int(20, &quot;Period&quot;)
+sma = ta.sma(close, length)
+plot(sma, &quot;SMA&quot;, color.blue)">//@version=5
+indicator("Bollinger Bands", overlay=true)
+length = input.int(20, "Length")
+mult = input.float(2.0, "Multiplier")
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upper = basis + dev
+lower = basis - dev
+plot(basis, "Basis", color=color.blue, linewidth=2)
+p1 = plot(upper, "Upper", color=color.red, linewidth=1)
+p2 = plot(lower, "Lower", color=color.green, linewidth=1)
+fill(p1, p2, color=color.new(color.blue, 90))</textarea>
+                    </div>
+
+                    <div class="code-actions">
+                        <button class="code-btn code-btn-run" id="pineRunBtn">
+                            <span>▶</span> Run Pine Script
+                        </button>
+                    </div>
+
+                    <div class="code-console" id="pineConsole">
+                        <div class="console-header">
+                            <span>Console Output</span>
+                        </div>
+                        <div class="console-body" id="pineConsoleBody">
+                            <div class="console-line console-success">✓ Pine Script Editor ready</div>
+                        </div>
+                    </div>
+
+                    <div class="active-scripts" id="pineScripts">
+                        <div class="scripts-header">Active Indicators</div>
+                        <div class="scripts-list" id="pineScriptsList">
+                            <div class="no-scripts">No active indicators</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pine Script 6 Tab Content -->
+                <div class="code-tab-content" id="pine6-tab">
+                    <div class="code-toolbar">
+                        <select class="code-select" id="pine6Examples">
+                            <option value="">📚 Select Example...</option>
+                        </select>
+                        <button class="code-btn code-btn-save" id="pine6SaveBtn">💾 Save</button>
+                    </div>
+
+                    <div class="code-editor-wrapper">
+                        <textarea class="code-editor" id="pine6Editor" placeholder="//@version=6
+indicator(&quot;My Pine 6 Indicator&quot;, overlay=true)
+length = input.int(20, &quot;Period&quot;)
+sma = ta.sma(close, length)
+plot(sma, &quot;SMA&quot;, color.blue)">//@version=6
+indicator("Bollinger Bands", overlay=true)
+length = input.int(20, "Length")
+mult = input.float(2.0, "Multiplier")
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upper = basis + dev
+lower = basis - dev
+plot(basis, "Basis", color=color.blue, linewidth=2)
+p1 = plot(upper, "Upper", color=color.red, linewidth=1)
+p2 = plot(lower, "Lower", color=color.green, linewidth=1)
+fill(p1, p2, color=color.new(color.blue, 90))</textarea>
+                    </div>
+
+                    <div class="code-actions">
+                        <button class="code-btn code-btn-run" id="pine6RunBtn">
+                            <span>▶</span> Run Pine Script 6
+                        </button>
+                    </div>
+
+                    <div class="code-console" id="pine6Console">
+                        <div class="console-header">
+                            <span>Console Output</span>
+                        </div>
+                        <div class="console-body" id="pine6ConsoleBody">
+                            <div class="console-line console-success">✓ Pine Script 6 Editor ready</div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- JavaScript Tab Content -->
+                <div class="code-tab-content active" id="javascript-tab">
+                    <div class="code-toolbar">
+                        <select class="code-select selectJS" id="jsExamples">
+                            <option value="">📚 Select Example...</option>
+                        </select>
+                        <button class="code-btn code-btn-save" id="jsSaveBtn">💾 Save</button>
+                    </div>
+
+                    <div class="code-editor-wrapper">
+                        <textarea class="code-editor" id="jsEditor" placeholder="// JavaScript code to modify chart
+// Access widget: window.app.widget">// Example: Create a study
+const chart = window.app.widget.activeChart();
+chart.createStudy('Moving Average', false, false, { length: 14 });</textarea>
+                    </div>
+
+                    <div class="code-actions">
+                        <button class="code-btn code-btn-run" id="jsRunBtn">
+                            <span>▶</span> Execute JavaScript
+                        </button>
+                        <!--
+                        <button class="code-btn code-btn-run" id="jsRunAsStudyBtn" style="background:#0d6b3e">
+                            <span>📊</span> Add to Chart (Study)
+                        </button>
+                        -->
+                    </div>
+
+                    <div class="code-console" id="jsConsole">
+                        <div class="console-header">
+                            <span>Console Output</span>
+                        </div>
+                        <div class="console-body" id="jsConsoleBody">
+                            <div class="console-line console-success">✓ JavaScript API ready</div>
+                        </div>
+                    </div>
+
+                    <div class="api-reference">
+                        <div class="api-header">Quick Reference</div>
+                        <div class="api-list">
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Container -->
+    <div class="auth-container" id="authContainer" style="display:none">
+        <div id="loginForm">
+            <h2>Login</h2>
+            <div class="error-message" id="loginError"></div>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="loginUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="btn">Login</button>
+            </form>
+        </div>
+
+        <div id="registerForm" style="display: none;">
+            <h2>Register</h2>
+            <div class="error-message" id="registerError"></div>
+            <form onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="registerUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="registerEmail" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="registerPassword" required minlength="6">
+                </div>
+                <button type="submit" class="btn">Register</button>
+            </form>
+            <div class="toggle-auth" onclick="toggleAuthForm()">
+                Already have an account? Login
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay" style="display:flex">
+        <svg width="100" height="100" viewBox="0 0 50 50" style="animation:spin 1s linear infinite">
+            <style>
+                @keyframes spin {
+                    to {
+                        transform: rotate(360deg)
+                    }
+                }
+            </style>
+            <circle cx="25" cy="25" r="20" fill="none" stroke="#3e3e42" stroke-width="4" />
+            <path d="M25 5a20 20 0 0 1 20 20" fill="none" stroke="#2962FF" stroke-width="4" stroke-linecap="round" />
+        </svg>
+        <div class="loading-text">Loading TradingView Chart...</div>
+    </div>
+
+    <!-- SCRIPTS - ПРАВИЛЬНЫЙ ПОРЯДОК ЗАГРУЗКИ -->
+
+    <script defer src="activedata-persist.js"></script>
+
+    <!-- 1. Theme Manager FIRST -->
+    <script defer src="theme-manager.js?v=4"></script>
+
+    <!-- 2. API Client -->
+    <script defer src="api-client.js"></script>
+
+    <!-- 3. Chart Session (unified adapter — needs apiClient) -->
+    <script defer src="chart-session.js?v=ctfix"></script>
+
+    <!-- 4. Datafeed -->
+    <script defer src="datafeed-integrated-v3.js?v=30s"></script>
+    <script defer src="favorites-draw-elements.js?v=30s"></script>
+
+    <!-- 4. Settings Manager -->
+    <script defer src="settings-manager.js"></script>
+
+    <!-- 5. Main App -->
+    <!-- FVG Detector Indicator -->
+    <!--
+
+<script defer src="fvg-indicator.js"></script>
+    -->
+    <script defer src="tv-indicator-engine.js?v=19"></script>
+    <script defer src="cisd_indicator.js?v=6"></script>
+    <script defer src="drawing-template-manager.js?v=ctfix"></script>
+    <script defer src="app.js?v=wkday"></script>
+    <script defer src="bar-detail-popup.js"></script>
+
+    <!-- 6. UI Components -->
+    <script defer src="currency-selector.js"></script>
+    <script defer src="layout-manager.js"></script>
+    <script defer src="script-manager-ui.js"></script>
+    <script defer src="indicator-manager-ui.js"></script>
+    <script defer src="indicators-menu-integration.js"></script>
+    <script defer src="settings-panel.js"></script>
+    <script defer src="code-panel-manager.js"></script>
+    <script defer src="code-panel-hotfix.js"></script>
+    <script defer src="interval-selector.js"></script>
+    <!-- recent-layouts.js REMOVED — merged into chart-session.js -->
+
+    <!--<script defer src="data-table.js"></script>-->
+    <script defer src="date-guard.js"></script>
+    <script defer src="setups-backtest.js"></script>
+    <script defer src="backtest-player.js"></script>
+    <script defer src="setups-backtest-ext.js"></script>
+
+    <script defer src="layout-state-sync.js"></script>
+
+
+    <script defer src="walkforward-ui.js"></script>
+    <script defer src="ai-ui.js"></script>
+    <script defer src="alert-ui.js"></script>
+    <script defer src="correlation-ui.js"></script>
+    <script defer src="alpha-decay-ui.js"></script>
+    <script defer src="temporal-heatmap-ui.js"></script>
+    <script defer src="multifactor-ui.js"></script>
+
+    <script defer src="tick-analytics.js"></script>
+    <script defer src="neural-ui.js"></script>
+    <script defer src="llm-settings-ui.js"></script>
+
+
+    <script defer src="session-script-runner.js"></script>
+
+
+    <script src="setups-page.js"></script>
+    <script src="backtest-page.js"></script>
+    <script src="nav-pages.js"></script>
+
+
+    <!-- chart-autosave.js REMOVED — merged into chart-session.js -->
+
+    <!--<script defer src="ai-code-analyzer.js"></script>-->
+
+
+    <script>
+        // Переключение вкладок Code Panel
+        document.addEventListener('DOMContentLoaded', function () {
+            const codeTabs = document.querySelectorAll('.code-tab');
+            const codeTabContents = document.querySelectorAll('.code-tab-content');
+
+            codeTabs.forEach(tab => {
+                tab.addEventListener('click', function () {
+                    const tabName = this.dataset.tab;
+
+                    // Убираем active у всех кнопок
+                    codeTabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Скрываем все контенты
+                    codeTabContents.forEach(content => content.classList.remove('active'));
+
+                    // Показываем нужный контент
+                    const targetContent = document.getElementById(tabName + '-tab');
+                    if (targetContent) {
+                        targetContent.classList.add('active');
+                    }
+                });
+            });
+
+
+            const currentTheme = localStorage.getItem('tradingview_theme') || 'dark';
+            document.querySelector('body').classList = currentTheme + "-theme";
+
+            const saveLoadMenu = document.querySelector('[data-name="save-load-menu"]');
+
+            if (saveLoadMenu) {
+                // Добавляем обработчик события клика для добавления истории ранее использованных лэйоутов
+                saveLoadMenu.addEventListener('click', () => {
+                    setTimeout(() => {
+                        console.log("Обработано событие клика!");
+                    }, 300); // Задержка 300 миллисекунд
+                });
+            }
+        });
+
+
+        // ========== CODE PANEL TOGGLE ==========
+        function toggleCodePanel() {
+            const panel = document.getElementById('codePanelContainer');
+            const strip = document.getElementById('codePanelStrip');
+            if (!panel) return;
+
+            const isHidden = panel.classList.toggle('code-panel-hidden');
+            if (strip) strip.classList.toggle('code-panel-strip-visible', isHidden);
+
+            localStorage.setItem('codePanelVisible', isHidden ? '0' : '1');
+
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+            }, 310);
+        }
+
+        // Восстанавливаем состояние панели при загрузке
+        (function restoreCodePanelState() {
+            const saved = localStorage.getItem('codePanelVisible');
+            if (saved === '0') {
+                const panel = document.getElementById('codePanelContainer');
+                const strip = document.getElementById('codePanelStrip');
+                if (panel) panel.classList.add('code-panel-hidden');
+                if (strip) strip.classList.add('code-panel-strip-visible');
+            }
+        })();
+    </script>
+    <script>
+        function toggleFullscreen() { var d = document; if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d) } else { var el = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el) } }; function _fsChanged() { var btn = document.getElementById("fullscreen-btn"); var sp = btn.querySelector("span"); var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement); if (sp) { sp.textContent = isFs ? "⭳" : "⭱" } else { btn.textContent = isFs ? "↸" : "↸" }; btn.title = isFs ? "Exit full-screen (Esc)" : "Open in full-screen mode" }; document.addEventListener("fullscreenchange", _fsChanged); document.addEventListener("webkitfullscreenchange", _fsChanged);
+    </script>
+
+</html>

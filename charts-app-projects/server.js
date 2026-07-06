@@ -1,0 +1,4348 @@
+const express = require('express');
+const { Pool } = require('pg');
+const { createClient } = require('@clickhouse/client');
+const bcrypt = require('bcrypt');
+const session = require('express-session');
+const path = require('path');
+const { extractOutputsSchema } = require('./extract-outputs-schema');
+const { runBacktestOnServer, calcStats, getDateRange } = require('./backtest-engine-server');
+const { runWalkForward, runMonteCarlo } = require('./walkforward-engine');
+const { bayesianOptimize, classifyMarketRegimes, analyzeSetupByRegime, loadBarsFromClickhouse } = require('./ai-engine');
+const { checkAlertsOnBar, generateContext, estimateLiquidityLevels, CREATE_TABLE_SQL } = require('./alert-engine');
+const { analyzeDecay } = require('./alpha-decay-engine');
+const neuralSystem = require('./neural-server');
+const { LLMRouter, PROVIDERS } = require('./llm-router');
+//const { runRangeBarBacktest } = require('./rangebar-engine');
+const { buildCorrelationMatrix, buildPortfolio, efficientFrontier, detectMarketMode, getVolatilities } = require('./correlation-engine');
+const app = express();
+
+
+// Middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.static('public'));
+
+// Session configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true in production with HTTPS
+        httpOnly: true,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        sameSite: 'lax'
+    }
+}));
+
+// Database connections
+const greenplumPool = new Pool({
+    host: process.env.GP_HOST || 'greenplum-db',
+    port: process.env.GP_PORT || 5432,
+    database: process.env.GP_DATABASE || 'postgres',
+    user: process.env.GP_USER || 'gpadmin',
+    password: process.env.GP_PASSWORD || 'GreenPlum',
+    max: 20,
+});
+
+const clickhouse = createClient({
+    host: process.env.CH_HOST || 'http://clickhouse:8123',
+    username: process.env.CH_USER || 'default',
+    password: process.env.CH_PASSWORD || 'CL4ICLIsdf4HOUOUSE',
+    database: process.env.CH_DATABASE || 'default',
+});
+
+// Auth middleware
+function requireAuth(req, res, next) {
+    if (req.session && req.session.userId) {
+        return next();
+    }
+    res.status(401).json({ error: 'Unauthorized' });
+}
+
+const llmRouter = new LLMRouter();
+llmRouter.loadConfig(greenplumPool).then(() => {
+    if (llmRouter.isConfigured()) {
+        console.log(`[server] LLM ready: ${llmRouter.config.provider} / ${llmRouter.config.model}`);
+    } else {
+        console.log('[server] LLM not configured. Open ⚙️ LLM tab in UI to set up.');
+    }
+});
+
+llmRouter.mountRoutes(app, requireAuth, greenplumPool);
+neuralSystem.init(app, clickhouse, greenplumPool, requireAuth, llmRouter);
+
+// Admin middleware
+function requireAdmin(req, res, next) {
+    if (req.session && req.session.userId && req.session.isAdmin) {
+        return next();
+    }
+    res.status(403).json({ error: 'Forbidden - Admin access required' });
+}
+
+// Audit log helper
+async function logAction(userId, action, entityType, entityId, changes = null, req) {
+    try {
+        await greenplumPool.query(
+            `INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [userId, action, entityType, entityId, changes, req.ip, req.get('user-agent')]
+        );
+    } catch (error) {
+        console.error('Audit log error:', error);
+    }
+}
+
+// ==================== AUTH ROUTES ====================
+
+app.post('/api/auth/register', async (req, res) => {
+    const { username, password, email } = req.body;
+
+    if (!username || !password || !email) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        const result = await greenplumPool.query(
+            `INSERT INTO users (username, password_hash, email, role_id)
+             VALUES ($1, $2, $3, (SELECT id FROM roles WHERE name = 'user'))
+             RETURNING id, username, email, is_admin`,
+            [username, passwordHash, email]
+        );
+
+        const user = result.rows[0];
+        req.session.userId = user.id;
+        req.session.username = user.username;
+        req.session.isAdmin = user.is_admin;
+
+        await logAction(user.id, 'register', 'user', user.id, null, req);
+
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                isAdmin: user.is_admin
+            }
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            res.status(400).json({ error: 'Username or email already exists' });
+        } else {
+            console.error('Register error:', error);
+            res.status(500).json({ error: 'Registration failed' });
+        }
+    }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, username, password_hash, email, is_admin
+             FROM users WHERE username = $1 AND is_active = true`,
+            [username]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const user = result.rows[0];
+        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+
+        if (!passwordMatch) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        await greenplumPool.query(
+            'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
+            [user.id]
+        );
+
+        req.session.userId = user.id;
+        req.session.username = user.username;
+        req.session.isAdmin = user.is_admin;
+
+        await logAction(user.id, 'login', 'user', user.id, null, req);
+
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                isAdmin: user.is_admin
+            }
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Login failed' });
+    }
+});
+
+// ==================== PASSWORD CHANGE ====================
+app.put('/api/auth/password', requireAuth, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Current and new password required' });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    try {
+        const result = await greenplumPool.query(
+            'SELECT password_hash FROM users WHERE id = $1',
+            [req.session.userId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const match = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+        if (!match) {
+            return res.status(401).json({ error: 'Current password is incorrect' });
+        }
+        const hash = await bcrypt.hash(newPassword, 10);
+        await greenplumPool.query(
+            'UPDATE users SET password_hash = $1 WHERE id = $2',
+            [hash, req.session.userId]
+        );
+        res.json({ success: true, message: 'Password changed successfully' });
+    } catch (error) {
+        console.error('Password change error:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
+
+app.get('/api/market-data-ticks-last', requireAuth, async (req, res) => {
+    const { sort } = req.query;
+    try {
+        const query = `
+            SELECT
+                window_start as timestamp,
+                open,
+                high,
+                low,
+                close,
+                volume
+            FROM ${table}
+            WHERE ticker = {ticker:String}
+            ORDER BY window_start ${sort}
+            LIMIT 10000
+        `;
+
+        const resultSet = await clickhouse.query({
+            query: query,
+            format: 'JSONEachRow',
+            query_params: {
+                ticker: ticker
+            }
+        });
+
+        const data = await resultSet.json();
+        const sortedData = data.sort((a, b) => {
+            return new Date(a.timestamp) - new Date(b.timestamp);
+        });
+
+
+        return sortedData
+
+    } catch (error) {
+        console.error('❌ Market data error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch market data',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/market-data/ticks/aggregated-last', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1, sort = 'ASC' } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({
+            error: 'Missing required parameter: ticker'
+        });
+    }
+
+    try {
+        const hasDateFilter = from && to;
+        const intervalSeconds = parseInt(interval);
+
+        const formatDateTime64 = (date) => {
+            const isoString = date.toISOString();
+            const withoutZ = isoString.slice(0, -1);
+            const parts = withoutZ.split('.');
+            const dateTimePart = parts[0].replace('T', ' ');
+            const milliseconds = parts[1] || '000';
+            const microseconds = milliseconds.padEnd(6, '0');
+            return `${dateTimePart}.${microseconds}`;
+        };
+
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(toStartOfInterval(
+                    participant_timestamp, INTERVAL ${intervalSeconds} SECOND
+                ), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
+                toFloat64(avg(price)) as open,
+                toFloat64(max(price)) as high,
+                toFloat64(min(price)) as low,
+                toFloat64(argMax(price, participant_timestamp)) as close,
+                toUInt64(count()) as volume
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            ${hasDateFilter ? `AND participant_timestamp >= {from:DateTime64(6, 'UTC')} AND participant_timestamp <= {to:DateTime64(6, 'UTC')}` : ''}
+            GROUP BY ticker, timestamp
+            ORDER BY timestamp ${sort}
+            LIMIT 10000
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker,
+                ...(hasDateFilter && {
+                    from: formatDateTime64(new Date(parseInt(from) * 1000)),
+                    to: formatDateTime64(new Date(parseInt(to) * 1000))
+                })
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ Tick aggregation error:', error);
+        res.status(500).json({
+            error: 'Failed to aggregate ticks',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/market-data-test', requireAuth, async (req, res) => {
+    const { ticker, table, from, to } = req.query;
+
+    if (!ticker || !table) {
+        return res.status(400).json({ error: 'Missing ticker or table' });
+    }
+
+    try {
+        const conditions = ['ticker = {ticker:String}'];
+        const queryParams = { ticker };
+
+        // from и to приходят как unix seconds
+        if (from) {
+            conditions.push('toUnixTimestamp(window_start) >= {from:UInt32}');
+            queryParams.from = parseInt(from);
+        }
+
+        if (to) {
+            conditions.push('toUnixTimestamp(window_start) <= {to:UInt32}');
+            queryParams.to = parseInt(to);
+        }
+
+        const orderDir = (from && !to) ? 'ASC' : 'DESC';
+
+        const query = `
+            SELECT
+                window_start AS timestamp,
+                open, high, low, close, volume
+            FROM ${table}
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY window_start ${orderDir}
+            LIMIT 10000
+        `;
+
+        const resultSet = await clickhouse.query({
+            query,
+            format: 'JSONEachRow',
+            query_params: queryParams
+        });
+
+        const data = await resultSet.json();
+
+        // Всегда возвращаем в хронологическом порядке
+        data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        return res.json(data);
+
+    } catch (error) {
+        console.error('❌ Market data error:', error);
+        res.status(500).json({ error: 'Failed to fetch market data', details: error.message });
+    }
+});
+
+app.get('/api/market-data/ticks/aggregated-test', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1, sort = 'ASC' } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({
+            error: 'Missing required parameter: ticker'
+        });
+    }
+
+    try {
+        const intervalSeconds = parseInt(interval);
+
+        const formatDateTime64 = (date) => {
+            const isoString = date.toISOString();
+            const withoutZ = isoString.slice(0, -1);
+            const parts = withoutZ.split('.');
+            const dateTimePart = parts[0].replace('T', ' ');
+            const milliseconds = parts[1] || '000';
+            const microseconds = milliseconds.padEnd(6, '0');
+
+            return `${dateTimePart}.${microseconds}`;
+        };
+
+        const conditions = ['ticker = {ticker:String}'];
+        const queryParams = { ticker };
+
+        if (from) {
+            conditions.push(
+                "participant_timestamp >= {from:DateTime64(6, 'UTC')}"
+            );
+
+            queryParams.from = formatDateTime64(
+                new Date(parseInt(from) * 1000)
+            );
+        }
+
+        if (to) {
+            conditions.push(
+                "participant_timestamp <= {to:DateTime64(6, 'UTC')}"
+            );
+
+            queryParams.to = formatDateTime64(
+                new Date(parseInt(to) * 1000)
+            );
+        }
+
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(
+                    toStartOfInterval(
+                        participant_timestamp,
+                        INTERVAL ${intervalSeconds} SECOND
+                    ),
+                    '%Y-%m-%dT%H:%i:%S.000Z'
+                ) as timestamp,
+                toFloat64(avg(price)) as open,
+                toFloat64(max(price)) as high,
+                toFloat64(min(price)) as low,
+                toFloat64(argMax(price, participant_timestamp)) as close,
+                toUInt64(count()) as volume
+            FROM raw_market_data
+            WHERE ${conditions.join(' AND ')}
+            GROUP BY ticker, timestamp
+            ORDER BY timestamp ${sort}
+            LIMIT 10000
+        `;
+
+        const result = await clickhouse.query({
+            query,
+            query_params: queryParams,
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ Tick aggregation error:', error);
+
+        res.status(500).json({
+            error: 'Failed to aggregate ticks',
+            details: error.message
+        });
+    }
+});
+
+// ==================== MARKET DATA ENDPOINT ====================
+
+// Market data endpoint - fetches from ClickHouse
+app.get('/api/market-data', requireAuth, async (req, res) => {
+    const { ticker, table, from, to } = req.query;
+
+    if (!ticker || !table || !from || !to) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table, from, to'
+        });
+    }
+
+    const allowedTables = [
+        'market_data_minute',
+        'market_data_hour',
+        'market_data_day',
+        'market_data_week'
+    ];
+
+    //if (!allowedTables.includes(table)) {
+    //    console.warn(`⚠️ Table ${table} not in allowed list, but proceeding`);
+    //}
+
+    try {
+        const fromTimestamp = parseInt(from);
+        const toTimestamp = parseInt(to);
+
+        if (isNaN(fromTimestamp) || isNaN(toTimestamp)) {
+            return res.status(400).json({ error: 'Invalid timestamps' });
+        }
+
+        console.log(`📊 Fetching: ${ticker} from ${table}`);
+        console.log(`   From: ${new Date(fromTimestamp * 1000).toISOString()}`);
+        console.log(`   To: ${new Date(toTimestamp * 1000).toISOString()}`);
+
+        const query = `
+            SELECT
+                window_start as timestamp,
+                open,
+                high,
+                low,
+                close,
+                volume
+            FROM ${table}
+            WHERE ticker = {ticker:String}
+            ORDER BY window_start ASC
+            LIMIT 10000
+        `;
+
+        const resultSet = await clickhouse.query({
+            query: query,
+            format: 'JSONEachRow',
+            query_params: {
+                ticker: ticker,
+                from: fromTimestamp,
+                to: toTimestamp
+            }
+        });
+
+        const data = await resultSet.json();
+
+        console.log(`✅ Returned ${data.length} bars for ${ticker}`);
+
+        if (data.length > 0) {
+            console.log(`   First: ${data[0].timestamp}`);
+            console.log(`   Last: ${data[data.length - 1].timestamp}`);
+        }
+
+        res.json(data);
+
+    } catch (error) {
+        console.error('❌ Market data error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch market data',
+            details: error.message
+        });
+    }
+});
+
+app.get('/api/market-data/mtf', requireAuth, async (req, res) => {
+    const { ticker, table, from, to, up = '', down = '' } = req.query;
+
+    if (!ticker || !table) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table'
+        });
+    }
+
+    // Парсим списки доп.таймфреймов
+    const upTables = up ? up.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const downTables = down ? down.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // Простая защита от SQL-инъекций
+    const allTables = [table, ...upTables, ...downTables];
+    const validPattern = /^[a-z][a-z0-9_]*$/;
+    for (const t of allTables) {
+        if (!validPattern.test(t)) {
+            return res.status(400).json({ error: `Invalid table name: ${t}` });
+        }
+    }
+
+    console.log(`📊 [MTF] ${ticker} | base: ${table} | up: [${upTables}] | down: [${downTables}]`);
+
+    try {
+        // ── 1. Запрос основного ТФ ────────────────────────────────────────
+        // Логика аналогична /api/market-data-test:
+        //   - from и to опциональны
+        //   - ORDER DESC когда есть только to (подгрузка истории назад)
+        //   - ORDER ASC  когда есть только from (подгрузка вперёд)
+        //   - финальная сортировка всегда ASC
+        const conditions = ['ticker = {ticker:String}'];
+        const queryParams = { ticker };
+
+        if (from) {
+            conditions.push('toUnixTimestamp(window_start) >= {from:UInt32}');
+            queryParams.from = parseInt(from);
+        }
+        if (to) {
+            conditions.push('toUnixTimestamp(window_start) <= {to:UInt32}');
+            queryParams.to = parseInt(to);
+        }
+
+        // DESC когда грузим историю назад (есть to, нет from)
+        const orderDir = (from && !to) ? 'ASC' : 'DESC';
+
+        const mainQuery = `
+            SELECT
+                window_start     AS timestamp,
+                open, high, low, close, volume,
+                first_tick_index,
+                last_tick_index
+            FROM ${table}
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY window_start ${orderDir}
+            LIMIT 10000
+        `;
+
+        const mainRs = await clickhouse.query({
+            query: mainQuery,
+            format: 'JSONEachRow',
+            query_params: queryParams,
+        });
+        let mainBars = await mainRs.json();
+
+        if (!mainBars.length) {
+            return res.json([]);
+        }
+
+        // ── Фильтр невалидных баров (незамерженные части AggregatingMergeTree) ──
+        mainBars = mainBars.filter(b => {
+            const o = parseFloat(b.open);
+            const h = parseFloat(b.high);
+            const l = parseFloat(b.low);
+            const c = parseFloat(b.close);
+            // Невалидный бар: любое из OHLC = 0, или low > high
+            return o > 0 && h > 0 && l > 0 && c > 0 && l <= h;
+        });
+
+        // Всегда возвращаем в хронологическом порядке (как в market-data-test)
+        mainBars.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        // Если нет доп.ТФ — возвращаем как есть
+        if (upTables.length === 0 && downTables.length === 0) {
+            return res.json(mainBars);
+        }
+
+        // ── 2. Вычисляем tick_index диапазон для запроса доп.ТФ ──────────
+        const globalFirstTick = Math.min(...mainBars.map(b => Number(b.first_tick_index)));
+        const globalLastTick = Math.max(...mainBars.map(b => Number(b.last_tick_index)));
+
+        // ── 3. Параллельно грузим все доп.ТФ ─────────────────────────────
+        const fetchTf = async (tfTable) => {
+            const q = `
+                SELECT
+                    window_start     AS timestamp,
+                    open, high, low, close, volume,
+                    first_tick_index,
+                    last_tick_index
+                FROM ${tfTable}
+                WHERE ticker = {ticker:String}
+                  AND first_tick_index <= {globalLast:UInt64}
+                  AND last_tick_index  >= {globalFirst:UInt64}
+                ORDER BY window_start ASC
+                LIMIT 50000
+            `;
+            const rs = await clickhouse.query({
+                query: q,
+                format: 'JSONEachRow',
+                query_params: { ticker, globalFirst: globalFirstTick, globalLast: globalLastTick },
+            });
+            return rs.json();
+        };
+
+        const upResults = await Promise.all(upTables.map(fetchTf));
+        const downResults = await Promise.all(downTables.map(fetchTf));
+
+        // ── 4. Строим индексы для O(n log n) джойна ───────────────────────
+        const upIndexed = upResults.map(bars =>
+            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
+        );
+        const downIndexed = downResults.map(bars =>
+            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
+        );
+
+        function lowerBound(arr, val, key) {
+            let lo = 0, hi = arr.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (Number(arr[mid][key]) < val) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        // ── 5. Джойн ──────────────────────────────────────────────────────
+        const enriched = mainBars.map(bar => {
+            const bFirst = Number(bar.first_tick_index);
+            const bLast = Number(bar.last_tick_index);
+
+            // Старшие ТФ: бар, в который текущий ВХОДИТ
+            const tfUp = {};
+            for (let i = 0; i < upTables.length; i++) {
+                const sorted = upIndexed[i];
+                const result = [];
+                let pos = lowerBound(sorted, bFirst, 'first_tick_index');
+                pos = pos > 0 ? pos - 1 : pos;
+                for (let j = Math.max(0, pos - 2); j <= Math.min(sorted.length - 1, pos + 2); j++) {
+                    const s = sorted[j];
+                    const sFirst = Number(s.first_tick_index);
+                    const sLast = Number(s.last_tick_index);
+                    if (sFirst <= bFirst && sLast >= bLast) {
+                        result.push(s);
+                        break;
+                    }
+                }
+                tfUp[upTables[i]] = result;
+            }
+
+            // Младшие ТФ: все бары, которые ВХОДЯТ в текущий
+            const tfDown = {};
+            for (let i = 0; i < downTables.length; i++) {
+                const sorted = downIndexed[i];
+                const startPos = lowerBound(sorted, bFirst, 'first_tick_index');
+                const result = [];
+                for (let j = startPos; j < sorted.length; j++) {
+                    const dFirst = Number(sorted[j].first_tick_index);
+                    const dLast = Number(sorted[j].last_tick_index);
+                    if (dFirst > bLast) break;
+                    if (dFirst >= bFirst && dLast <= bLast) result.push(sorted[j]);
+                }
+                tfDown[downTables[i]] = result;
+            }
+
+            return {
+                timestamp: bar.timestamp,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+                first_tick_index: bar.first_tick_index,
+                last_tick_index: bar.last_tick_index,
+                ...(upTables.length > 0 && { tf_up: tfUp }),
+                ...(downTables.length > 0 && { tf_down: tfDown }),
+            };
+        });
+
+        console.log(`✅ [MTF] Returned ${enriched.length} bars | up: ${upResults.map((r, i) => upTables[i] + ':' + r.length)} | down: ${downResults.map((r, i) => downTables[i] + ':' + r.length)}`);
+
+        return res.json(enriched);
+
+    } catch (err) {
+        console.error('❌ [MTF] Error:', err);
+        res.status(500).json({ error: 'Failed to fetch MTF data', details: err.message });
+    }
+});
+
+app.get('/api/market-data/mtf_old', requireAuth, async (req, res) => {
+    const { ticker, table, from, to, up = '', down = '' } = req.query;
+
+    if (!ticker || !table || !from || !to) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table, from, to'
+        });
+    }
+
+    const fromTs = parseInt(from);
+    const toTs = parseInt(to);
+    if (isNaN(fromTs) || isNaN(toTs)) {
+        return res.status(400).json({ error: 'Invalid timestamps' });
+    }
+
+    // Парсим списки доп.таймфреймов
+    const upTables = up ? up.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const downTables = down ? down.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // Простая защита от SQL-инъекций: разрешаем только candles_* и market_data_*
+    const allTables = [table, ...upTables, ...downTables];
+    const validPattern = /^[a-z][a-z0-9_]*$/;
+    for (const t of allTables) {
+        if (!validPattern.test(t)) {
+            return res.status(400).json({ error: `Invalid table name: ${t}` });
+        }
+    }
+
+    console.log(`📊 [MTF] ${ticker} | base: ${table} | up: [${upTables}] | down: [${downTables}]`);
+
+    try {
+        // ── 1. Запрос основного ТФ (с tick_index) ───────────────────────
+        const mainQuery = `
+            SELECT
+                window_start  AS timestamp,
+                open, high, low, close, volume,
+                first_tick_index,
+                last_tick_index
+            FROM ${table}
+            WHERE ticker = {ticker:String}
+              AND toUnixTimestamp(window_start) >= {from:UInt32}
+              AND toUnixTimestamp(window_start) <= {to:UInt32}
+            ORDER BY window_start ASC
+            LIMIT 10000
+        `;
+
+        const mainRs = await clickhouse.query({
+            query: mainQuery,
+            format: 'JSONEachRow',
+            query_params: { ticker, from: fromTs, to: toTs }
+        });
+        const mainBars = await mainRs.json();
+
+        if (!mainBars.length) {
+            return res.json([]);
+        }
+
+        // ── 2. Вычисляем tick_index диапазон всего ответа ────────────────
+        // Для доп.ТФ запрашиваем с запасом: берём самый ранний first и самый поздний last
+        const globalFirstTick = Math.min(...mainBars.map(b => Number(b.first_tick_index)));
+        const globalLastTick = Math.max(...mainBars.map(b => Number(b.last_tick_index)));
+
+        // ── 3. Параллельно грузим все доп.ТФ ────────────────────────────
+        // Запрос по tick_index диапазону — точнее и быстрее чем по времени
+        const fetchTf = async (tfTable) => {
+            const q = `
+                SELECT
+                    window_start  AS timestamp,
+                    open, high, low, close, volume,
+                    first_tick_index,
+                    last_tick_index
+                FROM ${tfTable}
+                WHERE ticker = {ticker:String}
+                  AND first_tick_index <= {globalLast:UInt64}
+                  AND last_tick_index  >= {globalFirst:UInt64}
+                ORDER BY window_start ASC
+                LIMIT 50000
+            `;
+            const rs = await clickhouse.query({
+                query: q,
+                format: 'JSONEachRow',
+                query_params: {
+                    ticker,
+                    globalFirst: globalFirstTick,
+                    globalLast: globalLastTick,
+                }
+            });
+            return rs.json();
+        };
+
+        const upResults = await Promise.all(upTables.map(fetchTf));
+        const downResults = await Promise.all(downTables.map(fetchTf));
+
+        // ── 4. Строим индексы для быстрого джойна ───────────────────────
+        //
+        // Для СТАРШИХ ТФ (up):
+        //   Текущий бар входит в старший, если:
+        //     main.first_tick >= senior.first_tick  AND
+        //     main.last_tick  <= senior.last_tick
+        //
+        // Для МЛАДШИХ ТФ (down):
+        //   Младший входит в текущий, если:
+        //     junior.first_tick >= main.first_tick  AND
+        //     junior.last_tick  <= main.last_tick
+        //
+        // Алгоритм O(n log n): сортируем старшие по first_tick,
+        // для каждого основного бара — бинарный поиск.
+
+        // Индекс старших ТФ: сортировка по first_tick_index
+        const upIndexed = upResults.map(bars =>
+            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
+        );
+
+        // Индекс младших ТФ: группировка по принадлежности к основному бару
+        // Строим interval tree упрощённо: сортируем по first_tick и sweep
+        const downIndexed = downResults.map(bars =>
+            [...bars].sort((a, b) => Number(a.first_tick_index) - Number(b.first_tick_index))
+        );
+
+        // Вспомогательная функция бинарного поиска нижней границы
+        function lowerBound(arr, val, key) {
+            let lo = 0, hi = arr.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (Number(arr[mid][key]) < val) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo;
+        }
+
+        // ── 5. Джойн: обогащаем каждый основной бар ─────────────────────
+        const enriched = mainBars.map(bar => {
+            const bFirst = Number(bar.first_tick_index);
+            const bLast = Number(bar.last_tick_index);
+
+            // Старшие ТФ: ищем бар, в который текущий ВХОДИТ
+            const tfUp = {};
+            for (let i = 0; i < upTables.length; i++) {
+                const sorted = upIndexed[i];
+                const result = [];
+
+                // Ищем кандидатов: senior.first_tick <= bFirst
+                // и проверяем senior.last_tick >= bLast
+                let pos = lowerBound(sorted, bFirst, 'first_tick_index');
+                // Откатываемся назад — нужен бар у которого first_tick <= bFirst
+                // lowerBound дал первый >= bFirst, нам нужен последний <= bFirst
+                pos = pos > 0 ? pos - 1 : pos;
+
+                // Проверяем несколько кандидатов (на случай перекрытий)
+                for (let j = Math.max(0, pos - 2); j <= Math.min(sorted.length - 1, pos + 2); j++) {
+                    const s = sorted[j];
+                    const sFirst = Number(s.first_tick_index);
+                    const sLast = Number(s.last_tick_index);
+                    if (sFirst <= bFirst && sLast >= bLast) {
+                        result.push(s);
+                        break; // в корректных данных ровно один старший бар
+                    }
+                }
+
+                tfUp[upTables[i]] = result;
+            }
+
+            // Младшие ТФ: все бары у которых tick_index ВХОДИТ в текущий
+            const tfDown = {};
+            for (let i = 0; i < downTables.length; i++) {
+                const sorted = downIndexed[i];
+
+                // Стартовая позиция: first_tick >= bFirst
+                const startPos = lowerBound(sorted, bFirst, 'first_tick_index');
+                const result = [];
+
+                for (let j = startPos; j < sorted.length; j++) {
+                    const d = sorted[j];
+                    const dFirst = Number(d.first_tick_index);
+                    const dLast = Number(d.last_tick_index);
+                    if (dFirst > bLast) break; // дальше не будет
+                    if (dFirst >= bFirst && dLast <= bLast) {
+                        result.push(d);
+                    }
+                }
+
+                tfDown[downTables[i]] = result;
+            }
+
+            return {
+                timestamp: bar.timestamp,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+                first_tick_index: bar.first_tick_index,
+                last_tick_index: bar.last_tick_index,
+                ...(upTables.length > 0 && { tf_up: tfUp }),
+                ...(downTables.length > 0 && { tf_down: tfDown }),
+            };
+        });
+
+        console.log(`✅ [MTF] Returned ${enriched.length} bars | up: ${upResults.map((r, i) => upTables[i] + ':' + r.length)} | down: ${downResults.map((r, i) => downTables[i] + ':' + r.length)}`);
+
+        res.json(enriched);
+
+    } catch (err) {
+        console.error('❌ [MTF] Error:', err);
+        res.status(500).json({ error: 'Failed to fetch MTF data', details: err.message });
+    }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+    const userId = req.session?.userId;
+    req.session.destroy((err) => {
+        if (err) {
+            return res.status(500).json({ error: 'Logout failed' });
+        }
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/auth/status', (req, res) => {
+    if (req.session && req.session.userId) {
+        res.json({
+            authenticated: true,
+            username: req.session.username,
+            userId: req.session.userId,
+            isAdmin: req.session.isAdmin || false
+        });
+    } else {
+        res.json({ authenticated: false });
+    }
+});
+
+// ── Полная история для бектеста (без лимита, с пагинацией на сервере) ────────
+app.get('/api/market-data/all', requireAuth, async (req, res) => {
+    const { ticker, table } = req.query;
+
+    if (!ticker || !table) {
+        return res.status(400).json({ error: 'Missing required parameters: ticker, table' });
+    }
+
+    const allowedTables = ['market_data_minute', 'market_data_hour', 'market_data_day', 'market_data_week'];
+    if (!allowedTables.includes(table)) {
+        //return res.status(400).json({ error: `Table ${table} not allowed` });
+    }
+
+    try {
+        console.log(`📊 [FULL BACKTEST] Fetching ALL data: ${ticker} from ${table}`);
+
+        const query = `
+            SELECT
+                window_start as timestamp,
+                open, high, low, close, volume
+            FROM ${table}
+            WHERE ticker = {ticker:String}
+            ORDER BY window_start ASC
+        `;
+
+        const resultSet = await clickhouse.query({
+            query,
+            format: 'JSONEachRow',
+            query_params: { ticker }
+        });
+
+        const data = await resultSet.json();
+        console.log(`✅ [FULL BACKTEST] Returned ${data.length} bars for ${ticker}`);
+        res.json(data);
+
+    } catch (error) {
+        console.error('❌ Full market data error:', error);
+        res.status(500).json({ error: 'Failed to fetch full market data', details: error.message });
+    }
+});
+
+// ── Диапазон дат доступных данных (для date picker) ──────────────────────────
+app.get('/api/backtest/date-range', requireAuth, async (req, res) => {
+    const { ticker, table } = req.query;
+    if (!ticker || !table) {
+        return res.status(400).json({ error: 'Missing required parameters: ticker, table' });
+    }
+    try {
+        const range = await getDateRange(clickhouse, ticker, table);
+        res.json(range);
+    } catch (error) {
+        console.error('❌ /api/backtest/date-range error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/backtest/run', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        fromDate, toDate,
+        capital    = 10000,
+        riskPct    = 1,
+        leverage   = 1,
+        slMode     = 'pct', slValue = 1,
+        tpMode     = 'rr',  tpValue = 2,
+        maxBars    = 50,
+        direction  = 'both',
+        useColExit = true,
+        setupCols  = {},
+        entryFilter = '',
+        exitFilter  = '',
+        setupMeta   = null,
+        mtfUpTables = [], 
+    } = req.body;
+
+    // ── SSE headers ────────────────────────────────────────────────
+    res.setHeader('Content-Type',  'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection',    'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');  // отключить nginx буферизацию
+    res.flushHeaders();
+
+    const send = (event, data) => {
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Heartbeat каждые 5 сек чтобы nginx не рвал соединение
+    const heartbeat = setInterval(() => {
+        res.write(': heartbeat\n\n');
+    }, 5000);
+
+    try {
+        const fromTs = fromDate
+            ? Math.floor(new Date(fromDate + 'T00:00:00Z').getTime() / 1000)
+            : null;
+        const toTs = toDate
+            ? Math.floor(new Date(toDate + 'T23:59:59Z').getTime() / 1000)
+            : null;
+
+        // Автолимит для минутных без явных дат
+        let autoFromTs = fromTs;
+        if (!autoFromTs && table && (table.includes('minute') || table.includes('min'))) {
+            //autoFromTs = Math.floor(Date.now() / 1000) - 90 * 24 * 3600;
+            //send('progress', { pct: 0, message: 'Нет дат для минутного таймфрейма — берём последние 90 дней' });
+        }
+
+
+        for (const [setupName, def] of Object.entries(setupCols)) {
+            if (def.scriptId && !def.scriptCode) {
+                const scriptRow = await greenplumPool.query(
+                    `SELECT code FROM javascript_scripts 
+                     WHERE id = $1 AND (is_public = TRUE OR created_by = $2)`,
+                    [def.scriptId, req.session.userId]
+                );
+                if (!scriptRow.rows.length) {
+                    throw new Error(`Script id=${def.scriptId} not found for setup "${setupName}"`);
+                }
+                def.scriptCode = scriptRow.rows[0].code;
+            }
+        }
+
+        // Пробрасываем фильтры
+        if (entryFilter || exitFilter) {
+            for (const def of Object.values(setupCols)) {
+                if (entryFilter) {
+                    def.entryExpression = def.entryExpression
+                        ? '(' + def.entryExpression + ') && (' + entryFilter + ')'
+                        : entryFilter;
+                }
+                if (exitFilter) {
+                    def.exitExpression = def.exitExpression
+                        ? '(' + def.exitExpression + ') && (' + exitFilter + ')'
+                        : exitFilter;
+                }
+            }
+        }
+
+        const cfg = {
+            ticker, table,
+            fromTs: autoFromTs, toTs,
+            capital:    parseFloat(capital),
+            riskPct:    parseFloat(riskPct),
+            leverage:   parseFloat(leverage),
+            slMode,     slValue: parseFloat(slValue),
+            tpMode,     tpValue: parseFloat(tpValue),
+            maxBars:    parseInt(maxBars),
+            direction,
+            useColExit: Boolean(useColExit),
+            setupCols,
+            setupMeta:   setupMeta  || null, 
+            mtfUpTables: mtfUpTables || [],
+        };
+
+        console.log(`▶ [Backtest/run SSE] ${ticker} @ ${table}`);
+        send('progress', { pct: 1, message: `Запуск бэктеста: ${ticker} @ ${table}...` });
+
+        const { trades, barsProcessed, logs } = await runBacktestOnServer(
+            clickhouse, cfg,
+            (progress) => {
+                send('progress', {
+                    pct:     progress.pct     || 0,
+                    phase:   progress.phase   || '',
+                    message: progress.message || '',
+                });
+            }
+        );
+
+        const stats = calcStats(trades, cfg.capital);
+
+        console.log(`✅ [Backtest/run SSE] Done: ${barsProcessed.toLocaleString()} bars → ${trades.length} trades`);
+
+        send('result', {
+            ok: true,
+            barsProcessed,
+            trades,
+            stats,
+            scriptLogs: (logs || []).slice(-50),
+            meta: { ticker, table, fromDate, toDate, ...cfg },
+        });
+
+    } catch (error) {
+        console.error('❌ [Backtest/run SSE] Error:', error.message);
+        send('error', { error: error.message, details: error.stack?.split('\n').slice(0, 5) });
+    } finally {
+        clearInterval(heartbeat);
+        res.end();
+    }
+});
+
+// ================================================================
+// ФАЙЛ: charts-app/server.js
+// Добавить новый роут POST /api/backtest/rangebar
+// Вставить РЯДОМ с существующим POST /api/backtest/run
+// ================================================================
+
+//const { runRangeBarBacktest } = require('./rangebar-engine');
+
+// ==================== WALK-FORWARD + MONTE CARLO ROUTES ====================
+// Добавить в server.js после строки:
+//   const { runBacktestOnServer, calcStats, getDateRange } = require('./backtest-engine-server');
+//
+// 1. Добавить импорт в начало файла:
+//   const { runWalkForward, runMonteCarlo } = require('./walkforward-engine');
+//
+// 2. Вставить эти роуты после /api/backtest/run
+// ============================================================================
+
+// ── Загрузка script code (общий helper, уже есть в /api/backtest/run) ──────
+async function loadScriptCodes(setupCols, userId, pool) {
+    for (const [setupName, def] of Object.entries(setupCols)) {
+        if (def.scriptId && !def.scriptCode) {
+            const scriptRow = await pool.query(
+                `SELECT code FROM javascript_scripts WHERE id = $1 AND (is_public = TRUE OR created_by = $2)`,
+                [def.scriptId, userId]
+            );
+            if (!scriptRow.rows.length) throw new Error(`Script id=${def.scriptId} not found for setup "${setupName}"`);
+            def.scriptCode = scriptRow.rows[0].code;
+        }
+    }
+}
+
+// ── Walk-Forward Analysis ──────────────────────────────────────────────────
+app.post('/api/backtest/walkforward', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        fromDate, toDate,
+        capital = 10000,
+        riskPct = 1,
+        leverage = 1,
+        slMode = 'pct', slValue = 1,
+        tpMode = 'rr', tpValue = 2,
+        maxBars = 50,
+        direction = 'both',
+        useColExit = true,
+        setupCols = {},
+
+        // Walk-Forward специфичные параметры
+        wfWindows = 5,
+        inSamplePct = 70,
+        anchoredStart = false,
+        paramRanges = {
+            slValue: [0.5, 1.0, 1.5, 2.0],
+            tpValue: [1.5, 2.0, 3.0],
+            riskPct: [0.5, 1.0, 2.0],
+        },
+    } = req.body;
+
+    if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
+
+    try {
+        await loadScriptCodes(setupCols, req.session.userId, greenplumPool);
+    } catch (err) {
+        return res.status(404).json({ error: err.message });
+    }
+
+    const fromTs = fromDate ? Math.floor(new Date(fromDate + 'T00:00:00Z').getTime() / 1000) : null;
+    const toTs = toDate ? Math.floor(new Date(toDate + 'T23:59:59Z').getTime() / 1000) : null;
+
+    const cfg = {
+        ticker, table, fromTs, toTs,
+        capital: parseFloat(capital),
+        riskPct: parseFloat(riskPct),
+        leverage: parseFloat(leverage),
+        slMode, slValue: parseFloat(slValue),
+        tpMode, tpValue: parseFloat(tpValue),
+        maxBars: parseInt(maxBars),
+        direction,
+        useColExit: Boolean(useColExit),
+        setupCols,
+    };
+
+    const wfCfg = {
+        windows: parseInt(wfWindows),
+        inSamplePct: parseInt(inSamplePct),
+        anchoredStart: Boolean(anchoredStart),
+        paramRanges,
+    };
+
+    console.log(`▶ [WalkForward] ${ticker} @ ${table} | windows=${wfWindows} IS=${inSamplePct}%`);
+
+    try {
+        const result = await runWalkForward(clickhouse, cfg, wfCfg, (progress) => {
+            console.log(`  ⏳ [WF] ${progress.message}`);
+        });
+
+        console.log(`✅ [WalkForward] Done: ${result.summary.validWindows} valid windows, ${result.summary.totalOosTrades} OOS trades`);
+        res.json({ ok: true, ...result });
+
+    } catch (error) {
+        console.error('❌ [WalkForward] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── Monte Carlo Simulation ─────────────────────────────────────────────────
+app.post('/api/backtest/montecarlo', requireAuth, async (req, res) => {
+    const {
+        trades,
+        capital = 10000,
+        simulations = 1000,
+    } = req.body;
+
+    if (!trades || !Array.isArray(trades) || trades.length < 2) {
+        return res.status(400).json({ error: 'Need at least 2 trades' });
+    }
+    if (simulations > 10000) {
+        return res.status(400).json({ error: 'Max 10000 simulations' });
+    }
+
+    console.log(`▶ [MonteCarlo] ${trades.length} trades × ${simulations} simulations`);
+
+    try {
+        const result = runMonteCarlo(trades, parseFloat(capital), parseInt(simulations), (progress) => {
+            console.log(`  ⏳ [MC] ${progress.message}`);
+        });
+
+        if (result.error) return res.status(400).json({ error: result.error });
+
+        console.log(`✅ [MonteCarlo] Done: median return=${result.risk.medianReturn}%, ruin prob=${result.risk.ruinProb}%`);
+        res.json({ ok: true, ...result });
+
+    } catch (error) {
+        console.error('❌ [MonteCarlo] Error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==================== TIME INTERVALS ====================
+
+app.get('/api/intervals', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, code, name, description, tradingview_code, clickhouse_table,
+                    seconds, sort_order, is_active
+             FROM time_intervals
+             WHERE is_active = TRUE
+             ORDER BY sort_order ASC`
+        );
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Intervals error:', error);
+        res.status(500).json({ error: 'Failed to fetch intervals' });
+    }
+});
+
+// ==================== INSTRUMENTS ====================
+
+app.get('/api/instruments', requireAuth, async (req, res) => {
+    const { provider_id, type, search } = req.query;
+
+    try {
+        let query = `
+            SELECT i.*, dp.name as provider_name,
+            gp.name as group_provider_name
+            FROM instruments i
+            LEFT JOIN data_providers dp ON i.provider_id = dp.id
+            LEFT JOIN group_providers gp ON dp.group_provider_id = gp.id
+            WHERE i.is_active = TRUE
+        `;
+        const params = [];
+        let paramIndex = 1;
+
+        if (provider_id) {
+            query += ` AND i.provider_id = $${paramIndex++}`;
+            params.push(provider_id);
+        }
+
+        if (type) {
+            query += ` AND i.type = $${paramIndex++}`;
+            params.push(type);
+        }
+
+        if (search) {
+            query += ` AND (i.symbol ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++})`;
+            params.push(`%${search}%`, `%${search}%`);
+        }
+
+        query += ' ORDER BY i.symbol ASC';
+
+        const result = await greenplumPool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Instruments error:', error);
+        res.status(500).json({ error: 'Failed to fetch instruments' });
+    }
+});
+
+app.post('/api/instruments', requireAdmin, async (req, res) => {
+    const { provider_id, symbol, name, type, base_currency, quote_currency, tradingview_symbol, clickhouse_ticker } = req.body;
+
+    try {
+        const result = await greenplumPool.query(
+            `INSERT INTO instruments (provider_id, symbol, name, type, base_currency, quote_currency,
+                                     tradingview_symbol, clickhouse_ticker)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING *`,
+            [provider_id, symbol, name, type, base_currency, quote_currency, tradingview_symbol, clickhouse_ticker]
+        );
+
+        await logAction(req.session.userId, 'create_instrument', 'instrument', result.rows[0].id, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Create instrument error:', error);
+        res.status(500).json({ error: 'Failed to create instrument' });
+    }
+});
+
+// ==================== INDICATORS ====================
+
+app.get('/api/indicators', requireAuth, async (req, res) => {
+    const { category_id, include_custom } = req.query;
+    const userId = req.session.userId;
+
+    try {
+        let query = `
+            SELECT i.*, ic.name as category_name, s.name as status_name,
+                   EXISTS(SELECT 1 FROM user_indicators ui WHERE ui.user_id = $1 AND ui.indicator_id = i.id) as is_user_indicator
+            FROM indicators i
+            LEFT JOIN indicator_categories ic ON i.category_id = ic.id
+            LEFT JOIN statuses s ON i.status_id = s.id
+            WHERE (i.is_default = TRUE OR i.is_public = TRUE OR i.created_by = $1)
+              AND s.code = 'active'
+        `;
+        const params = [userId];
+
+        if (category_id) {
+            query += ` AND i.category_id = $2`;
+            params.push(category_id);
+        }
+
+        query += ' ORDER BY i.sort_order ASC, i.display_name ASC';
+
+        const result = await greenplumPool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Indicators error:', error);
+        res.status(500).json({ error: 'Failed to fetch indicators' });
+    }
+});
+
+app.get('/api/setup-categories', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, code, name, description, color, is_active, sort_order
+             FROM public.setup_categories
+             WHERE is_active = TRUE
+             ORDER BY sort_order ASC`
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('GET /api/setup-categories error:', error);
+        res.status(500).json({ error: 'Failed to fetch setup categories' });
+    }
+});
+
+app.get('/api/indicators/:id', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT i.*, ic.name as category_name, s.name as status_name, u.username as creator_name
+             FROM indicators i
+             LEFT JOIN indicator_categories ic ON i.category_id = ic.id
+             LEFT JOIN statuses s ON i.status_id = s.id
+             LEFT JOIN users u ON i.created_by = u.id
+             WHERE i.id = $1`,
+            [req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Indicator not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Indicator detail error:', error);
+        res.status(500).json({ error: 'Failed to fetch indicator' });
+    }
+});
+
+app.post('/api/indicators', requireAuth, async (req, res) => {
+    const {
+        category_id, system_name, display_name, description, indicator_type,
+        algorithm, tradingview_id, is_overlay, default_inputs, default_styles, is_public
+    } = req.body;
+
+    try {
+        const activeStatus = await greenplumPool.query(
+            `SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'indicator'`
+        );
+
+        const result = await greenplumPool.query(
+            `INSERT INTO indicators (
+                category_id, status_id, created_by, system_name, display_name, description,
+                indicator_type, algorithm, tradingview_id, is_overlay, default_inputs,
+                default_styles, is_public, is_default
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING *`,
+            [
+                category_id, activeStatus.rows[0].id, req.session.userId, system_name,
+                display_name, description, indicator_type, algorithm, tradingview_id,
+                is_overlay, JSON.stringify(default_inputs || {}), JSON.stringify(default_styles || {}),
+                is_public, req.session.isAdmin ? false : false
+            ]
+        );
+
+        await logAction(req.session.userId, 'create_indicator', 'indicator', result.rows[0].id, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Create indicator error:', error);
+        res.status(500).json({ error: 'Failed to create indicator' });
+    }
+});
+
+app.put('/api/indicators/:id', requireAuth, async (req, res) => {
+    const indicatorId = req.params.id;
+
+    // Check ownership or admin
+    const checkResult = await greenplumPool.query(
+        'SELECT created_by FROM indicators WHERE id = $1',
+        [indicatorId]
+    );
+
+    if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Indicator not found' });
+    }
+
+    const canEdit = req.session.isAdmin || checkResult.rows[0].created_by === req.session.userId;
+    if (!canEdit) {
+        return res.status(403).json({ error: 'Not authorized to edit this indicator' });
+    }
+
+    const {
+        category_id, display_name, description, algorithm, is_overlay,
+        default_inputs, default_styles, is_public, is_default
+    } = req.body;
+
+    try {
+        const result = await greenplumPool.query(
+            `UPDATE indicators SET
+                category_id = COALESCE($1, category_id),
+                display_name = COALESCE($2, display_name),
+                description = COALESCE($3, description),
+                algorithm = COALESCE($4, algorithm),
+                is_overlay = COALESCE($5, is_overlay),
+                default_inputs = COALESCE($6, default_inputs),
+                default_styles = COALESCE($7, default_styles),
+                is_public = COALESCE($8, is_public),
+                is_default = COALESCE($9, is_default),
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $10
+             RETURNING *`,
+            [
+                category_id, display_name, description, algorithm, is_overlay,
+                JSON.stringify(default_inputs), JSON.stringify(default_styles),
+                is_public, req.session.isAdmin ? is_default : undefined, indicatorId
+            ]
+        );
+
+        await logAction(req.session.userId, 'update_indicator', 'indicator', indicatorId, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Update indicator error:', error);
+        res.status(500).json({ error: 'Failed to update indicator' });
+    }
+});
+
+app.delete('/api/indicators/:id', requireAuth, async (req, res) => {
+    const indicatorId = req.params.id;
+
+    const checkResult = await greenplumPool.query(
+        'SELECT created_by FROM indicators WHERE id = $1',
+        [indicatorId]
+    );
+
+    if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Indicator not found' });
+    }
+
+    const canDelete = req.session.isAdmin || checkResult.rows[0].created_by === req.session.userId;
+    if (!canDelete) {
+        return res.status(403).json({ error: 'Not authorized to delete this indicator' });
+    }
+
+    try {
+        await greenplumPool.query('DELETE FROM indicators WHERE id = $1', [indicatorId]);
+        await logAction(req.session.userId, 'delete_indicator', 'indicator', indicatorId, null, req);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete indicator error:', error);
+        res.status(500).json({ error: 'Failed to delete indicator' });
+    }
+});
+
+// ==================== JAVASCRIPT SCRIPTS ====================
+
+
+app.delete('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
+    const id = req.params.id;
+
+    const checkResult = await greenplumPool.query(
+        `SELECT js.*, st.code AS type_code, js.inputs_schema, js.is_overlay
+        FROM javascript_scripts js
+        LEFT JOIN script_types st ON js.type_id = st.id WHERE js.id = $1`,
+        [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'javascript_scripts not found' });
+    }
+
+    const canDelete = req.session.isAdmin || checkResult.rows[0].created_by === req.session.userId;
+    if (!canDelete) {
+        return res.status(403).json({ error: 'Not authorized to delete this indicator' });
+    }
+
+    try {
+        await greenplumPool.query('DELETE FROM javascript_scripts WHERE id = $1', [id]);
+        await logAction(req.session.userId, 'delete_indicator', 'indicator', id, null, req);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete indicator error:', error);
+        res.status(500).json({ error: 'Failed to delete indicator' });
+    }
+});
+
+app.put('/api/javascript-scripts/:id', requireAuth, async (req, res) => {
+    const id = req.params.id;
+    const checkResult = await greenplumPool.query(
+        'SELECT created_by FROM javascript_scripts WHERE id = $1', [id]
+    );
+    if (checkResult.rows.length === 0) return res.status(404).json({ error: 'javascript_scripts not found' });
+    const canEdit = req.session.isAdmin || checkResult.rows[0].created_by === req.session.userId;
+    if (!canEdit) return res.status(403).json({ error: 'Not authorized' });
+
+    const { code, display_name, description, is_public, system_name, type_id, meta } = req.body;
+
+    // ── Автоизвлечение outputs_schema из кода ──
+    let outputsMeta = null;
+    const codeToAnalyze = code;
+    if (codeToAnalyze) {
+        try {
+            const outputs = extractOutputsSchema(codeToAnalyze);
+            if (outputs.length > 0) {
+                outputsMeta = outputs;
+                console.log(`[outputs_schema] script ${id}: found ${outputs.length} outputs:`, outputs.map(o=>o.id));
+            }
+        } catch(e) { console.warn('[outputs_schema] extraction failed:', e.message); }
+    }
+
+    // Мержим с существующим meta
+    let finalMeta = meta;
+    if (outputsMeta) {
+        const existingMetaRow = await greenplumPool.query('SELECT meta FROM javascript_scripts WHERE id=$1',[id]);
+        const existingMeta = existingMetaRow.rows[0]?.meta || {};
+        const merged = { ...(typeof existingMeta === 'object' ? existingMeta : {}), ...(meta || {}), outputs_schema: outputsMeta };
+        finalMeta = merged;
+    }
+
+    const metaJson = finalMeta != null ? (typeof finalMeta === 'string' ? finalMeta : JSON.stringify(finalMeta)) : null;
+
+    try {
+        const result = await greenplumPool.query(
+            `UPDATE javascript_scripts SET
+                code         = COALESCE($1, code),
+                description  = COALESCE($2, description),
+                display_name = COALESCE($3, display_name),
+                is_public    = COALESCE($4, is_public),
+                system_name  = COALESCE($5, system_name),
+                type_id      = COALESCE($6, type_id),
+                meta         = COALESCE($7::jsonb, meta),
+                updated_at   = CURRENT_TIMESTAMP
+             WHERE id = $8 RETURNING *`,
+            [code, description, display_name, is_public, system_name, type_id, metaJson, id]
+        );
+        await logAction(req.session.userId, 'update_javascript_scripts', 'javascript_script', id, result.rows[0], req);
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Update javascript_scripts error:', error);
+        res.status(500).json({ error: 'Failed to update script' });
+    }
+});
+
+app.put('/api/javascript-scripts11111/:id', requireAuth, async (req, res) => {
+    const id = req.params.id;
+
+    console.log("START___PUT___javascript_scripts", id)
+
+    let sql = 'SELECT created_by FROM "javascript_scripts" WHERE id = $1'
+    console.log(sql, id)
+    // Check ownership or admin
+    const checkResult = await greenplumPool.query(sql, [id]);
+
+    if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'javascript_scripts not found' });
+    }
+
+    const canEdit = req.session.isAdmin || checkResult.rows[0].created_by === req.session.userId;
+    if (!canEdit) {
+        return res.status(403).json({ error: 'Not authorized to edit this javascript_scripts' });
+    }
+
+    const {
+        code, display_name, description, is_public, system_name, type_id
+    } = req.body;
+
+
+    console.log("PUT___api/javascript_scripts/:id", id)
+    try {
+        const result = await greenplumPool.query(
+            `UPDATE javascript_scripts SET
+                code          = COALESCE($1, code),
+                description   = COALESCE($2, description),
+                display_name  = COALESCE($3, display_name),
+                is_public     = COALESCE($4, is_public),
+                system_name   = COALESCE($5, system_name),
+                type_id       = COALESCE($6, type_id),
+                updated_at    = CURRENT_TIMESTAMP
+            WHERE id = $7
+            RETURNING *`,
+            [code, description, display_name, is_public, system_name,
+                type_id, id]
+        );
+
+        await logAction(req.session.userId, 'update_javascript_scripts', 'indicator', id, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Update indicator error:', error);
+        res.status(500).json({ error: 'Failed to update indicator' });
+    }
+});
+
+
+app.get('/api/javascript-scripts', requireAuth, async (req, res) => {
+    const userId = req.session.userId;
+
+    try {
+        const result = await greenplumPool.query(
+            `SELECT js.*,
+                    st.code  AS type_code,
+                    st.display_name AS type_display_name,
+                    js.inputs_schema,
+                    js.is_overlay,
+                    s.name   AS status_name,
+                    EXISTS(SELECT 1 FROM user_javascript_scripts ujs
+                           WHERE ujs.user_id = $1 AND ujs.script_id = js.id) AS is_user_script
+             FROM javascript_scripts js
+             LEFT JOIN statuses    s  ON js.status_id = s.id
+             LEFT JOIN script_types st ON js.type_id  = st.id
+             WHERE (js.is_default = TRUE OR js.is_public = TRUE OR js.created_by = $1)
+               AND s.code = 'active'
+             ORDER BY js.sort_order ASC, js.display_name ASC`,
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('JavaScript scripts error:', error);
+        res.status(500).json({ error: 'Failed to fetch scripts' });
+    }
+});
+
+app.get('/api/script-types', requireAuth, async (req, res) => {
+    const result = await greenplumPool.query(
+        `SELECT * FROM script_types WHERE is_active = TRUE ORDER BY sort_order`
+    );
+    res.json(result.rows);
+});
+
+app.get('/api/user/panel-settings/all', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+
+        const result = await greenplumPool.query(
+            `SELECT theme, fields_config FROM user_panel_settings
+             WHERE user_id = $1`,
+            [userId]
+        );
+
+        const settings = {};
+        result.rows.forEach(row => {
+            settings[row.theme] = row.fields_config;
+        });
+
+        res.json(settings);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+app.get('/api/user/panel-settings', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+
+        const result = await greenplumPool.query(
+            `SELECT fields_config FROM user_panel_settings
+             WHERE user_id = $1`,
+            [userId]
+        );
+
+        if (result.rows.length > 0) {
+            res.json(result.rows[0].fields_config);
+        } else {
+            res.json(null);
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+app.post('/api/user/panel-settings', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.userId;
+        const { theme, fields_config } = req.body;
+        const configStr = JSON.stringify(fields_config);
+
+        const updateRes = await greenplumPool.query(
+            `UPDATE user_panel_settings
+             SET fields_config = $3, updated_at = NOW()
+             WHERE user_id = $1 AND theme = $2`,
+            [userId, theme, configStr]
+        );
+
+        if (updateRes.rowCount === 0) {
+            await greenplumPool.query(
+                `INSERT INTO user_panel_settings (user_id, theme, fields_config, updated_at)
+                 VALUES ($1, $2, $3, NOW())`,
+                [userId, theme, configStr]
+            );
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('GREENPLUM_SAVE_ERROR:', err.message);
+        res.status(500).json({ error: 'Database error', details: err.message });
+    }
+});
+
+app.put('/api/javascript-scripts/:id/outputs-schema', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { outputs_schema } = req.body;
+    if (!Array.isArray(outputs_schema)) return res.status(400).json({ error: 'outputs_schema must be array' });
+    
+    try {
+        await greenplumPool.query(
+            `UPDATE javascript_scripts 
+             SET meta = COALESCE(meta, '{}'::jsonb) || jsonb_build_object('outputs_schema', $1::jsonb),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2 AND (is_public = TRUE OR created_by = $3)`,
+            [JSON.stringify(outputs_schema), id, req.session.userId]
+        );
+        res.json({ ok: true, outputs_schema });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/javascript-scripts', requireAuth, async (req, res) => {
+    const { system_name, display_name, description, code,
+        is_public, type_id, inputs_schema, is_overlay, meta } = req.body;
+
+    try {
+        const activeStatus = await greenplumPool.query(
+            `SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'script'`
+        );
+
+        //const metaJson = meta != null
+         //   ? (typeof meta === 'string' ? meta : JSON.stringify(meta))
+         //   : null;
+
+        // ── Автоизвлечение outputs_schema ──
+        let computedOutputs = [];
+        if (code) {
+            try { computedOutputs = extractOutputsSchema(code); } catch(e) {}
+        }
+        const baseMeta = meta ? (typeof meta === 'string' ? JSON.parse(meta) : meta) : {};
+        if (computedOutputs.length > 0) baseMeta.outputs_schema = computedOutputs;
+        const metaJson = Object.keys(baseMeta).length > 0 ? JSON.stringify(baseMeta) : null;
+
+        const result = await greenplumPool.query(
+            `INSERT INTO javascript_scripts
+                (status_id, created_by, system_name, display_name,
+                 description, code, is_public, type_id, inputs_schema, is_overlay, meta)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,
+                     COALESCE($8, 1),
+                     COALESCE($9,'[]'::jsonb),
+                     COALESCE($10, true),
+                     $11)
+             RETURNING *`,
+            [
+                activeStatus.rows[0].id,
+                req.session.userId,
+                system_name, display_name, description, code, is_public,
+                type_id,
+                JSON.stringify(inputs_schema || []),
+                is_overlay,
+                metaJson,
+            ]
+        );
+
+        await logAction(req.session.userId, 'create_js_script', 'javascript_script',
+            result.rows[0].id, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Create JavaScript script error:', error);
+        res.status(500).json({ error: 'Failed to create script' });
+    }
+});
+
+app.post('/api/javascript-scripts123', requireAuth, async (req, res) => {
+    const { system_name, display_name, description, code,
+        is_public, type_id, inputs_schema, is_overlay } = req.body;
+
+    try {
+        const activeStatus = await greenplumPool.query(
+            `SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'script'`
+        );
+
+        const result = await greenplumPool.query(
+            `INSERT INTO javascript_scripts
+                (status_id, created_by, system_name, display_name,
+                description, code, is_public, type_id, inputs_schema, is_overlay)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,
+                    COALESCE($8, 1),
+                    COALESCE($9,'[]'::jsonb),
+                    COALESCE($10, true))
+            RETURNING *`,
+            [activeStatus.rows[0].id, req.session.userId,
+                system_name, display_name, description, code, is_public,
+                type_id, JSON.stringify(inputs_schema || []), is_overlay]
+        );
+
+        await logAction(req.session.userId, 'create_js_script', 'javascript_script', result.rows[0].id, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Create JavaScript script error:', error);
+        res.status(500).json({ error: 'Failed to create script' });
+    }
+});
+
+// ==================== PINE SCRIPTS ====================
+
+app.get('/api/pine-scripts', requireAuth, async (req, res) => {
+    const userId = req.session.userId;
+
+    try {
+        const result = await greenplumPool.query(
+            `SELECT ps.*, s.name as status_name,
+                    EXISTS(SELECT 1 FROM user_pine_scripts ups WHERE ups.user_id = $1 AND ups.script_id = ps.id) as is_user_script
+             FROM pine_scripts ps
+             LEFT JOIN statuses s ON ps.status_id = s.id
+             WHERE (ps.is_default = TRUE OR ps.is_public = TRUE OR ps.created_by = $1)
+               AND s.code = 'active'
+             ORDER BY ps.sort_order ASC, ps.display_name ASC`,
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Pine scripts error:', error);
+        res.status(500).json({ error: 'Failed to fetch scripts' });
+    }
+});
+
+app.post('/api/pine-scripts', requireAuth, async (req, res) => {
+    const { system_name, display_name, description, code, is_public } = req.body;
+
+    try {
+        const activeStatus = await greenplumPool.query(
+            `SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'script'`
+        );
+
+        const result = await greenplumPool.query(
+            `INSERT INTO pine_scripts (status_id, created_by, system_name, display_name, description, code, is_public)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [activeStatus.rows[0].id, req.session.userId, system_name, display_name, description, code, is_public]
+        );
+
+        await logAction(req.session.userId, 'create_pine_script', 'pine_script', result.rows[0].id, result.rows[0], req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Create Pine script error:', error);
+        res.status(500).json({ error: 'Failed to create script' });
+    }
+});
+
+// ==================== CHART LAYOUTS ====================
+
+app.get('/api/layouts', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, name, description, symbol, interval, is_default, created_at, updated_at
+             FROM chart_layouts
+             WHERE user_id = $1
+             ORDER BY is_default DESC, updated_at DESC`,
+            [req.session.userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Layouts error:', error);
+        res.status(500).json({ error: 'Failed to fetch layouts' });
+    }
+});
+
+app.get('/api/layouts/:id', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT * FROM chart_layouts WHERE id = $1 AND user_id = $2`,
+            [req.params.id, req.session.userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Layout not found' });
+        }
+
+        const row = result.rows[0];
+        let layout_data = row.layout_data;
+        if (typeof layout_data === 'string') {
+            try { layout_data = JSON.parse(layout_data); } catch (_) { }
+        }
+        if (layout_data && typeof layout_data === 'object') {
+            try {
+                if (Array.isArray(layout_data.charts)) {
+                    layout_data.charts.forEach(chart => {
+                        (chart.panes || []).forEach(pane => {
+                            (pane.sources || []).forEach(source => {
+                                if (source.state) {
+                                    delete source.state.data;
+                                    delete source.state.metaInfo;
+                                }
+                            });
+                        });
+                    });
+                }
+                row.layout_data = layout_data;
+            } catch (_) { }
+        }
+
+        res.json(row);
+    } catch (error) {
+        console.error('Layout detail error:', error);
+        res.status(500).json({ error: 'Failed to fetch layout' });
+    }
+});
+app.get('/api/market-data/tickers', requireAuth, async (req, res) => {
+    const { table } = req.query;
+
+    const tableToQuery = table || 'market_data_minute';
+
+    try {
+        console.log(`📋 Getting available tickers from ${tableToQuery}`);
+
+        const query = `
+            SELECT
+                ticker,
+                MIN(window_start) as earliest,
+                MAX(window_start) as latest,
+                COUNT(*) as bars
+            FROM ${tableToQuery}
+            GROUP BY ticker
+            ORDER BY ticker
+            LIMIT 100
+        `;
+
+        const resultSet = await clickhouse.query({
+            query: query,
+            format: 'JSONEachRow'
+        });
+
+        const data = await resultSet.json();
+
+        console.log(`✅ Found ${data.length} tickers`);
+
+        res.json(data);
+
+    } catch (error) {
+        console.error('❌ Tickers list error:', error);
+        res.status(500).json({
+            error: 'Failed to get tickers',
+            details: error.message
+        });
+    }
+});
+
+app.post('/api/layouts', requireAuth, async (req, res) => {
+    const { name, description, layout_data, symbol, interval, is_default } = req.body;
+
+    try {
+        // If setting as default, unset other defaults
+        if (is_default) {
+            await greenplumPool.query(
+                'UPDATE chart_layouts SET is_default = FALSE WHERE user_id = $1',
+                [req.session.userId]
+            );
+        }
+
+        const result = await greenplumPool.query(
+            `INSERT INTO chart_layouts (user_id, name, description, layout_data, symbol, interval, is_default)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [req.session.userId, name, description, typeof layout_data === 'string' ? layout_data : JSON.stringify(layout_data), symbol, interval, is_default]
+        );
+
+        await logAction(req.session.userId, 'create_layout', 'layout', result.rows[0].id, { name }, req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Create layout error:', error);
+        res.status(500).json({ error: 'Failed to save layout' });
+    }
+});
+
+app.put('/api/layouts/:id', requireAuth, async (req, res) => {
+    const { name, description, layout_data, symbol, interval, is_default } = req.body;
+
+    try {
+        // Check ownership
+        const checkResult = await greenplumPool.query(
+            'SELECT user_id FROM chart_layouts WHERE id = $1',
+            [req.params.id]
+        );
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Layout not found' });
+        }
+
+        if (checkResult.rows[0].user_id !== req.session.userId) {
+            return res.status(403).json({ error: 'Not authorized' });
+        }
+
+        if (is_default) {
+            await greenplumPool.query(
+                'UPDATE chart_layouts SET is_default = FALSE WHERE user_id = $1',
+                [req.session.userId]
+            );
+        }
+
+        const result = await greenplumPool.query(
+            `UPDATE chart_layouts SET
+                name = COALESCE($1, name),
+                description = COALESCE($2, description),
+                layout_data = COALESCE($3, layout_data),
+                symbol = COALESCE($4, symbol),
+                interval = COALESCE($5, interval),
+                is_default = COALESCE($6, is_default),
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = $7
+             RETURNING *`,
+            [name, description, typeof layout_data === 'string' ? layout_data : JSON.stringify(layout_data), symbol, interval, is_default, req.params.id]
+        );
+
+        await logAction(req.session.userId, 'update_layout', 'layout', req.params.id, { name }, req);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Update layout error:', error);
+        res.status(500).json({ error: 'Failed to update layout' });
+    }
+});
+
+app.delete('/api/layouts/:id', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'DELETE FROM chart_layouts WHERE id = $1 AND user_id = $2 RETURNING id',
+            [req.params.id, req.session.userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Layout not found' });
+        }
+
+        await logAction(req.session.userId, 'delete_layout', 'layout', req.params.id, null, req);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete layout error:', error);
+        res.status(500).json({ error: 'Failed to delete layout' });
+    }
+});
+
+// ==================== CLICKHOUSE DATA ====================
+
+// ==================== STUDY TEMPLATES ====================
+
+app.get('/api/study-templates', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'SELECT name FROM study_templates WHERE user_id = $1 ORDER BY name',
+            [req.session.userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Get study templates error:', error);
+        res.status(500).json({ error: 'Failed to get study templates' });
+    }
+});
+
+app.get('/api/study-templates/:name', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'SELECT content FROM study_templates WHERE user_id = $1 AND name = $2',
+            [req.session.userId, req.params.name]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Study template not found' });
+        }
+        res.json({ content: result.rows[0].content });
+    } catch (error) {
+        console.error('Get study template content error:', error);
+        res.status(500).json({ error: 'Failed to get study template content' });
+    }
+});
+
+app.post('/api/study-templates', requireAuth, async (req, res) => {
+    try {
+        const { name, content } = req.body;
+        if (!name || !content) {
+            return res.status(400).json({ error: 'name and content are required' });
+        }
+        await greenplumPool.query(
+            'DELETE FROM study_templates WHERE user_id = $1 AND name = $2',
+            [req.session.userId, name]
+        );
+        await greenplumPool.query(
+            'INSERT INTO study_templates (user_id, name, content) VALUES ($1, $2, $3)',
+            [req.session.userId, name, content]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Save study template error:', error);
+        res.status(500).json({ error: 'Failed to save study template' });
+    }
+});
+
+app.delete('/api/study-templates/:name', requireAuth, async (req, res) => {
+    try {
+        await greenplumPool.query(
+            'DELETE FROM study_templates WHERE user_id = $1 AND name = $2',
+            [req.session.userId, req.params.name]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete study template error:', error);
+        res.status(500).json({ error: 'Failed to delete study template' });
+    }
+});
+
+// ==================== CHART TEMPLATES ====================
+
+app.get('/api/chart-templates', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'SELECT name FROM chart_templates WHERE user_id = $1 ORDER BY name',
+            [req.session.userId]
+        );
+        res.json(result.rows.map(r => r.name));
+    } catch (error) {
+        console.error('Get chart templates error:', error);
+        res.status(500).json({ error: 'Failed to get chart templates' });
+    }
+});
+
+app.get('/api/chart-templates/:name', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'SELECT content FROM chart_templates WHERE user_id = $1 AND name = $2',
+            [req.session.userId, req.params.name]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Chart template not found' });
+        }
+        res.json({ content: result.rows[0].content });
+    } catch (error) {
+        console.error('Get chart template content error:', error);
+        res.status(500).json({ error: 'Failed to get chart template content' });
+    }
+});
+
+app.post('/api/chart-templates', requireAuth, async (req, res) => {
+    try {
+        const { name, content } = req.body;
+        if (!name || !content) {
+            return res.status(400).json({ error: 'name and content are required' });
+        }
+        await greenplumPool.query(
+            'DELETE FROM chart_templates WHERE user_id = $1 AND name = $2',
+            [req.session.userId, name]
+        );
+        await greenplumPool.query(
+            'INSERT INTO chart_templates (user_id, name, content) VALUES ($1, $2, $3::jsonb)',
+            [req.session.userId, name, JSON.stringify(content)]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Save chart template error:', error);
+        res.status(500).json({ error: 'Failed to save chart template' });
+    }
+});
+
+app.delete('/api/chart-templates/:name', requireAuth, async (req, res) => {
+    try {
+        await greenplumPool.query(
+            'DELETE FROM chart_templates WHERE user_id = $1 AND name = $2',
+            [req.session.userId, req.params.name]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete chart template error:', error);
+        res.status(500).json({ error: 'Failed to delete chart template' });
+    }
+});
+
+// ==================== DRAWING TEMPLATES ====================
+
+app.get('/api/drawing-templates/:toolName', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'SELECT template_name FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 ORDER BY template_name',
+            [req.session.userId, req.params.toolName]
+        );
+        res.json(result.rows.map(r => r.template_name));
+    } catch (error) {
+        console.error('Get drawing templates error:', error);
+        res.status(500).json({ error: 'Failed to get drawing templates' });
+    }
+});
+
+app.get('/api/drawing-templates/:toolName/:templateName', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            'SELECT content FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 AND template_name = $3',
+            [req.session.userId, req.params.toolName, req.params.templateName]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Drawing template not found' });
+        }
+        res.json({ content: result.rows[0].content });
+    } catch (error) {
+        console.error('Get drawing template content error:', error);
+        res.status(500).json({ error: 'Failed to get drawing template content' });
+    }
+});
+
+app.post('/api/drawing-templates/:toolName', requireAuth, async (req, res) => {
+    try {
+        const { name, content } = req.body;
+        if (!name || !content) {
+            return res.status(400).json({ error: 'name and content are required' });
+        }
+        await greenplumPool.query(
+            'DELETE FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 AND template_name = $3',
+            [req.session.userId, req.params.toolName, name]
+        );
+        await greenplumPool.query(
+            'INSERT INTO drawing_templates (user_id, tool_name, template_name, content) VALUES ($1, $2, $3, $4)',
+            [req.session.userId, req.params.toolName, name, content]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Save drawing template error:', error);
+        res.status(500).json({ error: 'Failed to save drawing template' });
+    }
+});
+
+app.delete('/api/drawing-templates/:toolName/:templateName', requireAuth, async (req, res) => {
+    try {
+        await greenplumPool.query(
+            'DELETE FROM drawing_templates WHERE user_id = $1 AND tool_name = $2 AND template_name = $3',
+            [req.session.userId, req.params.toolName, req.params.templateName]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete drawing template error:', error);
+        res.status(500).json({ error: 'Failed to delete drawing template' });
+    }
+});
+
+app.post('/api/info', requireAuth, async (req, res) => {
+    const { req: reqData, type } = req.body;
+
+    if (type === 'allMids') {
+        return res.json({});
+    }
+
+    const { coin, interval, startTime, endTime } = reqData || {};
+
+    try {
+        // Get interval configuration from database
+        const intervalConfig = await greenplumPool.query(
+            'SELECT clickhouse_table FROM time_intervals WHERE code = $1 AND is_active = TRUE',
+            [interval || '1m']
+        );
+
+        if (intervalConfig.rows.length === 0) {
+            return res.status(400).json({ error: 'Invalid interval' });
+        }
+
+        const tableName = intervalConfig.rows[0].clickhouse_table;
+
+        // Get instrument mapping
+        const instrumentResult = await greenplumPool.query(
+            'SELECT clickhouse_ticker FROM instruments WHERE symbol = $1 AND is_active = TRUE',
+            [coin || 'EUR']
+        );
+
+        const ticker = instrumentResult.rows.length > 0
+            ? instrumentResult.rows[0].clickhouse_ticker
+            : `C:${coin}-USD`;
+
+        const query = `
+            SELECT
+                ticker,
+                toUnixTimestamp(window_start) * 1000 as time,
+                open, high, low, close, volume, transactions, window_start
+            FROM ${tableName}
+            WHERE ticker = {ticker:String}
+              AND toUnixTimestamp(window_start) >= {from:UInt32}
+              AND toUnixTimestamp(window_start) <= {to:UInt32}
+            ORDER BY window_start ASC
+            LIMIT 15000
+        `;
+
+        const params = {
+            ticker,
+            from: Math.floor((startTime || Date.now() - 86400000) / 1000),
+            to: Math.floor((endTime || Date.now()) / 1000)
+        };
+
+        const resultSet = await clickhouse.query({
+            query,
+            format: 'JSONEachRow',
+            query_params: params
+        });
+
+        const data = await resultSet.json();
+        res.json(data);
+    } catch (error) {
+        console.error('ClickHouse query error:', error);
+        res.status(500).json({ error: 'Failed to fetch data' });
+    }
+});
+// ==================== LATEST TIMESTAMP ENDPOINT ====================
+app.get('/api/market-data/latest', requireAuth, async (req, res) => {
+    const { ticker, table } = req.query;
+
+    if (!ticker || !table) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, table'
+        });
+    }
+
+    const allowedTables = [
+        'market_data_minute',
+        'market_data_hour',
+        'market_data_day',
+        'market_data_week'
+    ];
+
+    //if (!allowedTables.includes(table)) {
+    //    console.warn(`⚠️ Table ${table} not in allowed list, but proceeding`);
+    //}
+
+    try {
+        console.log(`📅 Getting latest: ${ticker} from ${table}`);
+
+        // Получаем MAX(window_start) для этого тикера
+        const query = `
+            SELECT MAX(window_start) as latest_timestamp
+            FROM ${table}
+            WHERE ticker = {ticker:String}
+        `;
+
+        const resultSet = await clickhouse.query({
+            query: query,
+            format: 'JSONEachRow',
+            query_params: {
+                ticker: ticker
+            }
+        });
+
+        const data = await resultSet.json();
+
+        if (!data || data.length === 0 || !data[0].latest_timestamp) {
+            console.log(`⚠️ No data for ${ticker} in ${table}`);
+            return res.status(404).json({
+                error: 'No data found for this ticker'
+            });
+        }
+
+        const latestTimestamp = data[0].latest_timestamp;
+        console.log(`✅ Latest: ${latestTimestamp} (${new Date(latestTimestamp).toISOString()})`);
+
+        res.json({
+            ticker: ticker,
+            table: table,
+            latest_timestamp: latestTimestamp
+        });
+
+    } catch (error) {
+        console.error('❌ Latest timestamp error:', error);
+        res.status(500).json({
+            error: 'Failed to get latest timestamp',
+            details: error.message
+        });
+    }
+});
+
+// В server.js добавьте:
+
+app.get('/api/instruments/search', requireAuth, async (req, res) => {
+    const { query } = req.query;
+
+    try {
+        const searchTerm = `%${query}%`;
+
+        const result = await greenplumPool.query(`
+            SELECT
+                i.id,
+                i.symbol,
+                i.name,
+                i.description,
+                i.type,
+                i.base_currency,
+                i.quote_currency,
+                i.clickhouse_ticker,
+                i.tradingview_symbol,
+                p.name as provider_name,
+                gp.name as group_provider_name
+            FROM instruments i
+            LEFT JOIN data_providers p ON i.provider_id = p.id
+            LEFT JOIN group_providers gp ON p.group_provider_id = gp.id
+            WHERE i.is_active = TRUE
+              AND (
+                  UPPER(i.symbol) LIKE UPPER($1)
+                  OR UPPER(i.name) LIKE UPPER($1)
+                  OR UPPER(i.description) LIKE UPPER($1)
+              )
+            ORDER BY
+                CASE
+                    WHEN UPPER(i.symbol) = UPPER($2) THEN 1
+                    WHEN UPPER(i.symbol) LIKE UPPER($2) || '%' THEN 2
+                    ELSE 3
+                END,
+                i.symbol
+            LIMIT 50
+        `, [searchTerm, query]);
+
+        res.json(result.rows);
+
+    } catch (error) {
+        console.error('Search error:', error);
+        res.status(500).json({ error: 'Search failed' });
+    }
+});
+
+// ========== 1. ПОЛУЧЕНИЕ ПОСЛЕДНЕГО ТИКА ==========
+
+app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
+    const { ticker } = req.query;
+
+    console.log('\n📊 GET LATEST TICK:');
+    console.log(`   Ticker: ${ticker}`);
+
+    if (!ticker) {
+        return res.status(400).json({ error: 'Missing ticker parameter' });
+    }
+
+    try {
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(max(participant_timestamp), '%Y-%m-%d %H:%i:%S.%f') as latest_timestamp
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            GROUP BY ticker
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: { ticker: ticker },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        if (rows.length > 0) {
+            console.log(`   ✅ Latest tick: ${rows[0].latest_timestamp}`);
+            res.json(rows[0]);
+        } else {
+            console.log('   ⚠️ No ticks found');
+            res.json({ latest_timestamp: null });
+        }
+
+    } catch (error) {
+        console.error('   ❌ Error:', error.message);
+        res.status(500).json({ error: 'Failed to get latest tick', details: error.message });
+    }
+});
+
+// ========== Вернет последние (самые новые) данные по валюте ==========
+
+app.get('/api/market-data/last-data', requireAuth, async (req, res) => {
+    const { ticker } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({ error: 'Missing ticker parameter' });
+    }
+
+    try {
+        // ✅ Убрал лишнюю запятую после timestamp
+        const query = `
+            SELECT
+                ticker,
+                participant_timestamp as timestamp
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            ORDER BY participant_timestamp DESC
+            LIMIT 1
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker: ticker,
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        console.log(`✅ /api/market-data/last-data for ${ticker}:`, rows);
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ Error in /api/market-data/last-data:', error);
+        res.status(500).json({
+            error: 'Failed to fetch last data',
+            details: error.message
+        });
+    }
+});
+
+// ========== 2. АГРЕГАЦИЯ ТИКОВ В OHLC ==========
+
+app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1 } = req.query;
+
+    if (!ticker || !from || !to) {
+        return res.status(400).json({ error: 'Missing required parameters: ticker, from, to' });
+    }
+
+    console.log('\n📊 TICK AGGREGATION REQUEST:');
+    console.log(`   Ticker: ${ticker}`);
+    console.log(`   From: ${from} (${new Date(parseInt(from) * 1000).toISOString()})`);
+    console.log(`   To: ${to} (${new Date(parseInt(to) * 1000).toISOString()})`);
+    console.log(`   Interval: ${interval}s`);
+
+    try {
+        const fromDate = new Date(parseInt(from) * 1000);
+        const toDate = new Date(parseInt(to) * 1000);
+
+        // Формат DateTime64(6) требует точно 6 цифр микросекунд
+        const formatDateTime64 = (date) => {
+            const isoString = date.toISOString();
+            const withoutZ = isoString.slice(0, -1);
+            const parts = withoutZ.split('.');
+            const dateTimePart = parts[0].replace('T', ' ');
+            const milliseconds = parts[1] || '000';
+            const microseconds = milliseconds.padEnd(6, '0');
+            return `${dateTimePart}.${microseconds}`;
+        };
+
+        const fromFormatted = formatDateTime64(fromDate);
+        const toFormatted = formatDateTime64(toDate);
+
+        console.log(`   From formatted: ${fromFormatted}`);
+        console.log(`   To formatted: ${toFormatted}`);
+
+        //const intervalSeconds = parseInt(interval);
+        const intervalSeconds = 1;
+
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
+                toFloat64(avg((price))) as open,
+                toFloat64(max((price))) as high,
+                toFloat64(min((price))) as low,
+                toFloat64(argMax((price), participant_timestamp)) as close,
+                toUInt64(count()) as volume
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+              AND participant_timestamp >= {from:DateTime64(6, 'UTC')}
+              AND participant_timestamp <= {to:DateTime64(6, 'UTC')}
+            GROUP BY ticker, timestamp
+            ORDER BY timestamp ASC
+            LIMIT 10000
+        `;
+
+        console.log('   📝 Executing query...');
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker: ticker,
+                from: fromFormatted,
+                to: toFormatted
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        console.log(`   ✅ Returned ${rows.length} bars`);
+
+        if (rows.length > 0) {
+            console.log('   First bar:', rows[0]);
+            console.log('   Last bar:', rows[rows.length - 1]);
+        } else {
+            console.log('   ⚠️ No data in this time range');
+            console.log('   💡 Tip: Check if raw_market_data table has data for this period');
+        }
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('❌ ERROR IN TICK AGGREGATION:');
+        console.error('   Message:', error.message);
+        console.error('   Stack:', error.stack);
+
+        res.status(500).json({
+            error: 'Failed to aggregate ticks',
+            details: error.message
+        });
+    }
+});
+
+// ========== 3. ПРОВЕРКА НАЛИЧИЯ ДАННЫХ ==========
+
+app.get('/api/market-data/ticks/check', requireAuth, async (req, res) => {
+    const { ticker = 'C:EUR-USD' } = req.query;
+
+    try {
+        const query = `
+            SELECT
+                ticker,
+                count() as total_ticks,
+                formatDateTime(min(participant_timestamp), '%Y-%m-%d %H:%i:%S') as first_tick,
+                formatDateTime(max(participant_timestamp), '%Y-%m-%d %H:%i:%S') as last_tick,
+                dateDiff('day', min(participant_timestamp), max(participant_timestamp)) as days_of_data
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            GROUP BY ticker
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: { ticker: ticker },
+            format: 'JSONEachRow'
+        });
+
+        const stats = await result.json();
+
+        if (stats.length > 0) {
+            res.json({
+                success: true,
+                ticker: ticker,
+                stats: stats[0],
+                message: `Found ${stats[0].total_ticks} ticks covering ${stats[0].days_of_data} days`
+            });
+        } else {
+            res.json({
+                success: false,
+                ticker: ticker,
+                message: 'No tick data found for this ticker',
+                hint: 'Check if raw_market_data table has data for this instrument'
+            });
+        }
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ========== ТЕСТОВЫЙ ENDPOINT ==========
+
+app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
+    const { ticker = 'C:EUR-USD' } = req.query;
+
+    console.log('\n🧪 TESTING TICK DATA:');
+    console.log(`   Ticker: ${ticker}`);
+
+    try {
+        // Простейший тест - получить последние 10 тиков
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(participant_timestamp, '%Y-%m-%dT%H:%i:%S.%fZ') as timestamp,
+                toFloat64(ask_price) as ask,
+                toFloat64(bid_price) as bid,
+                toFloat64((price)) as mid
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            ORDER BY participant_timestamp DESC
+            LIMIT 10
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: { ticker: ticker },
+            format: 'JSONEachRow'
+        });
+
+        const ticks = await result.json();
+
+        console.log(`   ✅ Found ${ticks.length} recent ticks`);
+
+        if (ticks.length > 0) {
+            console.log('   Latest tick:', ticks[0]);
+
+            res.json({
+                success: true,
+                count: ticks.length,
+                latest: ticks[0],
+                sample: ticks
+            });
+        } else {
+            res.json({
+                success: false,
+                message: `No tick data found for ${ticker}`,
+                hint: 'Check if raw_market_data table has data for this ticker'
+            });
+        }
+
+    } catch (error) {
+        console.error('   ❌ Error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ========== СТАТИСТИКА ПО ТИКАМ ==========
+
+app.get('/api/market-data/ticks/stats', requireAuth, async (req, res) => {
+    const { ticker = 'C:EUR-USD' } = req.query;
+
+    try {
+        const query = `
+            SELECT
+                ticker,
+                count() as total_ticks,
+                formatDateTime(min(participant_timestamp), '%Y-%m-%dT%H:%i:%S.%fZ') as earliest_tick,
+                formatDateTime(max(participant_timestamp), '%Y-%m-%dT%H:%i:%S.%fZ') as latest_tick,
+                toFloat64(min((price))) as min_price,
+                toFloat64(max((price))) as max_price,
+                toFloat64(avg((price))) as avg_price
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+            GROUP BY ticker
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: { ticker: ticker },
+            format: 'JSONEachRow'
+        });
+
+        const stats = await result.json();
+
+        res.json(stats[0] || { message: 'No data found' });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+app.get('/api/market-data/ticks/aggregated-v2', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1 } = req.query;
+
+    console.log('\n📊 TICK AGGREGATION V2 REQUEST:');
+
+    if (!ticker || !from || !to) {
+        return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    try {
+        const fromDate = new Date(parseInt(from) * 1000);
+        const toDate = new Date(parseInt(to) * 1000);
+
+        // Более простой запрос - без toStartOfInterval
+        const query = `
+            SELECT
+                ticker,
+                formatDateTime(participant_timestamp, '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
+                toFloat64((price)) as price
+            FROM raw_market_data
+            WHERE ticker = '${ticker}'
+              AND participant_timestamp >= '${fromDate.toISOString()}'
+              AND participant_timestamp <= '${toDate.toISOString()}'
+            ORDER BY participant_timestamp ASC
+            LIMIT 50000
+            FORMAT JSONEachRow
+        `;
+
+        console.log('   Executing simple query...');
+
+        const result = await clickhouse.query(query);
+        const text = await result.text();
+
+        if (!text || text.trim().length === 0) {
+            return res.json([]);
+        }
+
+        const ticks = text
+            .trim()
+            .split('\n')
+            .filter(line => line.trim())
+            .map(line => JSON.parse(line));
+
+        console.log(`   Got ${ticks.length} raw ticks`);
+
+        // Агрегируем на стороне Node.js
+        const intervalMs = parseInt(interval) * 1000;
+        const bars = {};
+
+        ticks.forEach(tick => {
+            const tickTime = new Date(tick.timestamp).getTime();
+            const barTime = Math.floor(tickTime / intervalMs) * intervalMs;
+            const barKey = new Date(barTime).toISOString();
+
+            if (!bars[barKey]) {
+                bars[barKey] = {
+                    ticker: tick.ticker,
+                    timestamp: barKey,
+                    open: tick.price,
+                    high: tick.price,
+                    low: tick.price,
+                    close: tick.price,
+                    volume: 1
+                };
+            } else {
+                const bar = bars[barKey];
+                bar.high = Math.max(bar.high, tick.price);
+                bar.low = Math.min(bar.low, tick.price);
+                bar.close = tick.price;
+                bar.volume += 1;
+            }
+        });
+
+        const result_bars = Object.values(bars).sort((a, b) =>
+            new Date(a.timestamp) - new Date(b.timestamp)
+        );
+
+        console.log(`   ✅ Aggregated to ${result_bars.length} bars`);
+
+        res.json(result_bars);
+
+    } catch (error) {
+        console.error('❌ ERROR:', error.message);
+        res.status(500).json({
+            error: 'Failed to aggregate ticks',
+            details: error.message
+        });
+    }
+});
+
+// ========== ТЕСТОВЫЙ ENDPOINT (для проверки подключения) ==========
+
+app.get('/api/market-data/ticks/test', requireAuth, async (req, res) => {
+    const { ticker = 'C:EUR-USD' } = req.query;
+
+    console.log('\n🧪 TICK DATA TEST:');
+
+    try {
+        // Простейший запрос - просто COUNT
+        const query = `
+            SELECT
+                ticker,
+                count() as total_ticks,
+                min(participant_timestamp) as earliest,
+                max(participant_timestamp) as latest
+            FROM raw_market_data
+            WHERE ticker = '${ticker}'
+            GROUP BY ticker
+            FORMAT JSONEachRow
+        `;
+
+        console.log('   Query:', query);
+
+        const result = await clickhouse.query(query);
+        const text = await result.text();
+
+        if (!text || text.trim().length === 0) {
+            return res.json({
+                success: false,
+                message: 'No data in raw_market_data table for this ticker'
+            });
+        }
+
+        const stats = JSON.parse(text.trim().split('\n')[0]);
+
+        console.log('   ✅ Stats:', stats);
+
+        res.json({
+            success: true,
+            stats: stats,
+            message: `Found ${stats.total_ticks} ticks for ${ticker}`
+        });
+
+    } catch (error) {
+        console.error('   ❌ Error:', error.message);
+        res.json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+
+app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
+    const { ticker } = req.query;
+
+    try {
+        const query = `
+            SELECT
+                ticker,
+                price ask_price,
+                price bid_price,
+                participant_timestamp as latest_timestamp
+            FROM default.raw_market_data
+            WHERE ticker = {ticker:String}
+            ORDER BY participant_timestamp DESC
+            LIMIT 1
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: { ticker },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+        res.json(rows.length > 0 ? rows[0] : { latest_timestamp: null });
+
+    } catch (error) {
+        console.error('Error fetching latest tick:', error);
+        res.status(500).json({ error: 'Failed to fetch latest tick' });
+    }
+});
+
+// ========== INTERVALS ==========
+
+// Получить все интервалы
+app.get('/api/intervals', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(`
+            SELECT * FROM intervals
+            ORDER BY duration_seconds ASC
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching intervals:', error);
+        res.status(500).json({ error: 'Failed to fetch intervals' });
+    }
+});
+
+// Создать интервал
+app.post('/api/intervals', requireAuth, async (req, res) => {
+    const { code, name, tradingview_code, clickhouse_table, duration_seconds } = req.body;
+
+    try {
+        const result = await greenplumPool.query(`
+            INSERT INTO intervals (
+                status_id,
+                code,
+                name,
+                tradingview_code,
+                clickhouse_table,
+                duration_seconds,
+                is_active
+            ) VALUES (
+                (SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'interval' LIMIT 1),
+                $1, $2, $3, $4, $5, TRUE
+            )
+            RETURNING *
+        `, [code, name, tradingview_code, clickhouse_table, duration_seconds]);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error creating interval:', error);
+        res.status(500).json({ error: 'Failed to create interval' });
+    }
+});
+
+app.get('/api/sl-modes', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, code, name, description, is_active, sort_order
+             FROM public.sl_modes
+             WHERE is_active = TRUE
+             ORDER BY sort_order ASC`
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('GET /api/sl-modes error:', error);
+        res.status(500).json({ error: 'Failed to fetch SL modes' });
+    }
+});
+
+// ==================== TP MODES ====================
+
+app.get('/api/tp-modes', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, code, name, description, is_active, sort_order
+             FROM public.tp_modes
+             WHERE is_active = TRUE
+             ORDER BY sort_order ASC`
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('GET /api/tp-modes error:', error);
+        res.status(500).json({ error: 'Failed to fetch TP modes' });
+    }
+});
+
+// ==================== TIME EXIT MODES ====================
+
+app.get('/api/time-exit-modes', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, code, name, description, has_value, value_label, is_active, sort_order
+             FROM public.time_exit_modes
+             WHERE is_active = TRUE
+             ORDER BY sort_order ASC`
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error('GET /api/time-exit-modes error:', error);
+        res.status(500).json({ error: 'Failed to fetch time exit modes' });
+    }
+});
+
+// Обновить интервал
+app.put('/api/intervals/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { code, name, tradingview_code, clickhouse_table, duration_seconds, is_active } = req.body;
+
+    try {
+        const result = await greenplumPool.query(`
+            UPDATE intervals
+            SET code = $1,
+                name = $2,
+                tradingview_code = $3,
+                clickhouse_table = $4,
+                duration_seconds = $5,
+                is_active = $6,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $7
+            RETURNING *
+        `, [code, name, tradingview_code, clickhouse_table, duration_seconds, is_active, id]);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error updating interval:', error);
+        res.status(500).json({ error: 'Failed to update interval' });
+    }
+});
+
+// Удалить интервал
+app.delete('/api/intervals/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        await greenplumPool.query('DELETE FROM intervals WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting interval:', error);
+        res.status(500).json({ error: 'Failed to delete interval' });
+    }
+});
+/**
+ * API Endpoint для тиковых данных
+ * Добавьте этот код в ваш server.js
+ */
+
+// ========== TICK DATA ENDPOINT ==========
+
+/**
+ * GET /api/market-data/ticks
+ * Получение тиковых данных из raw_market_data
+ */
+app.get('/api/market-data/ticks', requireAuth, async (req, res) => {
+    const { ticker, from, to } = req.query;
+
+    if (!ticker || !from || !to) {
+        return res.status(400).json({ error: 'Missing required parameters: ticker, from, to' });
+    }
+
+    try {
+        // ✅ Конвертируем Unix seconds → DateTime64 строку для ClickHouse
+        const formatForClickHouse = (unixSeconds) => {
+            const d = new Date(parseInt(unixSeconds) * 1000);
+            const iso = d.toISOString(); // "2026-04-24T06:23:38.000Z"
+            const [datePart, timePart] = iso.split('T');
+            const timeClean = timePart.replace('Z', '');
+            const [hms, ms = '000'] = timeClean.split('.');
+            return `${datePart} ${hms}.${ms.padEnd(6, '0')}`;
+            // → "2026-04-24 06:23:38.000000"
+        };
+
+        const fromFormatted = formatForClickHouse(from);
+        const toFormatted = formatForClickHouse(to);
+
+        const query = `
+            SELECT
+                ticker,
+                participant_timestamp,
+                price
+            FROM raw_market_data
+            WHERE ticker = {ticker:String}
+              AND participant_timestamp >= {from:DateTime64(6, 'UTC')}
+              AND participant_timestamp <= {to:DateTime64(6, 'UTC')}
+            ORDER BY participant_timestamp ASC
+            LIMIT 10000
+        `;
+
+        const result = await clickhouse.query({
+            query,
+            query_params: {
+                ticker,
+                from: fromFormatted,   // ✅ "2026-04-24 06:23:38.000000"
+                to: toFormatted,
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+        res.json(rows);
+
+    } catch (error) {
+        res.status(500).json({
+            error: 'Failed to fetch tick data',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/market-data/ticks/latest
+ * Получение последнего тика
+ */
+app.get('/api/market-data/ticks/latest', requireAuth, async (req, res) => {
+    const { ticker } = req.query;
+
+    if (!ticker) {
+        return res.status(400).json({
+            error: 'Missing required parameter: ticker'
+        });
+    }
+
+    try {
+        const query = `
+            SELECT
+                ticker,
+                price ask_price,
+                price bid_price,
+                participant_timestamp as latest_timestamp
+            FROM default.raw_market_data
+            WHERE ticker = {ticker:String}
+            ORDER BY participant_timestamp DESC
+            LIMIT 1
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker: ticker
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        if (rows.length > 0) {
+            res.json(rows[0]);
+        } else {
+            res.json({ latest_timestamp: null });
+        }
+
+    } catch (error) {
+        console.error('Error fetching latest tick:', error);
+        res.status(500).json({
+            error: 'Failed to fetch latest tick',
+            details: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/market-data/ticks/aggregated
+ * Получение агрегированных тиков (OHLC) за период
+ * Агрегация происходит на стороне ClickHouse для производительности
+ */
+app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
+    const { ticker, from, to, interval = 1 } = req.query;
+
+    if (!ticker || !from || !to) {
+        return res.status(400).json({
+            error: 'Missing required parameters: ticker, from, to'
+        });
+    }
+
+    try {
+        const fromDate = new Date(parseInt(from) * 1000).toISOString();
+        const toDate = new Date(parseInt(to) * 1000).toISOString();
+        const intervalSeconds = parseInt(interval);
+
+        // Агрегируем тики в OHLC свечи прямо в ClickHouse
+        const query = `
+            SELECT
+                ticker,
+                toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND) as timestamp,
+                avg((price)) as open,
+                max((price)) as high,
+                min((price)) as low,
+                argMax((price), participant_timestamp) as close,
+                count() as volume
+            FROM default.raw_market_data
+            WHERE ticker = {ticker:String}
+              AND participant_timestamp >= {from:DateTime64(6, 'UTC')}
+              AND participant_timestamp <= {to:DateTime64(6, 'UTC')}
+            GROUP BY ticker, timestamp
+            ORDER BY timestamp ASC
+            LIMIT 10000
+        `;
+
+        const result = await clickhouse.query({
+            query: query,
+            query_params: {
+                ticker: ticker,
+                from: fromDate,
+                to: toDate
+            },
+            format: 'JSONEachRow'
+        });
+
+        const rows = await result.json();
+
+        console.log(`✅ Aggregated ${rows.length} bars from ticks for ${ticker}`);
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error('Error aggregating tick data:', error);
+        res.status(500).json({
+            error: 'Failed to aggregate tick data',
+            details: error.message
+        });
+    }
+});
+
+// ========== ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ ==========
+
+/**
+ * ИСПОЛЬЗОВАНИЕ:
+ *
+ * 1. Обычные тики (сырые данные):
+ *    GET /api/market-data/ticks?ticker=C:EUR-USD&from=1735689540&to=1735690000
+ *
+ * 2. Последний тик:
+ *    GET /api/market-data/ticks/latest?ticker=C:EUR-USD
+ *
+ * 3. Агрегированные в OHLC (рекомендуется для графика):
+ *    GET /api/market-data/ticks/aggregated?ticker=C:EUR-USD&from=1735689540&to=1735690000&interval=1
+ *
+ * ПАРАМЕТРЫ:
+ * - ticker: строка, например "C:EUR-USD"
+ * - from: timestamp в секундах
+ * - to: timestamp в секундах
+ * - interval: интервал агрегации в секундах (по умолчанию 1)
+ *
+ * ПРИМЕЧАНИЕ:
+ * Для лучшей производительности используйте /ticks/aggregated
+ * вместо /ticks с последующей конвертацией на клиенте
+ */
+
+// ========== INDICATORS ==========
+
+app.get('/api/indicators', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query('SELECT * FROM indicators ORDER BY name');
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch indicators' });
+    }
+});
+
+app.post('/api/indicators', requireAuth, async (req, res) => {
+    const { name, code, description, parameters } = req.body;
+
+    try {
+        const result = await greenplumPool.query(`
+            INSERT INTO indicators (status_id, name, code, description, parameters, is_active)
+            VALUES (
+                (SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'indicator' LIMIT 1),
+                $1, $2, $3, $4, TRUE
+            )
+            RETURNING *
+        `, [name, code, description, JSON.stringify(parameters)]);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to create indicator' });
+    }
+});
+
+// ========== SCRIPTS ==========
+
+app.get('/api/scripts', requireAuth, async (req, res) => {
+    const { type } = req.query; // 'pine' or 'javascript'
+
+    try {
+        let query = 'SELECT * FROM javascript_scripts WHERE 1=1';
+        const params = [];
+
+        if (type === 'pine') {
+            query += ' AND script_type = $1';
+            params.push('pine');
+        } else if (type === 'javascript') {
+            query += ' AND script_type = $2';
+            params.push('javascript');
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        const result = await greenplumPool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch scripts' });
+    }
+});
+/**
+ * API ENDPOINTS ДЛЯ УПРАВЛЕНИЯ СКРИПТАМИ
+ * Добавьте в server.js
+ */
+
+// ========== СОЗДАНИЕ НОВОГО СКРИПТА ==========
+
+app.post('/api/scripts1', requireAuth, async (req, res) => {
+    const {
+        display_name,
+        system_name,
+        description,
+        code,
+        type, // 'pine' или 'javascript'
+        is_public,
+        pine_version // 5 или 6
+    } = req.body;
+
+    console.log('\n📝 CREATE SCRIPT:');
+    console.log(`   User: ${req.user.username}`);
+    console.log(`   Name: ${display_name}`);
+    console.log(`   Type: ${type}`);
+    console.log(`   Pine Version: ${pine_version || 'N/A'}`);
+
+    if (!display_name || !system_name || !code || !type) {
+        return res.status(400).json({
+            error: 'Missing required fields: display_name, system_name, code, type'
+        });
+    }
+
+    try {
+        // Проверяем что system_name уникален для этого пользователя
+        const existing = await db.query(
+            `SELECT id FROM user_scripts
+             WHERE user_id = $1 AND system_name = $2`,
+            [req.user.id, system_name]
+        );
+
+        if (existing.rows.length > 0) {
+            return res.status(409).json({
+                error: 'Script with this system_name already exists'
+            });
+        }
+
+        // Создаём скрипт
+        const result = await db.query(
+            `INSERT INTO user_scripts (
+                user_id,
+                display_name,
+                system_name,
+                description,
+                code,
+                type,
+                is_public,
+                pine_version,
+                created_at,
+                updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+            RETURNING *`,
+            [
+                req.user.id,
+                display_name,
+                system_name,
+                description || null,
+                code,
+                type,
+                is_public || false,
+                pine_version || null
+            ]
+        );
+
+        console.log(`   ✅ Script created: ID ${result.rows[0].id}`);
+
+        res.json({
+            success: true,
+            script: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('   ❌ Error:', error.message);
+        res.status(500).json({
+            error: 'Failed to create script',
+            details: error.message
+        });
+    }
+});
+
+// ========== ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕГО СКРИПТА ==========
+
+app.put('/api/scripts/:system_name', requireAuth, async (req, res) => {
+    const { system_name } = req.params;
+    const {
+        display_name,
+        description,
+        code,
+        is_public,
+        pine_version
+    } = req.body;
+
+    console.log('\n📝 UPDATE SCRIPT:');
+    console.log(`   User: ${req.user.username}`);
+    console.log(`   System Name: ${system_name}`);
+
+    try {
+        // Проверяем что скрипт принадлежит пользователю
+        const existing = await db.query(
+            `SELECT id FROM user_scripts
+             WHERE user_id = $1 AND system_name = $2`,
+            [req.user.id, system_name]
+        );
+
+        if (existing.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Script not found or access denied'
+            });
+        }
+
+        // Обновляем скрипт
+        const result = await db.query(
+            `UPDATE user_scripts
+             SET display_name = COALESCE($1, display_name),
+                 description = COALESCE($2, description),
+                 code = COALESCE($3, code),
+                 is_public = COALESCE($4, is_public),
+                 pine_version = COALESCE($5, pine_version),
+                 updated_at = NOW()
+             WHERE user_id = $6 AND system_name = $7
+             RETURNING *`,
+            [
+                display_name,
+                description,
+                code,
+                is_public,
+                pine_version,
+                req.user.id,
+                system_name
+            ]
+        );
+
+        console.log(`   ✅ Script updated`);
+
+        res.json({
+            success: true,
+            script: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('   ❌ Error:', error.message);
+        res.status(500).json({
+            error: 'Failed to update script',
+            details: error.message
+        });
+    }
+});
+
+// ========== ПОЛУЧЕНИЕ СКРИПТОВ ПОЛЬЗОВАТЕЛЯ ==========
+
+app.get('/api/scripts/my', requireAuth, async (req, res) => {
+    const { type } = req.query; // 'pine' или 'javascript'
+
+    try {
+        let query = `
+            SELECT
+                id,
+                display_name,
+                system_name,
+                description,
+                code,
+                type,
+                is_public,
+                pine_version,
+                created_at,
+                updated_at
+            FROM user_scripts
+            WHERE user_id = $1
+        `;
+
+        const params = [req.user.id];
+
+        if (type) {
+            query += ` AND type = $2`;
+            params.push(type);
+        }
+
+        query += ` ORDER BY updated_at DESC`;
+
+        const result = await db.query(query, params);
+
+        res.json(result.rows);
+
+    } catch (error) {
+        console.error('Error fetching user scripts:', error);
+        res.status(500).json({
+            error: 'Failed to fetch scripts'
+        });
+    }
+});
+
+// ========== УДАЛЕНИЕ СКРИПТА ==========
+
+app.delete('/api/scripts/:system_name', requireAuth, async (req, res) => {
+    const { system_name } = req.params;
+
+    try {
+        const result = await db.query(
+            `DELETE FROM user_scripts
+             WHERE user_id = $1 AND system_name = $2
+             RETURNING id`,
+            [req.user.id, system_name]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                error: 'Script not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Script deleted'
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            error: 'Failed to delete script'
+        });
+    }
+});
+
+
+
+app.post('/api/scripts', requireAuth, async (req, res) => {
+    const { system_name, display_name, description, code, script_type, is_public, user_id } = req.body;
+
+    try {
+        let id = 1
+
+        if (req.hasOwnProperty("user") && req.user.hasOwnProperty("id")) {
+            id = req.user.id
+        }
+        if (req.hasOwnProperty("user_id")) {
+            id = req.user.id
+        }
+
+        const result = await greenplumPool.query(`
+            INSERT INTO javascript_scripts (
+                status_id,
+                created_by,
+                system_name,
+                display_name,
+                description,
+                code,
+                script_type,
+                is_public
+            ) VALUES (
+                (SELECT id FROM statuses WHERE code = 'active' AND entity_type = 'script' LIMIT 1),
+                $1, $2, $3, $4, $5, $6, $7
+            )
+            RETURNING *
+        `, [user_id, system_name, display_name, description, code, script_type || 'javascript', is_public || false]);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.log("error__error__error__error", error)
+        res.status(500).json({ error: 'Failed to create script' });
+    }
+});
+
+// ==================== TRADINGVIEW CHART STORAGE API ====================
+
+app.get('/api/1.1/charts', requireAuth, (req, res) => {
+    // TradingView expects empty array for list of charts
+    res.json([]);
+});
+
+app.get('/api/1.1/study_templates', requireAuth, (req, res) => {
+    res.json([]);
+});
+
+/**
+
+ * Эндпоинты Алертов:
+ *
+ *   POST /api/alerts/init
+ *     Создаёт таблицу smart_alerts в БД (вызвать 1 раз при деплое)
+ *
+ *   GET  /api/alerts
+ *     Получить все алерты текущего пользователя
+ *
+ *   POST /api/alerts
+ *     Создать новый алерт
+ *     Body: { name, ticker, table, condition, once }
+ *
+ *   PATCH /api/alerts/:id
+ *     Обновить алерт (active, name, condition)
+ *
+ *   DELETE /api/alerts/:id
+ *     Удалить алерт
+ *
+ *   POST /api/alerts/check
+ *     Проверить алерты на конкретном баре + сгенерировать контекст
+ *     Body: { ticker, table, bar, bars[], setupCols, capital, trades[] }
+ *     Response: { triggered: [{ alert, context }] }
+ *
+ *   POST /api/alerts/context
+ *     Сгенерировать контекст для текущего момента без алертов
+ *     Body: { ticker, table, fromDate?, toDate?, setupCols, capital, trades[] }
+ *     Response: context object
+ * ══════════════════════════════════════════════════════════
+ */
+
+// ── Создание таблицы ──────────────────────────────────────────
+app.post('/api/alerts/init', requireAuth, async (req, res) => {
+    try {
+        await greenplumPool.query(CREATE_TABLE_SQL);
+        res.json({ ok: true, message: 'smart_alerts table ready' });
+    } catch (err) {
+        console.error('[Alerts/init]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── GET все алерты пользователя ───────────────────────────────
+app.get('/api/alerts', requireAuth, async (req, res) => {
+    try {
+        const result = await greenplumPool.query(
+            `SELECT id, name, ticker, table_name, condition, active, once,
+                    created_at, last_fired, fire_count, context
+             FROM smart_alerts
+             WHERE user_id = $1
+             ORDER BY created_at DESC`,
+            [req.session.userId]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[Alerts/get]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── POST создать алерт ────────────────────────────────────────
+app.post('/api/alerts', requireAuth, async (req, res) => {
+    const { name, ticker, table, condition, once = false } = req.body;
+    if (!name || !ticker || !table || !condition) {
+        return res.status(400).json({ error: 'name, ticker, table, condition required' });
+    }
+    try {
+        const result = await greenplumPool.query(
+            `INSERT INTO smart_alerts (user_id, name, ticker, table_name, condition, once)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING *`,
+            [req.session.userId, name, ticker, table, JSON.stringify(condition), once]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('[Alerts/create]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── PATCH обновить алерт ──────────────────────────────────────
+app.patch('/api/alerts/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { name, active, condition, once } = req.body;
+    try {
+        const fields = [], vals = [];
+        let i = 1;
+        if (name !== undefined) { fields.push(`name=$${i++}`); vals.push(name); }
+        if (active !== undefined) { fields.push(`active=$${i++}`); vals.push(active); }
+        if (condition !== undefined) { fields.push(`condition=$${i++}`); vals.push(JSON.stringify(condition)); }
+        if (once !== undefined) { fields.push(`once=$${i++}`); vals.push(once); }
+        if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+
+        vals.push(id, req.session.userId);
+        const result = await greenplumPool.query(
+            `UPDATE smart_alerts SET ${fields.join(',')} WHERE id=$${i} AND user_id=$${i + 1} RETURNING *`,
+            vals
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('[Alerts/patch]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── DELETE алерт ──────────────────────────────────────────────
+app.delete('/api/alerts/:id', requireAuth, async (req, res) => {
+    try {
+        await greenplumPool.query(
+            'DELETE FROM smart_alerts WHERE id=$1 AND user_id=$2',
+            [req.params.id, req.session.userId]
+        );
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[Alerts/delete]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── POST /api/alerts/check — проверить алерты на баре ─────────
+app.post('/api/alerts/check', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        bar, bars = [],
+        prevBar = null,
+        setupCols = {}, capital = 10000,
+        trades = [],
+    } = req.body;
+
+    if (!bar) return res.status(400).json({ error: 'bar is required' });
+
+    try {
+        // Загружаем активные алерты пользователя для этого тикера
+        const result = await greenplumPool.query(
+            `SELECT * FROM smart_alerts WHERE user_id=$1 AND ticker=$2 AND active=TRUE`,
+            [req.session.userId, ticker]
+        );
+        const alerts = result.rows.map(r => ({
+            ...r,
+            condition: typeof r.condition === 'string' ? JSON.parse(r.condition) : r.condition,
+        }));
+
+        if (!alerts.length) return res.json({ triggered: [] });
+
+        // Проверяем условия
+        const triggered = checkAlertsOnBar(alerts, bar, prevBar);
+
+        if (!triggered.length) return res.json({ triggered: [] });
+
+        // Генерируем контекст для каждого сработавшего
+        const cfg = { setupCols, capital, ticker, table };
+        const results = [];
+
+        for (const alert of triggered) {
+            const context = generateContext(alert, bar, bars, cfg, trades);
+
+            // Обновляем запись в БД
+            await greenplumPool.query(
+                `UPDATE smart_alerts SET last_fired=NOW(), fire_count=fire_count+1, context=$1
+                 ${alert.once ? ', active=FALSE' : ''}
+                 WHERE id=$2`,
+                [JSON.stringify(context), alert.id]
+            );
+
+            results.push({ alert, context });
+        }
+
+        res.json({ triggered: results });
+
+    } catch (err) {
+        console.error('[Alerts/check]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── POST /api/alerts/context — контекст без алерта ────────────
+app.post('/api/alerts/context', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        fromDate, toDate,
+        setupCols = {}, capital = 10000,
+        trades = [],
+    } = req.body;
+
+    if (!ticker || !table) return res.status(400).json({ error: 'ticker and table required' });
+
+    try {
+        let fromTs, toTs;
+        if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
+
+        const bars = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
+        if (bars.length < 2) return res.status(400).json({ error: 'Not enough bars' });
+
+        const bar = bars[bars.length - 1];
+        const prevBar = bars[bars.length - 2];
+        const cfg = { setupCols, capital, ticker, table };
+
+        // Синтетический алерт для generateContext
+        const fakeAlert = { name: 'Manual Context', condition: { type: 'manual' } };
+        const context = generateContext(fakeAlert, bar, bars, cfg, trades);
+
+        res.json({ ...context, totalBars: bars.length });
+
+    } catch (err) {
+        console.error('[Alerts/context]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// ── /api/ai/optimize ─────────────────────────────────────────────
+app.post('/api/ai/optimize', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        fromDate, toDate,
+        capital = 10000,
+        riskPct = 1,
+        leverage = 1,
+        slMode = 'pct',
+        tpMode = 'rr',
+        maxBars = 200,
+        direction = 'both',
+        useColExit = true,
+        setupCols = {},
+        paramSpace = {},
+        options = {},
+    } = req.body;
+
+    if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
+    if (!Object.keys(paramSpace).length) return res.status(400).json({ error: 'paramSpace is required' });
+    if (!Object.keys(setupCols).length) return res.status(400).json({ error: 'setupCols is required' });
+
+    try {
+        // Загружаем бары
+        let fromTs, toTs;
+        if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
+
+        console.log(`[AI/Optimize] ${ticker} @ ${table}, space: ${JSON.stringify(paramSpace)}`);
+
+        let bars = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
+        if (bars.length > 5000) bars = bars.slice(-5000);
+        if (bars.length < 50) return res.status(400).json({ error: `Not enough bars (${bars.length}). Need at least 50.` });
+
+        const cfg = { ticker, table, capital, riskPct, leverage, slMode, tpMode, maxBars, direction, useColExit, setupCols };
+
+        // Нормализуем paramSpace — добавляем type:'float' если не задан
+        const ps = {};
+        for (const [k, v] of Object.entries(paramSpace)) {
+            ps[k] = { min: v.min ?? 0.3, max: v.max ?? 3, type: v.type || 'float' };
+        }
+
+        const result = await bayesianOptimize(bars, cfg, ps, {
+            initPoints: options.initPoints || 8,
+            maxIter: options.maxIter || 40,
+            ls: options.ls || 0.4,
+        });
+
+        console.log(`[AI/Optimize] Done. Best: ${JSON.stringify(result.bestParams)}, score=${result.bestScore}`);
+        res.json({ ...result, bars: bars.length });
+
+    } catch (err) {
+        console.error('[AI/Optimize] Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/ai/regime ────────────────────────────────────────────────
+app.post('/api/ai/regime', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        fromDate, toDate,
+        windowSize = 50,
+        stepSize = 10,
+    } = req.body;
+
+    if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
+
+    try {
+        let fromTs, toTs;
+        if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
+
+        console.log(`[AI/Regime] ${ticker} @ ${table}, window=${windowSize}`);
+
+        const bars = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
+        if (bars.length < windowSize) {
+            return res.status(400).json({ error: `Not enough bars (${bars.length}). Need at least ${windowSize}.` });
+        }
+
+        const result = classifyMarketRegimes(bars, { windowSize, stepSize });
+
+        // Не возвращаем timeline (может быть очень большим) — только regimes[]
+        res.json({
+            regimes: result.regimes,
+            current: result.current,
+            currentFeatures: result.currentFeatures,
+            distribution: result.distribution,
+            totalBars: result.totalBars,
+        });
+
+    } catch (err) {
+        console.error('[AI/Regime] Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/ai/regime-analysis ───────────────────────────────────────
+app.post('/api/ai/regime-analysis', requireAuth, async (req, res) => {
+    const {
+        ticker, table,
+        fromDate, toDate,
+        trades = [],
+        windowSize = 50,
+        stepSize = 10,
+    } = req.body;
+
+    if (!ticker || !table) return res.status(400).json({ error: 'Missing ticker or table' });
+    if (!trades.length) return res.status(400).json({ error: 'trades[] is required. Run Server BT first.' });
+
+    try {
+        let fromTs, toTs;
+        if (fromDate) fromTs = Math.floor(new Date(fromDate).getTime() / 1000);
+        if (toDate) toTs = Math.floor(new Date(toDate).getTime() / 1000);
+
+        console.log(`[AI/RegimeAnalysis] ${ticker} @ ${table}, ${trades.length} trades`);
+
+        const bars = await loadBarsFromClickhouse(clickhouse, { ticker, table, fromTs, toTs });
+        const regimeData = classifyMarketRegimes(bars, { windowSize, stepSize });
+        const analysis = analyzeSetupByRegime(trades, regimeData);
+
+        res.json({
+            ...analysis,
+            regimeMeta: {
+                current: regimeData.current,
+                currentFeatures: regimeData.currentFeatures,
+                distribution: regimeData.distribution,
+                totalBars: regimeData.totalBars,
+            },
+        });
+
+    } catch (err) {
+        console.error('[AI/RegimeAnalysis] Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/correlation/matrix ───────────────────────────────────
+app.post('/api/correlation/matrix', requireAuth, async (req, res) => {
+    const {
+        tickers = [],
+        table = 'market_data_day',
+        days = 90,
+    } = req.body;
+
+    if (!tickers.length || tickers.length < 2) {
+        return res.status(400).json({ error: 'At least 2 tickers required' });
+    }
+    if (tickers.length > 200) {
+        return res.status(400).json({ error: 'Max 200 tickers' });
+    }
+
+    const allowedTables = ['market_data_minute', 'market_data_hour', 'market_data_day', 'market_data_week'];
+    if (!allowedTables.includes(table)) {
+        return res.status(400).json({ error: 'Invalid table' });
+    }
+
+    try {
+        console.log(`[Correlation/Matrix] ${tickers.length} tickers, ${table}, ${days}d`);
+        const t0 = Date.now();
+        const result = await buildCorrelationMatrix(clickhouse, tickers, table, days);
+        const ms = Date.now() - t0;
+        console.log(`[Correlation/Matrix] Done in ${ms}ms, ${result.tickers.length} valid tickers`);
+
+        // Не отдаём Map — конвертируем returns в объект
+        res.json({
+            tickers: result.tickers,
+            matrix: result.matrix,
+            avgCorrelations: result.avgCorrelations,
+            clusters: result.clusters,
+            days: result.days,
+            bars: result.bars,
+            queryMs: ms,
+        });
+    } catch (err) {
+        console.error('[Correlation/Matrix]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/correlation/portfolio ────────────────────────────────
+app.post('/api/correlation/portfolio', requireAuth, async (req, res) => {
+    const {
+        tickers = [],
+        table = 'market_data_day',
+        days = 90,
+        method = 'min_corr',   // min_corr | max_div | risk_parity | equal_weight
+        n = 5,
+    } = req.body;
+
+    if (tickers.length < 2) {
+        return res.status(400).json({ error: 'At least 2 tickers required' });
+    }
+
+    const validMethods = ['min_corr', 'max_div', 'risk_parity', 'equal_weight'];
+    if (!validMethods.includes(method)) {
+        return res.status(400).json({ error: `Invalid method. Use: ${validMethods.join(', ')}` });
+    }
+
+    try {
+        console.log(`[Correlation/Portfolio] method=${method}, n=${n}, ${tickers.length} tickers`);
+
+        // Параллельно загружаем корреляции и волатильности
+        const [corrData, vols] = await Promise.all([
+            buildCorrelationMatrix(clickhouse, tickers, table, days),
+            getVolatilities(clickhouse, tickers, table, days),
+        ]);
+
+        if (corrData.tickers.length < 2) {
+            return res.status(400).json({ error: 'Not enough data for selected tickers' });
+        }
+
+        const portfolio = buildPortfolio(corrData, method, n, vols);
+
+        res.json({
+            portfolio,
+            allCorrelations: corrData.avgCorrelations,
+            allVols: vols,
+            tickers: corrData.tickers,
+            clusters: corrData.clusters,
+        });
+    } catch (err) {
+        console.error('[Correlation/Portfolio]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/correlation/frontier ─────────────────────────────────
+app.post('/api/correlation/frontier', requireAuth, async (req, res) => {
+    const {
+        tickers = [],
+        table = 'market_data_day',
+        days = 90,
+        simulations = 500,
+    } = req.body;
+
+    if (tickers.length < 2) {
+        return res.status(400).json({ error: 'At least 2 tickers required' });
+    }
+
+    try {
+        const [corrData, vols] = await Promise.all([
+            buildCorrelationMatrix(clickhouse, tickers, table, days),
+            getVolatilities(clickhouse, tickers, table, days),
+        ]);
+
+        const points = efficientFrontier(corrData, vols, Math.min(simulations, 2000));
+
+        // Находим "оптимальный" портфель (макс Sharpe proxy)
+        const optimal = points.reduce((best, p) => p.sharpe > best.sharpe ? p : best, points[0]);
+
+        res.json({ points, optimal, tickers: corrData.tickers });
+    } catch (err) {
+        console.error('[Correlation/Frontier]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/correlation/mode ─────────────────────────────────────
+app.post('/api/correlation/mode', requireAuth, async (req, res) => {
+    const {
+        assetGroups = {},
+        table = 'market_data_day',
+        days = 30,
+    } = req.body;
+
+    const allTickers = Object.values(assetGroups).flat();
+    if (!allTickers.length) {
+        return res.status(400).json({ error: 'assetGroups must contain at least one ticker' });
+    }
+
+    try {
+        const result = await detectMarketMode(clickhouse, assetGroups, table, days);
+        res.json(result);
+    } catch (err) {
+        console.error('[Correlation/Mode]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ── /api/correlation/volatilities ────────────────────────────
+app.get('/api/correlation/volatilities', requireAuth, async (req, res) => {
+    const {
+        tickers: tickersCsv = '',
+        table = 'market_data_day',
+        days = 90,
+    } = req.query;
+
+    const tickers = tickersCsv.split(',').map(t => t.trim()).filter(Boolean);
+    if (!tickers.length) {
+        return res.status(400).json({ error: 'tickers query param required (comma-separated)' });
+    }
+
+    try {
+        const vols = await getVolatilities(clickhouse, tickers, table, +days);
+        res.json(vols);
+    } catch (err) {
+        console.error('[Correlation/Vol]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+app.post('/api/alpha-decay/analyze', requireAuth, async (req, res) => {
+    const {
+        trades = [],
+        windowSize = 'month',
+        minWindows = 3,
+        setupFilter = null,
+    } = req.body;
+
+    if (!Array.isArray(trades) || trades.length === 0) {
+        return res.status(400).json({ error: 'trades array is required and must not be empty.' });
+    }
+
+    const validSizes = ['month', 'quarter', 'year'];
+    if (typeof windowSize === 'string' && !validSizes.includes(windowSize)) {
+        return res.status(400).json({ error: `Invalid windowSize. Use: ${validSizes.join(', ')} or a number.` });
+    }
+
+    try {
+        const t0 = Date.now();
+        const result = analyzeDecay(trades, {
+            windowSize: typeof windowSize === 'string' ? windowSize : Number(windowSize),
+            minWindows: Number(minWindows) || 3,
+            setupFilter: setupFilter || null,
+        });
+        const ms = Date.now() - t0;
+        console.log(`[AlphaDecay] ${trades.length} trades, windowSize=${windowSize}, computed in ${ms}ms`);
+        res.json({ ...result, computeMs: ms });
+    } catch (err) {
+        console.error('[AlphaDecay]', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+app.post('/api/user/favorites', requireAuth, async (req, res) => {
+    const userId = req.session.userId;
+    const { favorites } = req.body;
+
+    if (!Array.isArray(favorites)) {
+        return res.status(400).json({ error: 'Favorites must be an array' });
+    }
+
+    try {
+        await greenplumPool.query('BEGIN');
+
+        await greenplumPool.query(
+            'DELETE FROM public.user_favorite_drawings WHERE user_id = $1',
+            [userId]
+        );
+
+        const insertQuery = `
+            INSERT INTO public.user_favorite_drawings (user_id, favorites, updated_at)
+            VALUES ($1, $2, NOW())
+            RETURNING *;
+        `;
+        const result = await greenplumPool.query(insertQuery, [userId, JSON.stringify(favorites)]);
+
+        await greenplumPool.query('COMMIT');
+
+        res.json({ success: true, data: result.rows[0] });
+
+    } catch (error) {
+        await greenplumPool.query('ROLLBACK');
+        console.error('❌ Error saving favorites:', error);
+        res.status(500).json({ error: 'Database error', details: error.message });
+    }
+});
+
+app.get('/api/user/favorites', requireAuth, async (req, res) => {
+    const userId = req.session.userId;
+
+    if (!userId) {
+        console.error('❌ No userId in session');
+        return res.status(401).json({ error: 'User not identified' });
+    }
+
+    console.log('User ID:', userId);
+
+    try {
+        const query = `
+            SELECT favorites
+            FROM public.user_favorite_drawings
+            WHERE user_id = $1;
+        `;
+
+        const result = await greenplumPool.query(query, [userId]);  // ✅ используем greenplumPool
+
+        if (result.rows.length === 0) {
+            console.log('No favorites found in DB, returning empty array');
+            return res.json({ favorites: [] });
+        }
+
+        console.log('Successfully fetched favorites');
+        res.json(result.rows[0]);
+
+    } catch (error) {
+        console.error('❌ CRITICAL ERROR in /api/favorites:', error);
+        res.status(500).json({
+            error: 'Database error',
+            details: error.message
+        });
+    }
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 TradingView Advanced Trading Platform`);
+    console.log(`🔐 Environment: ${process.env.NODE_ENV || 'development'}`);
+});

@@ -1,0 +1,15 @@
+{
+    "name": "gexbot-ingest",
+    "version": "2.0.0",
+    "description": "Gexbot REST → ClickHouse raw_market_data ingestion",
+    "main": "gexbot-ingest.js",
+    "scripts": {
+      "start": "node gexbot-ingest.js"
+    },
+    "dependencies": {
+      "node-fetch": "^3.3.2"
+    },
+    "engines": {
+      "node": ">=18.0.0"
+    }
+  }

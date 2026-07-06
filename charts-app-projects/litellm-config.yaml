@@ -1,0 +1,106 @@
+# litellm-config.yaml
+# ══════════════════════════════════════════════════════════════════════
+# LiteLLM — единый прокси для всех LLM провайдеров
+# Положите рядом с docker-compose.yml
+#
+# Доступ: http://localhost:4000/v1/chat/completions
+# Swagger: http://localhost:4000/docs
+#
+# В вашем приложении (llm-router.js) используйте:
+#   provider: openai_compat
+#   baseUrl:  http://litellm:4000
+#   model:    ollama/qwen2.5-coder:7b
+# ══════════════════════════════════════════════════════════════════════
+
+model_list:
+
+  # ── ЛОКАЛЬНЫЕ МОДЕЛИ (Ollama) ──────────────────────────────────────
+
+  - model_name: qwen2.5-coder-7b          # alias для использования в API
+    litellm_params:
+      model: ollama/qwen2.5-coder:7b
+      api_base: http://ollama:11434
+      timeout: 300
+      stream_timeout: 300
+
+  - model_name: deepseek-r1-8b
+    litellm_params:
+      model: ollama/deepseek-r1:8b
+      api_base: http://ollama:11434
+      timeout: 300
+
+  - model_name: llama3.1-8b
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://ollama:11434
+      timeout: 300
+
+  - model_name: phi4
+    litellm_params:
+      model: ollama/phi4
+      api_base: http://ollama:11434
+      timeout: 300
+
+  # Мощные модели (раскомментировать после скачивания):
+
+  # - model_name: deepseek-r1-14b
+  #   litellm_params:
+  #     model: ollama/deepseek-r1:14b
+  #     api_base: http://ollama:11434
+  #     timeout: 600
+
+  # - model_name: qwen2.5-coder-32b
+  #   litellm_params:
+  #     model: ollama/qwen2.5-coder:32b
+  #     api_base: http://ollama:11434
+  #     timeout: 600
+
+  # - model_name: llama3.3-70b
+  #   litellm_params:
+  #     model: ollama/llama3.3
+  #     api_base: http://ollama:11434
+  #     timeout: 600
+
+  # ── ОБЛАЧНЫЕ ПРОВАЙДЕРЫ (если ключи заданы в .env) ───────────────
+
+  - model_name: claude-opus               # используется если задан ANTHROPIC_API_KEY
+    litellm_params:
+      model: anthropic/claude-opus-4-6
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: gpt-4o                    # используется если задан OPENAI_API_KEY
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: deepseek-v3              # облачный DeepSeek
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  - model_name: groq-llama               # Groq — бесплатный, быстрый
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: gemini-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash-exp
+      api_key: os.environ/GEMINI_API_KEY
+
+# ── Глобальные настройки ──────────────────────────────────────────
+litellm_settings:
+  drop_params: true           # игнорировать неподдерживаемые параметры
+  request_timeout: 600        # 10 минут для больших запросов
+  num_retries: 2
+  fallbacks:                  # если модель недоступна — fallback
+    - { "deepseek-r1-8b": ["llama3.1-8b"] }
+    - { "claude-opus": ["gpt-4o", "deepseek-v3", "qwen2.5-coder-7b"] }
+
+router_settings:
+  routing_strategy: least-busy   # балансировка нагрузки
+
+# ── Логирование ───────────────────────────────────────────────────
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: ""               # можно подключить PostgreSQL для логов

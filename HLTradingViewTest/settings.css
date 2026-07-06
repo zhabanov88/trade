@@ -1,0 +1,143 @@
+
+.settings-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.modal-container {
+    position: relative;
+    max-width: 900px;
+    max-height: 80vh;
+    margin: 5% auto;
+    background: #1e222d;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 30px;
+    border-bottom: 1px solid #2a2e39;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: #d1d4dc;
+}
+
+.modal-header button {
+    background: none;
+    border: none;
+    color: #787b86;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.modal-content {
+    padding: 30px;
+    max-height: calc(80vh - 80px);
+    overflow-y: auto;
+}
+
+.intervals-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.intervals-table th,
+.intervals-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #2a2e39;
+}
+
+.intervals-table th {
+    color: #787b86;
+    font-weight: 500;
+}
+
+.intervals-table td {
+    color: #d1d4dc;
+}
+
+.status {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status.active {
+    background: #26a69a;
+    color: white;
+}
+
+.status.inactive {
+    background: #787b86;
+    color: white;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #2962ff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1e53e5;
+}
+
+.settings-form {
+    max-width: 500px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #787b86;
+    font-size: 13px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px;
+    background: #131722;
+    border: 1px solid #2a2e39;
+    border-radius: 4px;
+    color: #d1d4dc;
+    font-size: 14px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #2962ff;
+}

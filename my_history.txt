@@ -1,0 +1,1833 @@
+    1  hostname
+    2  cat /etc/hosts
+    3  cat /etc/hostname
+    4  nano /etc/hosts
+    5  passwd
+    6  exit
+    7  nano /etc/hosts
+    8  nano /etc/hostname
+    9  hostname MainProcess
+   10  cat /etc/hosts
+   11  reboot
+   12  hostname
+   13  cat /etc/hostname
+   14  cat /etc/hosts
+   15  nano /etc/hosts
+   16  cat /etc/hosts
+   17  lscpu
+   18  free -h
+   19  df -h
+   20  fdisk -l
+   21  df -h
+   22  cat /etc/*-release
+   23  exit
+   24  htop
+   25  docjer
+   26  docker
+   27  sudo curl -L "https://github.com/docker/compose/releases/download/1.25.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+   28  sudo chmod +x /usr/local/bin/docker-compose
+   29  docker-compose --version
+   30  docker -v
+   31  apt install docker.io
+   32  docker -v
+   33  cd /projects
+   34  cd dvvt
+   35  docker-compose build
+   36  docker-compose up
+   37  cd /projects
+   38  cd dvvt
+   39  docker-compose build
+   40  docker-compose up
+   41  docker-compose build
+   42  docker-compose up
+   43  cd /projects/
+   44  cd dvvt/
+   45  docker-compose build
+   46  docker-compose up
+   47  docker-compose build
+   48  docker-compose up
+   49  cd /projects/
+   50  sudo docker image pull rustdesk/rustdesk-server
+   51  sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs
+   52  sudo docker run --name hbbr -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbr
+   53  sudo ufw allow 21114/tcp
+   54  sudo ufw allow 21115/tcp
+   55  sudo ufw allow 21116/tcp
+   56  sudo ufw allow 21116/udp
+   57  sudo ufw allow 21117/tcp
+   58  sudo ufw allow 21118/tcp
+   59  sudo ufw allow 21119/tcp
+   60  cd ../
+   61  cd draw/
+   62  docker-compose build
+   63  docker-compose up
+   64  docker-compose build
+   65  docker-compose up
+   66  docker-compose build
+   67  docker-compose up
+   68  docker-compose build
+   69  docker-compose up
+   70  docker-compose build
+   71  docker-compose up
+   72  docker-compose build
+   73  docker-compose up
+   74  docker-compose prune
+   75  docker-compose up
+   76  docker-compose prune
+   77  docker volume prune
+   78  docker-compose up
+   79  ps -a
+   80  df -h
+   81  docker system prune -a --volumes
+   82  df -h
+   83  docker system prune -a --volumes
+   84  docker-compose up
+   85  cd /projects/
+   86  cd cfa/
+   87  cd cfa_back/
+   88  npm build
+   89  ls
+   90  npm install
+   91  npm start
+   92  npm install
+   93  npm start
+   94  cd /projects/
+   95  history
+   96  ps -a
+   97  docker ps -a
+   98  docker restart hbbr
+   99  docker restart hbbs
+  100  docker restart hbbr
+  101  docker ps -a
+  102  docker restart hbbr
+  103  docker volume rm gitlab_gitlab-data
+  104  docker volume ls
+  105  docker volume rm gitlab_gitlab-logs
+  106  docker volume rm gitlab_postgresql-data
+  107  docker volume rm gitlab_redis-data
+  108  docker restart hbbr
+  109  docker restart hbbs
+  110  docker restart hbbr
+  111  docker restart hbbr1
+  112  docker restart hbbr
+  113  docker ps -a
+  114  docker logs f7e182a0358f
+  115  docker restart f7e182a0358f
+  116  docker ps -a
+  117  docker logs f7e182a0358f
+  118  docker restart f7e182a0358f
+  119  docker ps -a
+  120  cd cfa/cfa_tlg/
+  121  npm install
+  122  npm start
+  123  cd /projects/
+  124  cd dvvt
+  125  cd ../
+  126  mkdir gitlab
+  127  cd gitlab/
+  128  sudo apt install docker.io
+  129  sudo systemctl start docker
+  130  Warning: The unit file, source configuration file or drop-ins of docker.service changed on disk. Run 'systemctl daemon-reload' to reload units.
+  131  docker-compose up
+  132  docker-compose up -f
+  133  docker-compose up f
+  134  docker-compose up -d
+  135  docker ps
+  136  docker exec f190f0b49b8b
+  137  docker exec -it f190f0b49b8b /bin/bash
+  138  docker-compose down
+  139  docker-compose up -d
+  140  docker-compose down
+  141  docker-compose up -d
+  142  docker exec -it f190f0b49b8b /bin/bash
+  143  docker ps
+  144  curl --request PUT --header "PRIVATE-TOKEN: glft-YY-May-vZRtLx4PFyHGg" "http://46.4.73.94/api/v4/users/1" --data "admin=true"
+  145  curl --request PUT --header "PRIVATE-TOKEN: glft-YY-May-vZRtLx4PFyHGg" "http://46.4.73.94/api/v4/users/root" --data "admin=true"
+  146  docker-compose logs gitlab
+  147  docker-compose down
+  148  docker-compose up -d
+  149  docker-compose logs gitlab
+  150  docker-compose up -d
+  151  docker-compose logs gitlab
+  152  gitlab_1      | Loading /etc/docker-gitlab/runtime/env-defaults
+  153  gitlab_1      | Initializing logdir...
+  154  gitlab_1      | Initializing datadir...
+  155  gitlab_1      | Generating OpenSSH host keys... RSA DSA ECDSA ED25519
+  156  gitlab_1      | Container TimeZone -> Asia/Kolkata
+  157  gitlab_1      | Installing configuration templates...
+  158  gitlab_1      | Configuring gitlab...
+  159  gitlab_1      | Configuring gitlab::database...........................................................Loading /etc/docker-gitlab/runtime/env-defaults
+  160  gitlab_1      | Initializing logdir...
+  161  gitlab_1      | Initializing datadir...
+  162  gitlab_1      | Container TimeZone -> Asia/Kolkata
+  163  gitlab_1      | Installing configuration templates...
+  164  gitlab_1      | Configuring gitlab...
+  165  gitlab_1      | Configuring gitlab::database...........................................................Loading /etc/docker-gitlab/runtime/env-defaults
+  166  gitlab_1      | Initializing logdir...
+  167  gitlab_1      | Initializing datadir...
+  168  gitlab_1      | Container TimeZone -> Asia/Kolkata
+  169  gitlab_1      | Installing configuration templates...
+  170  gitlab_1      | Configuring gitlab...
+  171  gitlab_1      | Configuring gitlab::database...........................................................Loading /etc/docker-gitlab/runtime/env-defaults
+  172  gitlab_1      | Initializing logdir...
+  173  gitlab_1      | Initializing datadir...
+  174  gitlab_1      | Container TimeZone -> Asia/Kolkata
+  175  gitlab_1      | Installing configuration templates...
+  176  gitlab_1      | Configuring gitlab...
+  177  docker exec -it f190f0b49b8b /bin/bash
+  178  htop
+  179  cd ../
+  180  cd fon_parser_line/
+  181  npm -v
+  182  apt install nodejs
+  183  npm -v
+  184  apt install npm
+  185  npm -v
+  186  npm install
+  187  npm start
+  188  err___1
+  189  npm start
+  190  df -h.
+  191  df -h
+  192  npm start
+  193  df -h
+  194  npm start
+  195  df -h
+  196  npm start
+  197  docker volume prune
+  198  npm start
+  199  ps -a
+  200  npm start
+  201  ps -h
+  202  df -h
+  203  cd /projects/
+  204  cd cfa/cfa_
+  205  cd cfa/
+  206  cd cfa_front
+  207  npm install
+  208  npm run dev
+  209  node -v
+  210  npm run dev
+  211  npm install
+  212  npm run dev
+  213  cd /projects/
+  214  cd drow
+  215  cd draw/
+  216  docker-compose build
+  217  docker-compose up
+  218  cd /projects/
+  219  cd dafa_parser/
+  220  npm install
+  221  npm start
+  222  npm run startWithRestart
+  223  cd ../
+  224  cd dafa_parser/
+  225  npm run startWithRestart
+  226  journalctl -xeu nginx.service
+  227  sudo nginx -t
+  228  cd /projects/
+  229  cd cfa/
+  230  cd cfa_front
+  231  npm run build
+  232  npm run dev
+  233  npm run startWithRestart
+  234  cd /projects/
+  235  cd cfa/
+  236  cd cfa_back
+  237  wget -Sv https://cfaservice.online/image -O
+  238  wget
+  239  wget -Sv https://cfaservice.online/image -O
+  240  wget -Sv https://cfaservice.online/image2.png -O
+  241  npm start
+  242  npm install
+  243  npm start
+  244  npm install
+  245  npm start
+  246  cd /projects/cfa/cfa_back
+  247  npm start
+  248  npm install
+  249  npm start
+  250  npm install
+  251  npm start
+  252  cd /projects/
+  253  cd cfa/
+  254  cd cfa_front
+  255  npm run dev
+  256  npm install
+  257  npm run dev
+  258  cd ../
+  259  cd /projects/cfa/cfa_front
+  260  npm run dev
+  261  npm install
+  262  npm run dev
+  263  npm install @mui/lab @mui/material @emotion/react @emotion/styled
+  264  npm run dev
+  265  npm install @mui/material @mui/lab @emotion/react @emotion/styled date-fns
+  266  npm run dev
+  267  npm install @mui/material @mui/lab @emotion/react @emotion/styled date-fns
+  268  npm run dev
+  269  npm install --legacy-peer-deps
+  270  npm run dev
+  271  npm update @mui/x-date-pickers date-fns
+  272  npm run dev
+  273  npm install react-datepicker
+  274  npm install date-fns
+  275  npm run dev
+  276  npm install date-fns
+  277  npm run dev
+  278  npm install
+  279  npm run dev
+  280  npm install react-datepicker
+  281  npm run dev
+  282  npm install react-datepicker
+  283  npm run dev
+  284  npm install
+  285  npm run dev
+  286  npm install react-date-picker
+  287  npm run dev
+  288  npm install
+  289  npm run dev
+  290  npm install react-toastify
+  291  npm run dev
+  292  cd /projects/
+  293  cd dvvt/
+  294  docker-compose build
+  295  docker-compose up
+  296  docker-compose build
+  297  docker-compose up
+  298  cd proje
+  299  cd /projects/
+  300  cd cfa/
+  301  cd cfa_back
+  302  npm start
+  303  cd /projects/
+  304  cd fon_parser/
+  305  npm install
+  306  npm start
+  307  cd /projects/
+  308  cd draw/
+  309  docker-compose up
+  310  docker-compose down
+  311  docker-compose up
+  312  cd /projects/
+  313  cd dafa_parser/
+  314  npm start
+  315  npm run startWithRestart
+  316  cd /projects/
+  317  cd dafa_parser
+  318  npm run startWithRestart
+  319  cd /projects/
+  320  cd draw/
+  321  ls
+  322  docker-compose up
+  323  docker-compose down
+  324  docker-compose up
+  325  cd /projects/
+  326  cd liga/
+  327  pip3 install aiohttp
+  328  python3-pipapt install python3-pip
+  329  apt install python3-pip
+  330  pip3 install aiohttp
+  331  python3 main.py
+  332  pip3 install aiohttp_socks
+  333  python3 main.py
+  334  cd..
+  335  cd ,,/
+  336  cd..l
+  337  cd ../
+  338  cd fon_bets_2_vol
+  339  cd fon_bets_vol_2
+  340  cd fon_bets_vol
+  341  cd /projects/
+  342  cd liga/
+  343  python3 main.py
+  344  cd /projects/
+  345  cd dafa_parser/
+  346  npm run startWithRestart
+  347  ] Both are raw
+  348  [2024-09-25 16:52:36.695698 +00:00] INFO [src/relay_server.rs:437] Relay of [::ffff:94.25.169.220]:13090 closed
+  349  [2024-09-25 16:52:36.755054 +00:00] INFO [src/relay_server.rs:437] Relay of [::ffff:213.87.131.9]:23589 closed
+  350  [2024-09-25 17:02:08.789045 +00:00] INFO [src/relay_server.rs:437] Relay of [::ffff:188.35.131.65]:53991 closed
+  351  [2024-09-25 17:02:10.624630 +00:00] INFO [src/relay_server.rs:441] New relay request dbe29825-3323-4788-bf1d-dd51ddb7c246 from [::ffff:178.68.45.70]:52300
+  352  [2024-09-25 17:02:10.693037 +00:00] INFO [src/relay_server.rs:425] Relayrequest dbe29825-3323-4788-bf1d-dd51ddb7c246 from [::ffff:188.35.131.65]:54105 got paired
+  353  [2024-09-25 17:02:10.693089 +00:00] INFO [src/relay_server.rs:431] Both are raw
+  354  [2024-09-25 17:02:11.108636 +00:00] INFO [src/relay_server.rs:437] Relay of [::ffff:188.35.131.65]:54105 closed
+  355  [2024-09-25 17:02:36.103713 +00:00] INFO [src/relay_server.rs:441] New relay request bbec7aa4-f3b0-4dce-a4f4-4e357e154bf1 from [::ffff:94.25.169.220]:59783
+  356  [2024-09-25 17:02:36.132659 +00:00] INFO [src/relay_server.rs:425] Relayrequest bbec7aa4-f3b0-4dce-a4f4-4e357e154bf1 from [::ffff:188.35.131.65]:54135 got paired
+  357  [2024-09-25 17:02:36.132702 +00:00] INFO [src/relay_server.rs:431] Both are raw
+  358  docker ps -a
+  359  docker exec -it 50da6ad5be1e /bin/bash
+  360  docker ps
+  361  docker stop f7e182a0358f
+  362  docker ps stop
+  363  docker stop 50da6ad5be1e
+  364  docker ps
+  365  history
+  366  sudo docker run --name hbbr -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbr
+  367  docker start 50da6ad5be1e
+  368  docker start f7e182a0358f
+  369  docker logs f7e182a0358f
+  370  docker logs 50da6ad5be1e
+  371  docker logs f7e182a0358f
+  372  docker logs 50da6ad5be1e
+  373  docker logs --tail 100 50da6ad5be1e
+  374  docker logs --tail 1000 50da6ad5be1e
+  375  docker logs --tail 1000  f7e182a0358f
+  376  docker logs --tail 3  f7e182a0358f
+  377  docker logs --tail 3 50da6ad5be1e
+  378  docker logs --tail 30 50da6ad5be1e
+  379  docker logs --tail 5000 50da6ad5be1e
+  380  docker logs --tail 5000 50da6ad5be1e  | grep '45.141.103.77'
+  381  docker logs --tail 50000 50da6ad5be1e  | grep '45.141.103.77'
+  382  docker logs --tail 5000 50da6ad5be1e  | grep '45.141.103.77'
+  383  docker logs --tail 15000 50da6ad5be1e  | grep '45.141.103.77'
+  384  docker logs --tail 25000 50da6ad5be1e  | grep '45.141.103.77'
+  385  docker logs --tail 20000 50da6ad5be1e  | grep '45.141.103.77'
+  386  docker logs --tail 20000 50da6ad5be1e
+  387  docker logs --tail 3000  f7e182a0358f
+  388  docker logs --tail 200 50da6ad5be1e
+  389  docker exec -it f7e182a0358f /bin/bash
+  390  docker exec -it f7e182a0358f shrustdesk/rustdesk-serverhbbs
+  391  docker logs --tail 20000 50da6ad5be1e  | grep '178.176.74.94'
+  392  docker logs --tail 20000 50da6ad5be1e
+  393  docker logs --tail 25000 50da6ad5be1e
+  394  docker logs --tail 22000 50da6ad5be1e
+  395  docker logs --tail 23000 50da6ad5be1e
+  396  docker logs --tail 23000 50da6ad5be1e > output.log
+  397  docker logs --tail 13 50da6ad5be1e
+  398  docker logs --tail 30  f7e182a0358f
+  399  docker logs --tail 13 50da6ad5be1e
+  400  df -h
+  401  cd /projects/
+  402  cd draw/
+  403  docker-compose up
+  404  docker-compose own
+  405  docker-compose down
+  406  docker-compose own
+  407  docker-compose up
+  408  docker ps
+  409  history
+  410  docker ps
+  411  docker 50da6ad5be1e stop
+  412  docker stop  50da6ad5be1e
+  413  docker stop  f7e182a0358f
+  414  docker ps
+  415  docker stop $(docker ps -aq)
+  416  docker rm $(docker ps -aq)
+  417  docker system prune -a --volumes
+  418  sudo docker image pull rustdesk/rustdesk-server
+  419  sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs
+  420  sudo docker run --name hbbr -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbr
+  421  history
+  422  docker ps
+  423  docker stop $(docker ps -aq)
+  424  docker rm $(docker ps -aq)
+  425  docker system prune -a --volumes
+  426  cd /projects/
+  427  sudo docker image pull rustdesk/rustdesk-server
+  428  sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs
+  429  sudo docker run --name hbbr -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbr
+  430  history
+  431  sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs
+  432  docker stop $(docker ps -aq)
+  433  docker rm $(docker ps -aq)
+  434  docker system prune -a --volumes
+  435  sudo docker image pull rustdesk/rustdesk-server
+  436  sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs
+  437  sudo docker run --name hbbr -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbr
+  438  cd /projects
+  439  ls
+  440  cd data
+  441  ls
+  442  cd ../
+  443  ls
+  444  cd data
+  445  ls
+  446  docker stop $(docker ps -aq)
+  447  docker rm $(docker ps -aq)
+  448  docker system prune -a --volumes
+  449  sudo docker run --name hbbs -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbs
+  450  sudo docker run --name hbbr -v ./data:/root -td --net=host --restart unless-stopped rustdesk/rustdesk-server hbbr
+  451  docjer ps
+  452  docker ps
+  453  docker logs --tail 30  98d436f7b817
+  454  docker logs --tail 30000  98d436f7b817
+  455  htop
+  456  sudo yum install -y epel-release
+  457  sudo dnf install -y epel-release
+  458  cat /etc/os-release
+  459  sudo apt update && sudo apt upgrade -y
+  460  sudo apt install -y xfce4 xfce4-goodies xorg
+  461  sudo apt install -y lightdm
+  462  sudo systemctl enable lightdm
+  463  startx
+  464  lspci -k | grep -EA3 'VGA|3D'
+  465  lsmod | grep i915
+  466  modprobe i915
+  467  cat /var/log/Xorg.0.log | grep -iE 'EE|WW'
+  468  ls /dev/dri/
+  469  apt install linux-firmware
+  470  Xorg -configure
+  471  startx
+  472  sudo apt install xfce4 xfce4-goodies
+  473  reboot
+  474  sudo apt install tigervnc-standalone-server tigervnc-common
+  475  iptables -A INPUT -p tcp --dport 5901 -j ACCEPT
+  476  apt install xfce4 xfce4-goodies tightvncserver
+  477  vncserver
+  478  vncserver -kill :1
+  479  vi ~/.vnc/xstartup
+  480  nano ~/.vnc/xstartup
+  481  vncserver
+  482  chmod +x ~/.vnc/xstartup
+  483  vncserver
+  484  vncserver -list
+  485  cat /root/.vnc/*.log
+  486  vncserver -geometry 1280x1024 -depth 24 :1
+  487  startxfce4
+  488  vi ~/.vnc/xstartup
+  489  vncserver
+  490  vncserver -list
+  491  sudo ufw allow 5901
+  492  ps aux | grep Xtigervnc
+  493  cat ~/.vnc/*.log
+  494  vncserver -kill :1
+  495  vncserver :1
+  496  nano /root/.vnc/xstartup
+  497  chmod +x ~/.vnc/xstartup
+  498  startxfce4
+  499  cat /var/log/Xorg.0.log | grep "(EE)"
+  500  lspci | grep -i vga
+  501  sudo apt install xserver-xorg-video-intel
+  502  sudo reboot
+  503  lspci | grep -i vga
+  504  sudo apt install xserver-xorg-video-intel
+  505  sudo apt install mesa-utils libgl1-mesa-glx
+  506  sudo service lightdm restart
+  507  lsmod | grep i915
+  508  sudo modprobe i915
+  509  sudo nano /etc/X11/xorg.conf.d/10-intel.conf
+  510  startx
+  511  sudo modprobe i915
+  512  startx
+  513  sudo apt-get install linux-image-extra-$(uname -r)
+  514  cd proj
+  515  cd /projects
+  516  cd fon_parser_corners/
+  517  npm install
+  518  npm start
+  519  cd /projects/
+  520  cd draw/
+  521  docker-compose up
+  522  cd /projects/
+  523  cd fon_parser_corners/
+  524  docker-compose up
+  525  npm start
+  526  npm run startWithRestart
+  527  df -h
+  528  htop
+  529  cd /projects/
+  530  cd db/
+  531  docker-compose up
+  532  docker-compose down
+  533  docker-compose up
+  534  docker-compose buld
+  535  docker-compose build
+  536  docker-compose up
+  537  cd /projects/
+  538  cd dafa_parser/
+  539  npm run startWithRestart
+  540  npm install pg-copy-streams
+  541  npm run startWithRestart
+  542  npm install socks-proxy-agent
+  543  npm run startWithRestart
+  544  find  / -type f -size +10300M
+  545  find  / -type f -size +1300M
+  546  history
+  547  npm run startWithRestart
+  548  cd /projects/
+  549  cd db/
+  550  docker-compose up
+  551  cd /projects/
+  552  cd tlg_pinn_py/
+  553  cd ../
+  554  cd tlg_stat_py/
+  555  python3 main.py
+  556  source venv/ bin/activate
+  557  source venv/bin/activate
+  558  python3 -v
+  559  source myenv/bin/activate
+  560  python3 main.py
+  561  python3 venv myenv
+  562  python3 -m venv myenv
+  563  source myenv/bin/activate
+  564  python3 main.py
+  565  pip3 install telebot
+  566  python3 main.py
+  567  pip3 install psycopg2
+  568  python3 main.py
+  569  cd /projects/
+  570  cd fon_parser
+  571  npm start
+  572  npm run startWithRestart
+  573  npm install pg pg-copy-streams csv-parser stream-json dotenv fast-csv
+  574  npm run startWithRestart
+  575  npm install pg pg-copy-streams csv-parser stream-json dotenv fast-csv
+  576  npm run startWithRestart
+  577  cd ../
+  578  cd /projects/
+  579  npm run startWithRestart
+  580  cd fon_parser
+  581  npm run startWithRestart
+  582  cd ../
+  583  cd fon_parser_corners/
+  584  npm run startWithRestart
+  585  pm run startWithRestart
+  586  npm run startWithRestart
+  587  cd /projects/
+  588  cd tlg_pinn_py/
+  589  history
+  590  source myenv/bin/activate
+  591  python main.py
+  592  cd /projects/
+  593  cd bet/
+  594  npm install
+  595  npm start
+  596  NODE_OPTIONS=--openssl-legacy-provider
+  597  npm start
+  598  NODE_OPTIONS=--openssl-legacy-provider npm start
+  599  npm install antd
+  600  NODE_OPTIONS=--openssl-legacy-provider npm start
+  601  cd /projects/
+  602  cd fon_parser_corners2
+  603  npm install
+  604  npm start
+  605  npm run startWithRestart
+  606  cd cd /projects/
+  607  cd /projects/
+  608  cd fon_parser_corners
+  609  npm run startWithRestart
+  610  cd /projects/
+  611  cd fon_parser_corners2
+  612  npm run startWithRestart
+  613  cd /projects/
+  614  cd fon_parser
+  615  npm run startWithRestart
+  616  cd /projects/
+  617  cd dafa_parser/
+  618  npm run startWithRestart
+  619  cd /projects/
+  620  cd fon_parser
+  621  npm run startWithRestart
+  622  cd /projects/
+  623  cd fon_parser_corners2
+  624  npm run startWithRestart
+  625  cd /projects/
+  626  cd bet/
+  627  npm run startWithRestart
+  628  npm start
+  629  NODE_OPTIONS=--openssl-legacy-provider npm start
+  630  cd ../
+  631  cd dafa_parser/
+  632  npm run startWithRestart
+  633  cd /projects/
+  634  cd tlg_pinn_py/
+  635  python3 main.py
+  636  source myenv/bin/activate
+  637  python3 main.py
+  638  cd /projects/
+  639  cd tlg_stat_py/
+  640  source  myenv/bin/activate
+  641  python3 main.py
+  642  cd /projects/
+  643  cd tlg_pinn_subs_py/
+  644  history
+  645  source myenv/bin/activate
+  646  python main.py
+  647  docker ps -a
+  648  tmux ls
+  649  source myenv/bin/activate
+  650  python main.py 
+  651  sudo dnf install tmux -y
+  652  dnf install tmux -y
+  653  sudo yum install tmux -y
+  654  yum install tmux -y
+  655  tmux
+  656  tmux new-session -t tg_pin_now
+  657  tmux attach-session -t tg_pin_now
+  658  tmux ls
+  659  tmux attach-session -t tg_pin_now-0
+  660  ping 178.63.15.46
+  661  ping 178.63.15.46 5430
+  662  telnet 178.63.15.46 5430
+  663  apt install telnet
+  664  telnet 178.63.15.46 5430
+  665  tmux ls
+  666  tmux attach-session -s tg_pin_now-0
+  667  tmux attach-session -t tg_pin_now-0
+  668  ifconfig
+  669  clear
+  670  htop
+  671  nano ~/.ssh/authorized_keys
+  672  htop
+  673  apt install virt-what
+  674  virt-what 
+  675  htop
+  676  cd /projects/
+  677  cd tlg_pinn_subs_py/
+  678  python main.py
+  679  source myenv/bin/activate
+  680  python main.py
+  681  cd ../
+  682  cd fon_parser
+  683  npm run startWithRestart
+  684  tmux ls
+  685  tmux attach tg_pin_now
+  686  tmux attach -t tg_pin_now
+  687  cd /projects/
+  688  cd dafa_parser/
+  689  npm run startWithRestart
+  690  pm run startWithRestart
+  691  npm run startWithRestart
+  692  cd /projects/
+  693  cd tlg_pinn_py/
+  694  python main.py
+  695  source  myenv/bin/activate
+  696  python main.py
+  697  cd ../
+  698  cd dafa_parser_2/
+  699  npm run startWithRestart
+  700  npm install
+  701  npm run startWithRestart
+  702  cd /projects/
+  703  cd tlg_stat_py/
+  704  source myenv/bin/activate
+  705  python main.py
+  706  cd /projects/
+  707  cd fon_parser
+  708  npm run startWithRestart
+  709  tmux new -s f1
+  710  tmux new -s f2
+  711  tmux new -s f3
+  712  tmu xls
+  713  tmux ls
+  714  tmux new -s d2
+  715  tmux new -s d1
+  716  nano ~/.ssh/authorized_keys 
+  717  exit
+  718  htop
+  719  cat /etc/nginx/sites-available/cfa.conf 
+  720  cat /etc/nginx/nginx.conf 
+  721  less /etc/nginx/nginx.conf
+  722  htop
+  723  docker ps
+  724  cd /opt/
+  725  ls -l
+  726  cd /
+  727  tar -v --extract -f /opt/ivpn.tar.xz -C /
+  728  ls -l /opt
+  729  ls -l /opt/ivpn
+  730  /usr/bin/ivpn-service --logging
+  731  ip r
+  732  ip rule
+  733  ivpn -h
+  734  ivpn splittun
+  735  ivpn splittun -h
+  736  ivpn splittun -inverse_on -inverse_allow_default_connection on -inverse_restrict_dns off
+  737  ivpn -h
+  738  ivpn login i-MLQA-W7GV-XGR2
+  739  ivpn splittun -inverse_on -inverse_allow_default_connection on -inverse_restrict_dns off
+  740  ip route
+  741  ip a
+  742  ip r
+  743  apt install wireguard-tools
+  744  cat > /etc/wireguard/ivpn.conf
+  745  nano /etc/wireguard/ivpn.conf
+  746  curl --interface ivpn https://ipinfo.io/ip
+  747  wg-quick up ivpn
+  748  curl --interface ivpn https://ipinfo.io/ip
+  749  cat > /etc/gost.yaml
+  750  nano /etc/gost.yaml
+  751  cat /etc/os-release
+  752  ufw status verbose
+  753  cat /etc/systemd/system/gost.service
+  754  cat > /etc/systemd/system/gost.service
+  755  systemctl daemon-reload
+  756  systemctl start gost
+  757  systemctl status gost
+  758  systemctl stop gost
+  759  bash <(wget -O - https://github.com/go-gost/gost/raw/master/install.sh) --install
+  760  systemctl start gost
+  761  systemctl status gost
+  762  ip -c a
+  763  nano /etc/gost.yaml
+  764  systemctl restart gost
+  765  ss -lnptu | grep gost
+  766  nano /etc/gost.yaml
+  767  systemctl stop
+  768  systemctl stop gost
+  769  rm /tmp/gost.log 
+  770  systemctl start gost
+  771  tail -f /tmp/gost.log 
+  772  nano /etc/gost.yaml
+  773  systemctl restart gost
+  774  wg-quick down ivpn
+  775  systemctl start wg-quick@ivpn
+  776  systemctl enable wg-quick@ivpn
+  777  systemctl enable gost
+  778  systemctl stop wg-quick@ivpn
+  779  systemctl start wg-quick@ivpn
+  780  htop
+  781  apt search python3
+  782  apt search python3 | grep -E '11|12|!3'
+  783  apt search python3 | grep -E '11|12|13'
+  784  cat /etc/os-release
+  785  sudo apt update
+  786  sudo apt install -y software-properties-common
+  787  sudo add-apt-repository ppa:deadsnakes/ppa
+  788  sudo apt upd
+  789  sudo apt update
+  790  apt search python3.13
+  791  apt install -y python3.13 python3.13-venv
+  792  cd /tmp
+  793  python3.13 -m venv venv
+  794  . venv/bin/activate
+  795  pip install orjson zstandard
+  796  ip -c a
+  797  ./test_puller.py 
+  798  cd /tmp
+  799  . venv/bin/activate
+  800  ./test_puller.py 
+  801  systemctl status NetworkManager
+  802  nmcli show dev
+  803  nmcli dev show
+  804  nmcli dev show | grep -i dns
+  805  nmcli general status
+  806  ip -c a
+  807  cat /etc/resolv.conf 
+  808  ls -la
+  809  ls -la /
+  810  cd /projects/base/scv
+  811  cd /projects/base/csv
+  812  ls -la
+  813  apt install aws
+  814  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  815  apt install ls++
+  816  ls
+  817  unzip awscliv2.zip
+  818  ls
+  819  sudo ./aws/install
+  820  aws --version
+  821  mkdir -p massive_data/global_forex
+  822  tree
+  823  apt install tree
+  824  tree
+  825  clear
+  826  tree -L 2
+  827  ls
+  828  cd massive_data/
+  829  tree -L 2
+  830  cd global_forex/
+  831  aws configure
+  832  cd ~/.aws/
+  833  updatedb
+  834  apt install locate
+  835  updatedb
+  836  locate ".aws/"
+  837  aws configure
+  838  zagNsOOMIKjDLSydsipVbqfnd8XBU3mR 63d36316-a3a7-4671-9945-4efff144760e
+  839  aws configure set aws_access_key_id 63d36316-a3a7-4671-9945-4efff144760e
+  840  aws configure set aws_secret_access_key zagNsOOMIKjDLSydsipVbqfnd8XBU3mR
+  841  aws s3 ls s3://flatfiles/ --endpoint-url https://files.massive.com
+  842  ls
+  843  aws s3 sync s3://flatfiles/global_forex/day_aggs_v1 . --endpoint-url https://files.massive.com
+  844  l
+  845  aws s3 sync s3://flatfiles/global_forex/day_aggs_v1 . --endpoint-url https://files.massive.com
+  846  cd ..
+  847  aws s3 sync s3://flatfiles . --endpoint-url https://files.massive.com
+  848  apt install tmux
+  849  apt autoremove
+  850  apt update
+  851  apt upgrade
+  852  apt update
+  853  apt upgrade
+  854  cd /projects/base/csv/
+  855  screen
+  856  screen -r
+  857  screen -ls
+  858  fdisk -l
+  859  aws s3 sync s3://flatfiles . --endpoint-url https://files.massive.com
+  860  l
+  861  ls -la
+  862  rm awscliv2.zip 
+  863  ls
+  864  rm -r global_crypto/
+  865  rm -r massive_data/
+  866  l
+  867  ls
+  868  apt install lspp
+  869  cd /tmp
+  870  git clone https://github.com/trapd00r/ls--.git
+  871  cd ls--
+  872  cp ls++ /usr/local/bin/
+  873  chmod +x /usr/local/bin/ls++
+  874  ls++
+  875  cpanm Term::ExtendedColor
+  876  apt install cpanminus
+  877  cpanm Term::ExtendedColor
+  878  ls++
+  879  cpanm File::LsColor
+  880  apt update
+  881  ls++
+  882  ls -la
+  883  cp ls++.conf /root/.ls++.conf
+  884  ls++
+  885  cd ~
+  886  ls -la
+  887  nano .bashrc
+  888  exit
+  889  screen -t
+  890  screen -r
+  891  exit
+  892  l
+  893  ls
+  894  la
+  895  ll
+  896  nano ~/.bashrc
+  897  ..
+  898  nano ~/.bashrc
+  899  exit
+  900  nano ~/.bashrc
+  901  massive
+  902  nano ~/.bashrc
+  903  exit
+  904  screen -r
+  905  screen
+  906  df -h
+  907  cd /projects/
+  908  cd base/
+  909  cd csv/
+  910  ls
+  911  cd aws/
+  912  ls
+  913  cd ../
+  914  cd global_
+  915  cd global_crypto/
+  916  ls
+  917  cd day_aggs_v1/
+  918  ls
+  919  cd 2010
+  920  ls
+  921  cd 01
+  922  ls
+  923  df -h
+  924  screen -r
+  925  l
+  926  la
+  927  massive
+  928  l
+  929  massive
+  930  l
+  931  df -h
+  932  df -h /projects/base/csv
+  933  du -h /projects/base/csv
+  934  du --help
+  935  du -sh
+  936  du -h
+  937  du -s
+  938  du -sh */
+  939  e
+  940  exit
+  941  fdisk -l
+  942  cd /dev/md0
+  943  lsblk
+  944  df -h | grep nvme1n1
+  945  df -h | grep nvme2n1
+  946  df -h | grep nvme
+  947  fdisk -l
+  948  fdisk -l | grep nvme
+  949  fdisk -l | grep "Linux"
+  950  df -h | grep "/$"
+  951  cat /boot/grub/grub.cfg | grep "root="
+  952  lsblk -f
+  953  findmnt -n -o SOURCE /
+  954  fdisk -x
+  955  lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | grep "disk\|/$"
+  956  findmnt -n -o SOURCE /
+  957  df -h | grep nvme
+  958  l /mnt
+  959  clear
+  960  fdisk -l /dev/nvme0n1
+  961  fdisk -l /dev/nvme1n1
+  962  fdisk -l /dev/nvme2n1
+  963  root@MainProcess ~ # 
+  964  lsblk -o NAME,FSTYPE,MOUNTPOINT | grep -i efi
+  965  mount /dev/nvme0n1 /mnt
+  966  cd /dev/nvme0n1
+  967  lsblk | grep nvme0
+  968  mount /dev/nvme1n1 /mnt
+  969  umount /mnt
+  970  umount /dev/nvme1n1
+  971  umount /dev/nvme0n1
+  972  umount /dev/nvme2n1
+  973  umount /mnt
+  974  lsblk /dev/nvme1n1
+  975  lsblk /dev/nvme0n1
+  976  mount /dev/nvme1n1p1 /mnt
+  977  l /mnt
+  978  df -h
+  979  fdisk -l /dev/nvme1n1
+  980  umount /mnt
+  981  mount /dev/nvme1n1p4 /mnt
+  982  cat /proc/mdstat
+  983  mount /dev/md2 /mnt
+  984  l /mnt
+  985  umount /mnt
+  986  cd /projects/base/csv/
+  987  screen
+  988  exit
+  989  screen -t
+  990  screen -r
+  991  exit
+  992  df -h
+  993  cd /projects/
+  994  cd base/
+  995  cd csv/
+  996  cd global_forex/
+  997  ls
+  998  cd day_aggs_v1/
+  999  ls
+ 1000  cd 2009/
+ 1001  ls
+ 1002  cd 10
+ 1003  ls
+ 1004  cd /projects/
+ 1005  cd base/
+ 1006  docker-compose build
+ 1007  docker-compose up
+ 1008  cd /projects/
+ 1009  cd base/
+ 1010  docker-compose build
+ 1011  docker-compose up
+ 1012  docker-compose down
+ 1013  docker-compose up
+ 1014  cd /projects/
+ 1015  cd base/
+ 1016  docker-compose up
+ 1017  docker-compose build
+ 1018  cd /projects/
+ 1019  cd base/
+ 1020  docker-compose build
+ 1021  docker-compose up
+ 1022  docker-compose вщцт
+ 1023  docker-compose down
+ 1024  docker-compose up
+ 1025  cd /projects/
+ 1026  cd base/
+ 1027  docker-compose down
+ 1028  docker-compose up
+ 1029  cd /projects/
+ 1030  cd base/
+ 1031  docker-compose down
+ 1032  df -h
+ 1033  docker-compose down
+ 1034  df -h
+ 1035  docker-compose down
+ 1036  docker-compose build
+ 1037  docker-compose up
+ 1038  docker logs greenplum-db
+ 1039  cd /projects/
+ 1040  cd base/
+ 1041  docker logs greenplum-db
+ 1042  docker-compose down
+ 1043  docker-compose build
+ 1044  docker-compose up
+ 1045  docker-compose down
+ 1046  docker-compose up -d
+ 1047  docker logs greenplum-db
+ 1048  docker logs greenplum
+ 1049  docker ps
+ 1050  docker rm -f greenplum-db
+ 1051  docker-compose up -d
+ 1052  docker ps
+ 1053  cd /projects/
+ 1054  cd base/
+ 1055  docker-compose down
+ 1056  docker-compose up -d
+ 1057  docker ps
+ 1058  docker network inspect bridge
+ 1059  docker logs greenplum
+ 1060  docker exec -it greenplum bash
+ 1061  cd /projects/
+ 1062  cd base/
+ 1063  docker-compose down
+ 1064  docker-compose up -d
+ 1065  docker-compose logs
+ 1066  docker-compose down
+ 1067  docker-compose up -d
+ 1068  docker-compose logs
+ 1069  docker exec -it greenplum bash
+ 1070  cd /projects/
+ 1071  cd base/
+ 1072  docker-compose down
+ 1073  docker-compose build
+ 1074  docker-compose up
+ 1075  docker-compose down
+ 1076  docker-compose up
+ 1077  docker-compose down
+ 1078  docker-compose игшдв
+ 1079  docker-compose build
+ 1080  docker-compose up
+ 1081  docker-compose down
+ 1082  docker-compose up -d
+ 1083  docker exec -it greenplum bash
+ 1084  cd /projects/
+ 1085  cd base/
+ 1086  docker-compose down
+ 1087  docker-compose up
+ 1088  docker-compose down
+ 1089  docker-compose up
+ 1090  cd /projects/
+ 1091  cd base/
+ 1092  docker-compose down
+ 1093  docker-compose up --force-recreate
+ 1094  docker-compose down
+ 1095  docker-compose up -в
+ 1096  docker-compose up -d
+ 1097  docker logs greenplum
+ 1098  docker exec -it greenplum psql -h greenplum -U gpadmin -d database-name
+ 1099  docker exec -it greenplum bash
+ 1100  cd /projects/
+ 1101  cd base/
+ 1102  docker-compose down
+ 1103  docker exec -it greenplum bash
+ 1104  cd /projects/
+ 1105  cd base/
+ 1106  docker-compose up -d
+ 1107  docker exec -it greenplum bash
+ 1108  cd /projects/
+ 1109  cd base/
+ 1110  docker-compose down
+ 1111  docker-compose up
+ 1112  docker-compose вщцт
+ 1113  docker-compose down
+ 1114  docker-compose up
+ 1115  docker-compose down
+ 1116  docker-compose up
+ 1117  ls -la /projects/base/03-load-csv-gl.sh
+ 1118  file /projects/base/03-load-csv-gl.sh
+ 1119  # если внутри ничего важного
+ 1120  rmdir /projects/base/03-load-csv-gl.sh
+ 1121  # создать файл
+ 1122  cat > /projects/base/03-load-csv-gl.sh <<'EOF'
+ 1123  #!/usr/bin/env bash
+ 1124  set -euo pipefail
+ 1125  echo "hello from 03-load-csv-gl.sh"
+ 1126  EOF
+ 1127  chmod +x /projects/base/03-load-csv-gl.sh
+ 1128  ls -la /projects/base/03-load-csv-gl.sh
+ 1129  file /projects/base/03-load-csv-gl.sh
+ 1130  docker compose down
+ 1131  docker compose up -d
+ 1132  docker-compose down
+ 1133  docker-compose up -d
+ 1134  docker-compose logs
+ 1135  psql -h greenplum -p 5432 -U gpadmin
+ 1136  cd /projects/
+ 1137  cd base/
+ 1138  cd csv/
+ 1139  cd global_forex/
+ 1140  cd day_aggs_v1/
+ 1141  ls
+ 1142  cd 2009
+ 1143  ls
+ 1144  cd 09
+ 1145  ls
+ 1146  gunzip 2009-09-25.csv.gz
+ 1147  cd ../../../
+ 1148  cd ../
+ 1149  export PGHOST=localhost
+ 1150  export PGPORT=5432
+ 1151  export PGDATABASE=postgres
+ 1152  export PGUSER=gpadmin
+ 1153  export PGPASSWORD=GreenPlum
+ 1154  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1155  -bash: ./load_gz_csv_to_pg.sh: Permission denied
+ 1156  ls -l ./load_gz_csv_to_pg.sh
+ 1157  chmod +x ./load_gz_csv_to_pg.sh
+ 1158  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1159  sudo apt-get update
+ 1160  sudo apt-get install -y postgresql-client
+ 1161  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1162  export PGPORT=25432
+ 1163  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1164  gzip -cd /projects/base/csv/global_forex/day_aggs_v1/2018/11/2018-11-13.csv.gz | psql -X -v ON_ERROR_STOP=1   -c "\copy your_table FROM STDIN WITH (FORMAT csv, HEADER true)" 2>&1 | head -n 5
+ 1165  gzip -cd /projects/base/csv/global_forex/day_aggs_v1/2018/11/2018-11-13.csv.gz | psql -X -v ON_ERROR_STOP=1   -c "\copy market_data FROM STDIN WITH (FORMAT csv, HEADER true)" 2>&1 | head -n 50
+ 1166  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1167  sudo ufw status
+ 1168  cd /projects/
+ 1169  cd base/
+ 1170  docker-compose build
+ 1171  docker-compose down
+ 1172  docker-compose up
+ 1173  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1174  cd /projects/
+ 1175  cd base/
+ 1176  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1177  docker-compose down
+ 1178  docker-compose up -d
+ 1179  cd /projects/
+ 1180  cd base/
+ 1181  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1182  export PGPORT=25432
+ 1183  history
+ 1184  export PGDATABASE=postgres
+ 1185  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1186  export PGUSER=gpadmin
+ 1187  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1188  export PGPORT=25432
+ 1189  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1190  export PGPORT=5432
+ 1191  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1192  export PGPORT=25432
+ 1193  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1194  export PGHOST=localhost
+ 1195  export PGPASSWORD=GreenPlum
+ 1196  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1197  history
+ 1198  cd /projects/
+ 1199  cd base/
+ 1200  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1201  history
+ 1202  export PGHOST=localhost
+ 1203  export PGPORT=25432
+ 1204  export PGDATABASE=postgres
+ 1205  export PGUSER=gpadmin
+ 1206  export PGPASSWORD=GreenPlum
+ 1207  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1208  cd /projects/
+ 1209  cd base/
+ 1210  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1211  export PGHOST=localhost
+ 1212  export PGPORT=25432
+ 1213  export PGDATABASE=postgres
+ 1214  export PGUSER=gpadmin
+ 1215  export PGPASSWORD=GreenPlum
+ 1216  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1217  GZ="/projects/base/csv/global_forex/day_aggs_v1/2010/03/2010-03-08.csv.gz"
+ 1218  # первые строки (заголовок + данные)
+ 1219  gzip -cd "$GZ" | sed -n '1,30p'
+ 1220  # найти строки с кавычками
+ 1221  gzip -cd "$GZ" | grep -n '"' | head -n 20
+ 1222  # показать строки с CR (Windows-строки)
+ 1223  gzip -cd "$GZ" | awk '/\r$/ {print NR ":" $0}' | head -n 20
+ 1224  gzip -cd "$GZ" | head -n 1
+ 1225  gzip -cd "$GZ" | head -n 50 | awk -F',' '{print NR, NF}' | head
+ 1226  gzip -cd "$GZ" | head -n 3
+ 1227  gzip -cd "$GZ" | grep -n '"' | head -n 5
+ 1228  gzip -cd "$GZ" | head -n 3  
+ 1229  gzip -cd "$GZ" | grep -n '"' | head -n 5  
+ 1230  gzip -cd "$GZ" | head -n 50 | awk -F',' '{print NR, NF}' | head -n 20
+ 1231  export PGHOST=localhost
+ 1232  export PGPORT=25432
+ 1233  export PGDATABASE=postgres
+ 1234  export PGUSER=gpadmin
+ 1235  export PGPASSWORD=GreenPlum
+ 1236  cd /projects/
+ 1237  cd base/
+ 1238  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1239  cd /projects/
+ 1240  cd base/
+ 1241  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1242  export PGHOST=localhost
+ 1243  export PGPORT=25432
+ 1244  export PGDATABASE=postgres
+ 1245  export PGUSER=gpadmin
+ 1246  export PGPASSWORD=GreenPlum
+ 1247  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1248  exit
+ 1249  l
+ 1250  l data
+ 1251  l
+ 1252  la
+ 1253  clear
+ 1254  la
+ 1255  l pUb
+ 1256  l Public/
+ 1257  clear
+ 1258  exit
+ 1259  l /projects/base/csv/
+ 1260  exit
+ 1261  cd ..
+ 1262  ls
+ 1263  ls
+ 1264  ls
+ 1265  cd projects
+ 1266  cd /projects/base/csv/
+ 1267  ls
+ 1268  cd /projects/base/csv/global_forex/
+ 1269  ls
+ 1270  zip -r forex_data.zip day_aggs_v1 minute_aggs_v1 quotes_v1
+ 1271  tar -cf - day_aggs_v1 minute_aggs_v1 quotes_v1 | pigz -c > forex_data.tar.gz
+ 1272  cd /projects/base/csv/global_forex/
+ 1273  cd ../
+ 1274  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1275  export PGHOST=localhost
+ 1276  export PGPORT=25432
+ 1277  export PGDATABASE=postgres
+ 1278  export PGUSER=gpadmin
+ 1279  export PGPASSWORD=GreenPlum
+ 1280  cd projects
+ 1281  cd /projects
+ 1282  cd base/
+ 1283  export PGHOST=localhost
+ 1284  export PGPORT=25432
+ 1285  export PGDATABASE=postgres
+ 1286  export PGUSER=gpadmin
+ 1287  export PGPASSWORD=GreenPlum
+ 1288  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1289  cd /projects/base/
+ 1290  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1291  cd /projects
+ 1292  cd /projects/base/
+ 1293  export PGHOST=localhost
+ 1294  export PGPORT=25432
+ 1295  export PGDATABASE=postgres
+ 1296  export PGUSER=gpadmin
+ 1297  export PGPASSWORD=GreenPlum
+ 1298  tmux
+ 1299  df -h
+ 1300  export PGHOST=localhost
+ 1301  export PGPORT=25432
+ 1302  export PGDATABASE=postgres
+ 1303  export PGUSER=gpadmin
+ 1304  export PGPASSWORD=GreenPlum
+ 1305  cd /projects/
+ 1306  cd base/
+ 1307  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1308  cd /projects/
+ 1309  cd base/
+ 1310  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1311  tmux
+ 1312  tmux ls
+ 1313  tmux attach -t 6
+ 1314  cd /projects/
+ 1315  cd base/
+ 1316  docker-compose logs
+ 1317  docker-compose down
+ 1318  docker-compose up
+ 1319  docker-compose down
+ 1320  docker-compose up
+ 1321  docker-compose down
+ 1322  docker-compose build
+ 1323  docker-compose up
+ 1324  # Остановить и удалить существующий контейнер
+ 1325  docker stop cloudbeaver
+ 1326  docker rm cloudbeaver
+ 1327  # Или одной командой (принудительное удаление)
+ 1328  docker rm -f cloudbeaver
+ 1329  # Теперь запустить заново
+ 1330  docker-compose up -d
+ 1331  docker-compose logs
+ 1332  docker-compose down
+ 1333  docker-compose up
+ 1334  docker-compose -м
+ 1335  docker-compose -v
+ 1336  sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+ 1337  sudo chmod +x /usr/local/bin/docker-compose
+ 1338  docker-compose --version
+ 1339  docker-compose up
+ 1340  docker rm -f datalens-postgres
+ 1341  docker-compose up
+ 1342  docker-compose down
+ 1343  docker-compose up
+ 1344  docker rm -f 02cf4fa1d8c6f1befe3f86811c24893cb75ae57fc58cedad25ca5b938d8660b9
+ 1345  docker-compose up
+ 1346  docker rm -f fbd68687f910b5bfdd58fb621372449b769438fbbfb24cd9e341cf7a01b01801
+ 1347  docker-compose up
+ 1348  docker rm -f 0e976ead007325ab1901f5d919668e45d13363eb7eab8b720efe3b5ba46b89c7
+ 1349  docker-compose up
+ 1350  docker rm -f 2bc63e55ab9f6c10d22ad49746faebde04ec5d541a426efd87380426bb252a9b
+ 1351  docker-compose up
+ 1352  docker rm -f d0715db013e0fad80b734e04dd43a94af3daba7cb209eb007facc6d100b0099b
+ 1353  docker-compose up
+ 1354  docker rm -f c37be3d003106d73b6aed6999a2a357040178e5408e8eb8f51e7df3dca62a9cb
+ 1355  docker-compose up
+ 1356  exit
+ 1357  cd ..
+ 1358  ls
+ 1359  ls
+ 1360  cd backend/
+ 1361  python -m venv venv
+ 1362  python3 -m venv venv
+ 1363  source venv/bin/activate
+ 1364  clear
+ 1365  pip install -r requrements.txt 
+ 1366  docker ls
+ 1367  docker ps
+ 1368  docker compose up -d
+ 1369  docker-compose up -d
+ 1370  docker ps | grep fastapi
+ 1371  curl http://localhost:8000
+ 1372  docker-compose logs -f fastapi
+ 1373  docker-compose up -d
+ 1374  docker-compose up -d --build
+ 1375  docker-compose logs -f fastapi
+ 1376  curl http://localhost:8000
+ 1377  curl http://localhost:8000/api/v1
+ 1378  curl http://localhost:8000/api/v1/
+ 1379  curl http://localhost:8000/api/v1/items/
+ 1380  curl -X POST http://localhost:8000/api/v1/items/      -H "Content-Type: application/json"      -d '{"name": "Товар1", "price": 123.45}'
+ 1381  curl -X POST http://localhost:8000/api/v1/items/      -H "Content-Type: application/json"      -d '{"name1": "Товар1", "price": 123.45}'
+ 1382  sudo ufw allow 8000
+ 1383  docker compose up -d
+ 1384  docker-compose up -d
+ 1385  curl -X POST http://localhost:8000/api/v1/items/      -H "Content-Type: application/json"      -d '{"name1": "Товар1", "price": 123.45}'
+ 1386  docker-compose up -d --build
+ 1387  docker-compose logs -f fastapi
+ 1388  docker-compose restart fastaip
+ 1389  docker-compose restart fastapi
+ 1390  docker-compose logs -f fastapi
+ 1391  св /projects/
+ 1392  cd /projects/
+ 1393  cd base/
+ 1394  docker-compose restart ui-api
+ 1395  docker-compose down
+ 1396  docker-compose up
+ 1397  docker-compose down
+ 1398  docker-compose up -d
+ 1399  docker ps | grep data-api
+ 1400  curl http://localhost:8080/ping
+ 1401  docker ps | grep data-api
+ 1402  curl http://localhost:8080/ping
+ 1403  docker-compose logs data-api
+ 1404  docker ps | grep data-api
+ 1405  curl http://localhost:8080/ping
+ 1406  docker-compose logs data-api
+ 1407  cd /projects/
+ 1408  cd base/
+ 1409  docker-compose logs data-api
+ 1410  # 1. Проверьте что контейнеры в одной сети
+ 1411  docker network ls
+ 1412  docker network inspect <network_name> | grep -E "(Name|IPv4)"
+ 1413  # 2. Попробуйте ping из UI в data-api
+ 1414  docker exec datalens-ui ping -c 2 datalens-data-api
+ 1415  # 3. Проверьте curl из UI
+ 1416  docker exec datalens-ui curl -v http://datalens-data-api:8080/ping
+ 1417  # или
+ 1418  docker exec datalens-ui wget -O- http://datalens-data-api:8080/ping
+ 1419  # 4. Проверьте переменные окружения UI
+ 1420  docker exec datalens-ui env | grep -E "(DATA_ENDPOINT|API)"
+ 1421  docker network ls
+ 1422  docker exec datalens-ui ping -c 2 datalens-data-api
+ 1423  docker exec datalens-ui curl -v http://datalens-data-api:8080/ping
+ 1424  docker exec datalens-ui wget -O- http://datalens-data-api:8080/ping
+ 1425  docker exec datalens-ui env | grep -E "(DATA_ENDPOINT|API)"
+ 1426  docker-compose down
+ 1427  docker-compose up
+ 1428  docker-compose down
+ 1429  docker-compose up -d
+ 1430  docker-compose down
+ 1431  docker-compose up -d
+ 1432  docker-compose down
+ 1433  cd /projects/
+ 1434  cd base/
+ 1435  docker-compose down
+ 1436  docker-compose up
+ 1437  docker-compose down
+ 1438  docker-compose up
+ 1439  docker-compose down
+ 1440  docker-compose up
+ 1441  docker-compose вщцт
+ 1442  docker-compose down
+ 1443  docker-compose up -d
+ 1444  docker logs datalens-ui --tail 100
+ 1445  docker logs datalens-control-api --tail 100
+ 1446  docker logs datalens-data-api --tail 100
+ 1447  docker exec datalens-ui curl -v http://datalens-control-api:8080/api/v1/connectors
+ 1448  docker exec datalens-ui wget -O- http://datalens-control-api:8080/api/v1/connectors
+ 1449  docker exec datalens-ui node -e "
+ 1450  const http = require('http');
+ 1451  http.get('http://datalens-control-api:8080/api/v1/connectors', (res) => {
+ 1452    console.log('Status:', res.statusCode);
+ 1453    console.log('Headers:', res.headers);
+ 1454    res.on('data', (d) => process.stdout.write(d));
+ 1455  }).on('error', (e) => console.error('Error:', e.message));
+ 1456  "
+ 1457  docker exec datalens-ui env | grep -i "token\|auth\|secret\|key"
+ 1458  docker exec datalens-ui cat /opt/app/server/configs/common/default.js 2>/dev/null || docker exec datalens-ui cat /opt/app/configs/common.js 2>/dev/null || docker exec datalens-ui find /opt/app -name "*.js" -path "*/config*" | head -5
+ 1459  docker logs datalens-ui --tail 5 | grep -i "control-api\|connector\|auth"
+ 1460  docker exec datalens-ui node -e "
+ 1461  const http = require('http');
+ 1462  const options = {
+ 1463    hostname: 'datalens-control-api',
+ 1464    port: 8080,
+ 1465    path: '/api/v1/connectors',
+ 1466    headers: {
+ 1467      'x-dl-context': JSON.stringify({userId: 'local-user', tenantId: 'common'}),
+ 1468      'Authorization': 'Bearer dev-token'
+ 1469    }
+ 1470  };
+ 1471  http.get(options, (res) => { 
+ 1472    console.log('Status:', res.statusCode);
+ 1473    res.on('data', (d) => process.stdout.write(d));
+ 1474  }).on('error', (e) => console.error('Error:', e.message));
+ 1475  "
+ 1476  grep -A 10 -B 5 -i "auth\|token\|US_MASTER_TOKEN" docker-compose.yml
+ 1477  docker exec datalens-ui node -e "
+ 1478  const http = require('http');
+ 1479  const options = {
+ 1480    hostname: 'datalens-control-api',
+ 1481    port: 8080,
+ 1482    path: '/api/v1/connectors',
+ 1483    headers: {
+ 1484      'x-dl-context': JSON.stringify({userId: 'local-user', tenantId: 'common'}),
+ 1485      'Authorization': 'Bearer us-master-token'
+ 1486    }
+ 1487  };
+ 1488  http.get(options, (res) => { 
+ 1489    console.log('Status:', res.statusCode);
+ 1490    res.on('data', (d) => process.stdout.write(d));
+ 1491  }).on('error', (e) => console.error('Error:', e.message));
+ 1492  "
+ 1493  docker exec datalens-ui node -e "
+ 1494  const http = require('http');
+ 1495  const options = {
+ 1496    hostname: 'datalens-control-api',
+ 1497    port: 8080,
+ 1498    path: '/api/v1/connectors',
+ 1499    headers: {
+ 1500      'x-dl-context': JSON.stringify({userId: 'local-user', tenantId: 'common'}),
+ 1501      'Authorization': 'Bearer auth-master-token'
+ 1502    }
+ 1503  };
+ 1504  http.get(options, (res) => { 
+ 1505    console.log('Status:', res.statusCode);
+ 1506    res.on('data', (d) => process.stdout.write(d));
+ 1507  }).on('error', (e) => console.error('Error:', e.message));
+ 1508  "
+ 1509  docker exec datalens-ui node -e "
+ 1510  const http = require('http');
+ 1511  const options = {
+ 1512    hostname: 'datalens-control-api',
+ 1513    port: 8080,
+ 1514    path: '/api/v1/connectors',
+ 1515    headers: {
+ 1516      'x-dl-context': JSON.stringify({userId: 'local-user', tenantId: 'common'}),
+ 1517      'x-us-master-token': 'us-master-token'
+ 1518    }
+ 1519  };
+ 1520  http.get(options, (res) => { 
+ 1521    console.log('Status:', res.statusCode);
+ 1522    res.on('data', (d) => process.stdout.write(d));
+ 1523  }).on('error', (e) => console.error('Error:', e.message));
+ 1524  "
+ 1525  # 1. Проверим переменные окружения US сервиса
+ 1526  docker exec datalens-us env | grep -E "(MASTER_TOKEN|AUTH_POLICY|SECRET)"
+ 1527  # 2. Проверим, может ли UI получить токен напрямую от US
+ 1528  docker exec datalens-ui node -e "
+ 1529  const http = require('http');
+ 1530  const options = {
+ 1531    hostname: 'datalens-us',
+ 1532    port: 8083,
+ 1533    path: '/api/v1/auth/token',
+ 1534    method: 'POST',
+ 1535    headers: {
+ 1536      'Content-Type': 'application/json'
+ 1537    }
+ 1538  };
+ 1539  const req = http.request(options, (res) => {
+ 1540    console.log('Status:', res.statusCode);
+ 1541    res.on('data', (d) => console.log(d.toString()));
+ 1542  });
+ 1543  req.write(JSON.stringify({userId: 'local-user'}));
+ 1544  req.end();
+ 1545  req.on('error', (e) => console.error('Error:', e.message));
+ 1546  "
+ 1547  # 3. Попробуем endpoint для получения токена с мастер-токеном
+ 1548  docker exec datalens-ui node -e "
+ 1549  const http = require('http');
+ 1550  const options = {
+ 1551    hostname: 'datalens-us',
+ 1552    port: 8083,
+ 1553    path: '/api/v1/auth/initialize',
+ 1554    method: 'POST',
+ 1555    headers: {
+ 1556      'Content-Type': 'application/json',
+ 1557      'x-us-master-token': 'us-master-token'
+ 1558    }
+ 1559  };
+ 1560  const req = http.request(options, (res) => {
+ 1561    console.log('Status:', res.statusCode);
+ 1562    res.on('data', (d) => console.log(d.toString()));
+ 1563  });
+ 1564  req.write(JSON.stringify({userId: 'local-user', tenantId: 'common'}));
+ 1565  req.end();
+ 1566  req.on('error', (e) => console.error('Error:', e.message));
+ 1567  "
+ 1568  docker exec datalens-us env | grep -E "(MASTER_TOKEN|AUTH_POLICY|SECRET)"
+ 1569  docker exec datalens-ui node -e "
+ 1570  const http = require('http');
+ 1571  const options = {
+ 1572    hostname: 'datalens-us',
+ 1573    port: 8083,
+ 1574    path: '/api/v1/auth/token',
+ 1575    method: 'POST',
+ 1576    headers: {
+ 1577      'Content-Type': 'application/json'
+ 1578    }
+ 1579  };
+ 1580  const req = http.request(options, (res) => {
+ 1581    console.log('Status:', res.statusCode);
+ 1582    res.on('data', (d) => console.log(d.toString()));
+ 1583  });
+ 1584  req.write(JSON.stringify({userId: 'local-user'}));
+ 1585  req.end();
+ 1586  req.on('error', (e) => console.error('Error:', e.message));
+ 1587  "
+ 1588  docker exec datalens-ui node -e "
+ 1589  const http = require('http');
+ 1590  const options = {
+ 1591    hostname: 'datalens-us',
+ 1592    port: 8083,
+ 1593    path: '/api/v1/auth/initialize',
+ 1594    method: 'POST',
+ 1595    headers: {
+ 1596      'Content-Type': 'application/json',
+ 1597      'x-us-master-token': 'us-master-token'
+ 1598    }
+ 1599  };
+ 1600  const req = http.request(options, (res) => {
+ 1601    console.log('Status:', res.statusCode);
+ 1602    res.on('data', (d) => console.log(d.toString()));
+ 1603  });
+ 1604  req.write(JSON.stringify({userId: 'local-user', tenantId: 'common'}));
+ 1605  req.end();
+ 1606  req.on('error', (e) => console.error('Error:', e.message));
+ 1607  "
+ 1608  docker-compose down
+ 1609  docker-compose up
+ 1610  docker-compose down
+ 1611  docker-compose up
+ 1612  docker-compose down
+ 1613  docker-compose up
+ 1614  docker-compose down
+ 1615  docker-compose up
+ 1616  docker-compose down
+ 1617  docker-compose up
+ 1618  docker-compose down
+ 1619  docker-compose up
+ 1620  docker-compose down
+ 1621  docker-compose up
+ 1622  docker-compose down
+ 1623  docker-compose up
+ 1624  docker-compose down
+ 1625  docker-compose up
+ 1626  cd /projects/
+ 1627  cd base/
+ 1628  docker-compose down
+ 1629  docker-compose up
+ 1630  docker-compose down
+ 1631  docker-compose up
+ 1632  docker-compose down
+ 1633  docker-compose up
+ 1634  docker-compose down
+ 1635  docker-compose up
+ 1636  docker-compose down
+ 1637  docker-compose up
+ 1638  docker-compose down
+ 1639  docker-compose up
+ 1640  docker-compose down
+ 1641  docker-compose up
+ 1642  docker-compose down
+ 1643  docker-compose up
+ 1644  cd /projects/
+ 1645  cd base/
+ 1646  docker-compose up
+ 1647  docker-compose down
+ 1648  docker-compose up
+ 1649  cd /projects/base/
+ 1650  history
+ 1651  cd /projects/
+ 1652  cd base/
+ 1653  history
+ 1654  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/minute_aggs_v1
+ 1655  export PGHOST=localhost
+ 1656  export PGPORT=25432
+ 1657  export PGDATABASE=postgres
+ 1658  export PGUSER=gpadmin
+ 1659  export PGPASSWORD=GreenPlum
+ 1660  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/minute_aggs_v1
+ 1661  cd /projects/
+ 1662  cd base/
+ 1663  tmux ls
+ 1664  tmux attach 6
+ 1665  tmux attach -t 6
+ 1666  df -h
+ 1667  clear
+ 1668  fdisk -l
+ 1669  du -h /dev/md2
+ 1670  exit
+ 1671  df -h
+ 1672  tmux attach 6
+ 1673  tmux ls
+ 1674  tmux attach -t 6
+ 1675  exit
+ 1676  export PGHOST=localhost
+ 1677  export PGPORT=25432
+ 1678  export PGDATABASE=postgres
+ 1679  export PGUSER=gpadmin
+ 1680  export PGPASSWORD=GreenPlum
+ 1681  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1682  export PGHOST=localhost
+ 1683  export PGPORT=25432
+ 1684  export PGDATABASE=postgres
+ 1685  export PGUSER=gpadmin
+ 1686  export PGPASSWORD=GreenPlum
+ 1687  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1688  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/minute_aggs_v1
+ 1689  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1690  htop
+ 1691  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/minute_aggs_v1
+ 1692  df -h
+ 1693  export PGPASSWORD=GreenPlum
+ 1694  df -h
+ 1695  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/quotes_aggs_v1
+ 1696  export PGHOST=localhost
+ 1697  export PGPORT=25432
+ 1698  export PGDATABASE=postgres
+ 1699  export PGUSER=gpadmin
+ 1700  export PGPASSWORD=GreenPlum
+ 1701  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/quotes_aggs_v1
+ 1702  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/quotes_v1
+ 1703  cd csv/global_forex/quotes_v1/
+ 1704  ls
+ 1705  cd 2009
+ 1706  ls
+ 1707  cd 09
+ 1708  ls
+ 1709  history
+ 1710  ls
+ 1711  gunzip -k 2009-09-30.csv.gz
+ 1712  cd ../../../
+ 1713  cd ../../
+ 1714  ./load.sh /projects/base/csv/global_forex/quotes_v1
+ 1715  chmod +x ./load.sh
+ 1716  ./load.sh /projects/base/csv/global_forex/quotes_v1
+ 1717  export PGDATABASE=postgres
+ 1718  df -h
+ 1719  docker-compose up
+ 1720  cd csv/
+ 1721  cd global_crypto/
+ 1722  cd trades_v1/
+ 1723  rm -rf 2010
+ 1724  df -h
+ 1725  rm -rf 2013
+ 1726  df -h
+ 1727  rm -rf 2014
+ 1728  df -h
+ 1729  cd ../
+ 1730  cd global_forex/
+ 1731  cd quotes_v1/
+ 1732  rm -rf 2009
+ 1733  rm -rf 2010
+ 1734  df -h
+ 1735  du -sh 2011
+ 1736  sudo lsof +L1 | grep deleted
+ 1737  cd ../
+ 1738  cd ../../../
+ 1739  cd base/
+ 1740  docker-compose down
+ 1741  df -h
+ 1742  sudo lsof +L1 | grep deleted
+ 1743  sudo kill -9 2187576 2187588 2187600
+ 1744  sudo lsof +L1 | grep deleted
+ 1745  sudo killall -9 npm node
+ 1746  sudo lsof +L1 | grep deleted
+ 1747  df -h
+ 1748  sudo kill -9 2775864 3755900 3758533
+ 1749  cd /projects/
+ 1750  cd dafa_parser
+ 1751  npm run startWithRestart
+ 1752  npm run startWithRestart
+ 1753  cd /projects/
+ 1754  cd dafa_parser_2
+ 1755  npm run startWithRestart
+ 1756  cd /projects/
+ 1757  cd fon_parser_corners2
+ 1758  npm run startWithRestart
+ 1759  cd /projects/
+ 1760  cd fon_parser
+ 1761  npm run startWithRestart
+ 1762  cd ../
+ 1763  cd fon_parser_corners
+ 1764  npm run startWithRestart
+ 1765  source myenv/bin/activate
+ 1766  python main.py 
+ 1767  pip install asyncpg
+ 1768  python main.py 
+ 1769  pip install asyncpg
+ 1770  python main.py 
+ 1771  source myenv/bin/activate
+ 1772  python main.py 
+ 1773  pip install asyncpg
+ 1774  python main.py 
+ 1775  which python
+ 1776  deactivate
+ 1777  source myenv/bin/activate
+ 1778  pip install asyncpg
+ 1779  python main.py 
+ 1780  deactivate
+ 1781  source /projects/tlg_pinn_py/myenv/bin/activate
+ 1782  python -m pip install asyncpg
+ 1783  python main.py 
+ 1784  source /projects/tlg_pinn_py/myenv/bin/activate
+ 1785  python -m pip install --no-cache-dir asyncpg
+ 1786  which python
+ 1787  python -m site
+ 1788  python -m pip list | grep asyncpg
+ 1789  deactivate 
+ 1790  pip install asyncpg
+ 1791  python main.py 
+ 1792  ls
+ 1793  python -m venv venv
+ 1794  python3 -m venv venv
+ 1795  python main.py source venv/bin/activate
+ 1796  python3 main.py source venv/bin/activate
+ 1797  source venv/bin/activate
+ 1798  pip install telebot
+ 1799  python main.py 
+ 1800  pip install psycopg2
+ 1801  pip install psycopg2-binary
+ 1802  python main.py 
+ 1803  pip isntall asyncpg
+ 1804  pip install asyncpg
+ 1805  python main.py 
+ 1806  which python
+ 1807  python -m site
+ 1808  python -m pip list | grep asyncpg
+ 1809  python main.py 
+ 1810  clear
+ 1811  python main.py 
+ 1812  clear
+ 1813  python main.py 
+ 1814  clear
+ 1815  python main.py 
+ 1816  clear
+ 1817  python main.py 
+ 1818  clear
+ 1819  python main.py 
+ 1820  clear
+ 1821  python main.py 
+ 1822  clear
+ 1823  python main.py 
+ 1824  clear
+ 1825  python main.py 
+ 1826  clear
+ 1827  python main.py 
+ 1828  cd /projects/
+ 1829  cd base/
+ 1830  history
+ 1831  history | grep "load_gz"
+ 1832  ./load_gz_csv_to_pg.sh /projects/base/csv/global_forex/day_aggs_v1
+ 1833  history > my_history.txt

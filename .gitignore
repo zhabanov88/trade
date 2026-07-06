@@ -1,0 +1,14 @@
+# Тяжелые данные и логи
+csv/
+ssl/*.crt
+gexbot-historical.log
+massive-futures.log
+
+# Зависимости
+node_modules/
+ws/node_modules/
+charting_library/charting_library/bundles/
+
+# Файлы настроек ОС
+.DS_Store
+Thumbs.db

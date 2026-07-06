@@ -1,0 +1,79 @@
+/* code-panel-hotfix.css — добавьте в styles.css */
+
+.cpm-hf-modal {
+    position: fixed; inset: 0; z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+}
+.cpm-hf-overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,.65);
+}
+.cpm-hf-box {
+    position: relative;
+    background: var(--bg-primary, #1e1e2e);
+    border: 1px solid #2a2e39;
+    border-radius: 8px;
+    width: 460px; max-width: 92vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.cpm-hf-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid #2a2e39;
+    display: flex; justify-content: space-between; align-items: center;
+    color: #d1d4dc; font-size: 14px; font-weight: 600;
+}
+.cpm-hf-close {
+    background: none; border: none; color: #787b86;
+    font-size: 18px; cursor: pointer; line-height: 1; padding: 0;
+}
+.cpm-hf-close:hover { color: #d1d4dc; }
+.cpm-hf-body {
+    padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.cpm-hf-body label {
+    display: flex; flex-direction: column; gap: 4px;
+    color: #9598a1; font-size: 12px;
+}
+.cpm-hf-body label small { color: #555; margin-left: 4px; }
+.cpm-hf-body input[type="text"],
+.cpm-hf-body textarea {
+    padding: 7px 10px;
+    background: #131722;
+    border: 1px solid #2a2e39;
+    border-radius: 4px; color: #d1d4dc;
+    font-size: 13px; font-family: inherit; resize: vertical; outline: none;
+    transition: border-color .15s;
+}
+.cpm-hf-body input[type="text"]:focus,
+.cpm-hf-body textarea:focus { border-color: #2962FF; }
+.cpm-hf-body input[readonly] { color: #555; cursor: not-allowed; }
+.hf-row {
+    flex-direction: row !important;
+    align-items: center; gap: 8px !important; cursor: pointer;
+}
+.cpm-hf-foot {
+    padding: 12px 18px; border-top: 1px solid #2a2e39;
+    display: flex; gap: 8px; justify-content: flex-end;
+}
+.hf-cancel {
+    padding: 7px 16px; background: #2a2e39; border: none;
+    border-radius: 4px; color: #d1d4dc; font-size: 13px; cursor: pointer;
+}
+.hf-cancel:hover { background: #363b4e; }
+.hf-save {
+    padding: 7px 18px; background: #2962FF; border: none;
+    border-radius: 4px; color: #fff; font-size: 13px;
+    font-weight: 600; cursor: pointer;
+}
+.hf-save:hover { background: #1e4fcc; }
+
+/* Светлая тема */
+body.light-theme .cpm-hf-box  { background: #fff; border-color: #e0e3eb; }
+body.light-theme .cpm-hf-head { border-color: #e0e3eb; color: #131722; }
+body.light-theme .cpm-hf-foot { border-color: #e0e3eb; }
+body.light-theme .cpm-hf-body label { color: #555; }
+body.light-theme .cpm-hf-body input[type="text"],
+body.light-theme .cpm-hf-body textarea {
+    background: #f8f9fd; border-color: #d0d3db; color: #131722;
+}
+body.light-theme .hf-cancel { background: #e9ecf2; color: #131722; }
