@@ -321,7 +321,8 @@ class TradingApp {
                     'study_templates',
                     'chart_template_storage',
                     'side_toolbar_in_fullscreen_mode',
-                    'drawing_templates'
+                    'drawing_templates',
+                    'range_bars',
                 ],
                 custom_formatters: {
                     priceFormatterFactory: function (symbolInfo) {

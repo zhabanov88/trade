@@ -26,6 +26,9 @@
  *   - Логика та же что для обычных ТФ
  */
 
+
+
+let fromRepeat = {}
 function parseLocalTimestamp(ts) {
     if (!ts) return 0;
     const s = String(ts).replace(' ', 'T').replace('Z', '');
@@ -144,12 +147,12 @@ class DatabaseIntegratedDatafeed {
         let endpoint = 'market-data-test';
         const params = new URLSearchParams({ ticker, table });
 
-        if (from != null) params.append('from', from);
-        if (to != null) params.append('to', to);
+        //if (from != null) params.append('from', from);
+        //if (to != null) params.append('to', to);
 
-        if (up.length) params.append('up', up.join(','));
-        if (down.length) params.append('down', down.join(','));
-        if (up.length || down.length) endpoint = 'market-data/mtf';
+        //if (up.length) params.append('up', up.join(','));
+        //if (down.length) params.append('down', down.join(','));
+        //if (up.length || down.length) endpoint = 'market-data/mtf';
         if (table === 'raw_market_data') {
             endpoint = 'market-data/ticks/aggregated';
             params.append('interval', '1');
@@ -206,7 +209,7 @@ class DatabaseIntegratedDatafeed {
             session: '24x7',
             timezone: 'Etc/UTC',
             exchange: instrument.group_provider_name || 'CLICKHOUSE',
-            minmov: 1, pricescale: 100000,
+            minmov: 1, pricescale: (['ESU6','ESH7','ESZ6','ESM7','NQU6','NQH7','NQZ6','NQM7'].includes(instrument.symbol) ? 4 : 100000),
             has_intraday: true, has_weekly_and_monthly: true,
             has_seconds: true, seconds_multipliers: ['30'],
             supported_resolutions: this.supportedResolutions,
@@ -227,7 +230,7 @@ class DatabaseIntegratedDatafeed {
                 name: item.symbol, full_name: `${item.symbol}`,
                 description: item.name, type: item.type,
                 session: '24x7', timezone: 'Etc/UTC', exchange: 'CLICKHOUSE',
-                minmov: 1, pricescale: 100000,
+                minmov: 1, pricescale: (['ESU6','ESH7','ESZ6','ESM7','NQU6','NQH7','NQZ6','NQM7'].includes(item.symbol) ? 4 : 100000),
                 has_intraday: true, has_weekly_and_monthly: true,
                 has_seconds: true, seconds_multipliers: ['30'],
                 supported_resolutions: this.supportedResolutions,
@@ -468,7 +471,7 @@ class DatabaseIntegratedDatafeed {
                     timezone: 'Etc/UTC',
                     exchange: 'CLICKHOUSE',
                     minmov: 1,
-                    pricescale: 100000,
+                    pricescale: (['ESU6','ESH7','ESZ6','ESM7','NQU6','NQH7','NQZ6','NQM7'].includes(symbol) ? 4 : 100000),
                     has_intraday: true,
                     has_weekly_and_monthly: true,
                     supported_resolutions: this.supportedResolutions,
@@ -594,7 +597,13 @@ class DatabaseIntegratedDatafeed {
     async _getBarsInternal(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
         const { from, to, firstDataRequest } = periodParams;
 
-        console.log(`\n${'='.repeat(50)}`);
+
+        if(fromRepeat.hasOwnProperty(from + " " +  to + resolution + symbolInfo.name)){
+            console.log(`NOT REPEAT !!! 📊 getBars | ${symbolInfo.name} | ${resolution} | first=${firstDataRequest}`);
+            return ""
+        }
+        fromRepeat[from + " " +  to + resolution + symbolInfo.name] = ""
+        console.log(`\n${'='.repeat(50)}`); 
         console.log(`📊 getBars | ${symbolInfo.name} | ${resolution} | first=${firstDataRequest}`);
         console.log(`   TV from: ${new Date(from * 1000).toISOString()}`);
         console.log(`   TV to:   ${new Date(to * 1000).toISOString()}`);
@@ -610,6 +619,7 @@ class DatabaseIntegratedDatafeed {
 
             const isTick = table === 'raw_market_data' || resolution === '1t' || resolution === '1T';
             if (isTick) {
+                console.log("IS TICK raw_market_data")
                 return this._getBarsTickInternal(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback, ticker, table);
             }
 
@@ -730,8 +740,9 @@ class DatabaseIntegratedDatafeed {
             // Баров в окне нет. Проверяем был ли этот диапазон уже загружен с сервера.
             if (this._isRangeFetched(segKey, from, to)) {
                 // Уже запрашивали — данных в БД нет, реальный gap (выходные и т.п.)
-                console.log('✅ Range already fetched, real gap (weekend/holiday) — noData: false');
-                onHistoryCallback([], { noData: false });
+                // noData:true — иначе TV зациклится повторяя тот же запрос
+                console.log('✅ Range already fetched, real gap (weekend/holiday) — noData: true');
+                onHistoryCallback([], { noData: true });
                 return;
             }
 
@@ -744,8 +755,8 @@ class DatabaseIntegratedDatafeed {
             this._registerSegment(segKey, 0, from);
 
             if (!data || data.length === 0) {
-                console.warn('⚠️ No data for inside gap range');
-                onHistoryCallback([], { noData: false });
+                console.warn('⚠️ No data for inside gap range — noData: true');
+                onHistoryCallback([], { noData: true });
                 return;
             }
 
@@ -812,21 +823,57 @@ class DatabaseIntegratedDatafeed {
 
 async _getBarsTickInternal(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback, ticker, table) {
     const { from, to, firstDataRequest } = periodParams;
-
     console.log(`🎯 TICK getBars | first=${firstDataRequest} | from=${new Date(from*1000).toISOString()} | _tickStartTs=${this._tickStartTs ? new Date(this._tickStartTs*1000).toISOString() : 'none'}`);
+
+    // Защита от бесконечного цикла: если этот же from/to уже отвечал пусто — сразу noData:true
+    if (!this._emptyWindows) this._emptyWindows = new Set();
+    const winKey = `${from}-${to}`;
+    if (this._emptyWindows.has(winKey)) {
+        console.log(`⛔ Repeated empty window ${winKey} — noData:true immediately`);
+        onHistoryCallback([], { noData: true });
+        return;
+    }
+
+    // Оборачиваем callback чтобы автоматически запоминать пустые ответы
+    const origCallback = onHistoryCallback;
+    onHistoryCallback = (bars, meta) => {
+        if ((!bars || bars.length === 0)) {
+            this._emptyWindows.add(winKey);
+            if (this._emptyWindows.size > 500) {
+                // ограничиваем размер, чистим старые записи
+                const arr = [...this._emptyWindows];
+                this._emptyWindows = new Set(arr.slice(-250));
+            }
+        }
+        return origCallback(bars, meta);
+    };
 
     try {
         const ad = window.app.activedata;
 
-        if (firstDataRequest) {
+        // Считаем firstDataRequest если activedata пустой ИЛИ TV говорит что первый
+        const isFirst = firstDataRequest || !window.app.activedata?.length || this._gotoTarget;
+        if (isFirst) {
+            // Если activedata уже содержит данные за нужный период — отдаём их
+            const ad = window.app.activedata;
+            if (ad && ad.length > 0 && !this._tickStartTs && !this._gotoTarget) {
+                const adFirstTs = Math.floor(parseLocalTimestamp(ad[0].timestamp) / 1000);
+                const adLastTs  = Math.floor(parseLocalTimestamp(ad[ad.length-1].timestamp) / 1000);
+                // Если activedata покрывает запрошенный диапазон — отдаём без запроса к серверу
+                if (adFirstTs <= to && adLastTs >= from) {
+                    const bars = this._adToBars(ad);
+                    console.log(`✅ TICK: serving ${bars.length} bars from cache (no server request)`);
+                    onHistoryCallback(bars, { noData: false });
+                    return;
+                }
+            }
             // Если есть целевая точка от gotoTick — загружаем с неё
-            const startTs = this._tickStartTs || null;
-
+            const startTs = this._tickStartTs || this._gotoTarget || null;
             if (startTs) {
                 console.log(`🎯 TICK: loading from gotoTick point ${new Date(startTs*1000).toISOString()}`);
-                // Сбрасываем activedata (новая точка = новый контекст)
                 window.app.activedata = [];
                 window.app._activeDataIndex = new Set();
+                this._gotoTarget = null; // сбрасываем после использования
             }
 
             // Если явной точки от gotoTick нет — не анкеримся на текущее время (now()),
@@ -834,7 +881,7 @@ async _getBarsTickInternal(symbolInfo, resolution, periodParams, onHistoryCallba
             // Это критично: данные могут обрываться задолго до "сейчас" (простой ingest'а,
             // выходные, экспирация ключа провайдера) — тогда окно "now-4h → now" будет пустым,
             // хотя данные в БД есть.
-            let anchorTs = startTs;
+            let anchorTs = startTs || this._gotoTarget || null;
             if (!anchorTs) {
                 anchorTs = await this.getLatestTickTimestamp(ticker);
                 if (anchorTs) {
@@ -864,7 +911,13 @@ async _getBarsTickInternal(symbolInfo, resolution, periodParams, onHistoryCallba
 
             this.appendActiveData(data);
             const bars = this._adToBars(data);
-            console.log(`✅ TICK first load: ${bars.length} bars`);
+            console.log(`✅ TICK first load: ${bars.length} bars, activedata: ${window.app.activedata?.length}`);
+            this._tickStartTs = null;
+            this._gotoTarget  = null;
+            // Сохраняем флаг что данные загружены — для навигации из backtest-page
+            window.app._lastLoadedFirstTs = data.length > 0
+                ? Math.floor(parseLocalTimestamp(data[0].timestamp) / 1000)
+                : null;
             onHistoryCallback(bars, { noData: false });
             return;
         }
@@ -874,48 +927,90 @@ async _getBarsTickInternal(symbolInfo, resolution, periodParams, onHistoryCallba
             ? Math.floor(parseLocalTimestamp(ad[0].timestamp) / 1000)
             : null;
 
-        if (adFirstTs !== null && from < adFirstTs) {
-            console.log(`⬅️ TICK BACKWARD — loading to ${new Date(adFirstTs*1000).toISOString()}`);
-            const data = await this._fetchFromServer({
-                ticker, table,
-                from: Math.max(0, adFirstTs - 14400),  // 4 часа назад
-                to: adFirstTs,
-            });
-
-            if (!data || data.length === 0) {
-                onHistoryCallback([], { noData: true });
+            if (adFirstTs !== null && from < adFirstTs) {
+                // Если есть _tickStartTs от gotoTick — грузим с него, иначе стандартный backward
+                const targetTs = this._tickStartTs;
+                if (targetTs && targetTs < adFirstTs) {
+                    console.log(`⬅️ TICK BACKWARD (gotoTick) — loading from ${new Date(targetTs*1000).toISOString()}`);
+                    this._tickStartTs = null; // сбрасываем
+                    const data = await this._fetchFromServer({
+                        ticker, table,
+                        from: targetTs,
+                        to: targetTs + 14400,  // 4 часа вперёд от точки
+                    });
+                    if (!data || data.length === 0) {
+                        onHistoryCallback([], { noData: true });
+                        return;
+                    }
+                    // Заменяем activedata и сортируем
+                    window.app.activedata = data;
+                    window.app.activedata.sort((a, b) =>
+                        parseLocalTimestamp(a.timestamp) - parseLocalTimestamp(b.timestamp)
+                    );
+                    // Возвращаем все загруженные бары (не фильтруем по from/to)
+                    const bars = this._adToBars(window.app.activedata);
+                    console.log(`✅ TICK gotoTick loaded: ${bars.length} bars from ${new Date(targetTs*1000).toISOString()}`);
+                    onHistoryCallback(bars, { noData: bars.length === 0 });
+                    return;
+                }
+                console.log(`⬅️ TICK BACKWARD — loading to ${new Date(adFirstTs*1000).toISOString()}`);
+                const data = await this._fetchFromServer({
+                    ticker, table,
+                    from: Math.max(0, adFirstTs - 14400),  // 4 часа назад
+                    to: adFirstTs,
+                });
+                if (!data || data.length === 0) {
+                    onHistoryCallback([], { noData: true });
+                    return;
+                }
+                this.appendActiveData(data);
+                window.app.activedata.sort((a, b) =>
+                    parseLocalTimestamp(a.timestamp) - parseLocalTimestamp(b.timestamp)
+                );
+                const filteredBars = this._adToBars(this._filterAd(from, to));
+                if (filteredBars.length > 0) {
+                    onHistoryCallback(filteredBars, { noData: false });
+                } else {
+                    // Нет баров в этом окне — говорим TV что данных дальше нет,
+                    // чтобы остановить бесконечные повторные запросы
+                    console.log('⛔ No bars in requested window — sending noData:true to stop TV loop');
+                    onHistoryCallback([], { noData: true });
+                }
                 return;
             }
-
-            this.appendActiveData(data);
-            window.app.activedata.sort((a, b) =>
-                parseLocalTimestamp(a.timestamp) - parseLocalTimestamp(b.timestamp)
-            );
-
-            const bars = this._adToBars(this._filterAd(from, to));
-            onHistoryCallback(bars, { noData: data.length === 0 });
-            return;
-        }
-
         // Данные в кэше
-        const bars = this._adToBars(this._filterAd(from, to));
-        onHistoryCallback(bars, { noData: bars.length === 0 });
-
+        const cachedBars = this._adToBars(this._filterAd(from, to));
+        if (cachedBars.length > 0) {
+            onHistoryCallback(cachedBars, { noData: false });
+        } else {
+            console.log('⛔ No cached bars in window — noData:true');
+            onHistoryCallback([], { noData: true });
+        }
     } catch (err) {
         console.error('❌ TICK getBars error:', err);
         onErrorCallback(err.message);
+    } finally {
+        // Если после всех веток TV не получил баров — запоминаем окно чтобы не повторять
+        // (защита сработает уже на следующем идентичном запросе через _emptyWindows проверку выше)
     }
 }
 
-    gotoTick(targetTs) {
-        console.log(`🎯 gotoTick: ${new Date(targetTs * 1000).toISOString()}`);
-        this._tickStartTs = targetTs;
-        for (const [key] of this.loadedRanges) {
-            if (key.includes('1T') || key.includes('1t')) {
-                this.loadedRanges.delete(key);
-            }
+gotoTick(targetTs) {
+    console.log(`🎯 gotoTick: ${new Date(targetTs * 1000).toISOString()}`);
+    this._tickStartTs = targetTs;
+    this._reachedStart = false;
+    // Очищаем activedata чтобы datafeed перезагрузил с новой точки
+    window.app.activedata = [];
+    window.app._activeDataIndex = new Set();
+    // Сбрасываем firstDataRequest флаг внутри datafeed
+    this._firstDataRequestDone = false;
+    // Очищаем кэш сегментов для тикового таймфрейма
+    for (const [key] of this.loadedRanges) {
+        if (key.includes('1T') || key.includes('1t')) {
+            this.loadedRanges.delete(key);
         }
     }
+}
 
     subscribeBars(symbolInfo, resolution, onRealtimeCallback, subscriberUID, onResetCacheNeededCallback) {
         this.subscribers.set(subscriberUID, { symbolInfo, resolution, onRealtimeCallback, lastBar: null });

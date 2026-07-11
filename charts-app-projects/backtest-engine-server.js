@@ -367,8 +367,14 @@ function runBacktestOnBars(bars, cfg) {
     let compiledEntry = null, compiledExit = null;
 
     if (globalEntryExpr?.trim() && !globalEntryExpr.trim().startsWith('//') && globalEntryExpr.trim() !== 'true') {
-        try { compiledEntry = new Function('bar','bars','index','params', '"use strict"; return (' + globalEntryExpr + ');'); }
+        try {
+            compiledEntry = new Function('bar','bars','index','params', '"use strict"; return (' + globalEntryExpr + ');');
+            console.log('[BT compile] entry_expression (first 120):', globalEntryExpr.slice(0,120).replace(/\n/g,' '));
+        }
         catch(e) { console.warn('[BT v7.1] entryExpression compile error:', e.message); }
+    } else {
+        console.log('[BT compile] globalEntryExpr пустой или не задан — используется sigVal путь');
+        console.log('[BT compile] setupMeta?.entry_expression:', (cfg.setupMeta?.entry_expression||'').slice(0,80));
     }
     if (globalExitExpr?.trim() && !globalExitExpr.trim().startsWith('//') && globalExitExpr.trim() !== 'true') {
         try { compiledExit = new Function('bar','bars','index','params', '"use strict"; return (' + globalExitExpr + ');'); }
@@ -406,31 +412,53 @@ function runBacktestOnBars(bars, cfg) {
         console.log(`[BT diag] bar[0]:`, {dir: b0.rb_dir===1?'bear':b0.rb_dir===2?'bull':'?', delta: b0.rb_delta, close: b0.rb_close, zgamma: b0.gex_zero_gamma});
 
         // Счётчики условий по всем барам
-        let c = {total:0,dir1:0,delta:0,gex:0,oi:0,spot_zgamma:0,spot_major:0,all:0};
+        const p = globalParams;
+        const dt = Number(p.delta_threshold) || 94;
+        const vt = Number(p.gex_vol_thresh)  || 4;
+        // SHORT цепочка: rb_dir===1, prev_delta < -dt, gex_sum_vol > vt, oi<=0, spot>zgamma+5, spot<mpos
+        let cs = {total:0,bear:0,delta:0,gex:0,vol:0,oi:0,zgamma:0,mpos:0,all:0};
+        // NEGTREND цепочка: rb_dir===1, prev_delta < -dt, gex_sum_vol < -vt, spot<zgamma-5, spot>mneg
+        let cn = {bear:0,delta:0,gex:0,vol:0,zgamma:0,mneg:0,all:0};
+        // LONG цепочка: rb_dir===2, prev_delta < -dt, gex_sum_vol > vt, oi>=0, spot>zgamma+5, spot<mpos
+        let cl = {bull:0,delta:0,gex:0,vol:0,oi:0,zgamma:0,mpos:0,all:0};
         for (const b of bars) {
-            c.total++;
-            const p = globalParams;
-            const d1 = b.rb_dir === 1;
-            const d2 = d1 && (b.rb_prev_delta > (p.delta_threshold||0));
-            const d3 = d2 && b.gex_has_data === 1;
-            const d4 = d3 && b.gex_sum_oi <= 0;
-            const d5 = d4 && b.gex_spot > b.gex_zero_gamma + 5;
-            const d6 = d5 && b.gex_spot < b.gex_major_pos;
-            if (d1) c.dir1++;
-            if (d2) c.delta++;
-            if (d3) c.gex++;
-            if (d4) c.oi++;
-            if (d5) c.spot_zgamma++;
-            if (d6) { c.spot_major++; c.all++; }
+            cs.total++;
+            // SHORT (postrend)
+            const ps1 = b.rb_dir === 1;
+            const ps2 = ps1 && b.rb_prev_delta < -dt;
+            const ps3 = ps2 && b.gex_has_data === 1;
+            const ps4 = ps3 && b.gex_sum_vol > vt;
+            const ps5 = ps4 && b.gex_sum_oi <= 0;
+            const ps6 = ps5 && b.gex_spot > (b.gex_zero_gamma + 5);
+            const ps7 = ps6 && b.gex_spot < b.gex_major_pos;
+            if (ps1) cs.bear++;   if (ps2) cs.delta++; if (ps3) cs.gex++;
+            if (ps4) cs.vol++;    if (ps5) cs.oi++;     if (ps6) cs.zgamma++;
+            if (ps7) { cs.mpos++; cs.all++; }
+            // NEGTREND
+            const pn1 = b.rb_dir === 1;
+            const pn2 = pn1 && b.rb_prev_delta < -dt;
+            const pn3 = pn2 && b.gex_has_data === 1;
+            const pn4 = pn3 && b.gex_sum_vol < -vt;
+            const pn5 = pn4 && b.gex_spot < (b.gex_zero_gamma - 5);
+            const pn6 = pn5 && b.gex_spot > b.gex_major_neg;
+            if (pn1) cn.bear++;   if (pn2) cn.delta++; if (pn3) cn.gex++;
+            if (pn4) cn.vol++;    if (pn5) cn.zgamma++; if (pn6) { cn.mneg++; cn.all++; }
+            // LONG (postrend)
+            const pl1 = b.rb_dir === 2;
+            const pl2 = pl1 && b.rb_prev_delta < -dt;
+            const pl3 = pl2 && b.gex_has_data === 1;
+            const pl4 = pl3 && b.gex_sum_vol > vt;
+            const pl5 = pl4 && b.gex_sum_oi >= 0;
+            const pl6 = pl5 && b.gex_spot > (b.gex_zero_gamma + 5);
+            const pl7 = pl6 && b.gex_spot < b.gex_major_pos;
+            if (pl1) cl.bull++;   if (pl2) cl.delta++; if (pl3) cl.gex++;
+            if (pl4) cl.vol++;    if (pl5) cl.oi++;     if (pl6) cl.zgamma++;
+            if (pl7) { cl.mpos++; cl.all++; }
         }
-        console.log(`[BT diag] УСЛОВИЯ (из ${c.total} баров):`);
-        console.log(`  rb_dir===1:           ${c.dir1} (${Math.round(c.dir1/c.total*100)}%)`);
-        console.log(`  + prev_delta>thresh:  ${c.delta} (${Math.round(c.delta/c.total*100)}%)`);
-        console.log(`  + gex_has_data:       ${c.gex}`);
-        console.log(`  + sum_oi<=0:          ${c.oi} (${Math.round(c.oi/c.total*100)}%)`);
-        console.log(`  + spot>zgamma+5:      ${c.spot_zgamma} (${Math.round(c.spot_zgamma/c.total*100)}%)`);
-        console.log(`  + spot<major_pos:     ${c.spot_major} (${Math.round(c.spot_major/c.total*100)}%)`);
-        console.log(`  ИТОГО входов:         ${c.all}`);
+        console.log(`[BT diag] params: dt=${dt} vt=${vt} из ${cs.total} баров`);
+        console.log(`[BT diag] POSTREND SHORT:  bear=${cs.bear} delta<-${dt}:${cs.delta} gex:${cs.gex} vol>${vt}:${cs.vol} oi<=0:${cs.oi} spot>zgamma+5:${cs.zgamma} spot<mpos:${cs.mpos} → ${cs.all} сигналов`);
+        console.log(`[BT diag] NEGTREND SHORT:  bear=${cn.bear} delta<-${dt}:${cn.delta} gex:${cn.gex} vol<-${vt}:${cn.vol} spot<zgamma-5:${cn.zgamma} spot>mneg:${cn.mneg} → ${cn.all} сигналов`);
+        console.log(`[BT diag] POSTREND LONG:   bull=${cl.bull} delta<-${dt}:${cl.delta} gex:${cl.gex} vol>${vt}:${cl.vol} oi>=0:${cl.oi} spot>zgamma+5:${cl.zgamma} spot<mpos:${cl.mpos} → ${cl.all} сигналов`);
 
         // Также показываем sample значений для отладки
         const sample = bars.slice(0,5).map(b=>({
@@ -647,9 +675,9 @@ function runBacktestOnBars(bars, cfg) {
                     ? +(close + TICK_SIZE).toFixed(2)
                     : +(close - TICK_SIZE).toFixed(2);
 
-                // ES Futures: SL=10 тиков (2.50pts), TP=20 тиков (5.00pts)
-                const SL_PTS = (cfg.sl_ticks || 10) * TICK_SIZE;  // 2.50 pts
-                const TP_PTS = (cfg.tp_ticks || 20) * TICK_SIZE;  // 5.00 pts
+                // ES Futures: SL=10 тиков (2.50pts), TP=20 тиков (5.00pts) из правил стратегии
+                const SL_PTS = 2.50;  // фиксированный из config.json
+                const TP_PTS = 5.00;  // фиксированный из config.json
                 let sl, tp;
                 if (dir === 'short') {
                     sl = +(actualLimitPrice + SL_PTS).toFixed(2);
@@ -705,8 +733,28 @@ async function runBacktestOnServer(clickhouse, cfg, onProgress) {
     }
 
     // ── Определяем режим: тики или свечи ───────────────────────────────────
-    const IS_RAW_TICKS = table === 'raw_market_data' || (cfg.raw_config != null);
+    // Тиковый режим: raw_market_data ИЛИ ES/NQ фьючерсы (у которых есть provider 201)
+    const FUTURES_TICKERS = ['ESU6','ESH7','ESZ6','ESM7','NQU6','NQH7','NQZ6','NQM7'];
+    const IS_RAW_TICKS = table === 'raw_market_data'
+        || cfg.raw_config != null
+        || FUTURES_TICKERS.includes(ticker);
     const bars = [];
+
+
+    if (IS_RAW_TICKS && !cfg.raw_config) {
+        const GEX_MAP = {
+            ESU6: 'SPX_classic_gex_zero', ESH7: 'SPX_classic_gex_zero',
+            ESZ6: 'SPX_classic_gex_zero', ESM7: 'SPX_classic_gex_zero',
+            NQU6: 'NDX_classic_gex_zero', NQH7: 'NDX_classic_gex_zero',
+            NQZ6: 'NDX_classic_gex_zero', NQM7: 'NDX_classic_gex_zero',
+        };
+        cfg.raw_config = {
+            ticker:       ticker,
+            provider_id:  201,
+            gex_ticker:   GEX_MAP[ticker] || 'SPX_classic_gex_zero',
+            gex_provider: 100,
+        };
+    }
 
     if (IS_RAW_TICKS) {
         // ────────────────────────────────────────────────────────────────────
@@ -832,25 +880,24 @@ async function runBacktestOnServer(clickhouse, cfg, onProgress) {
                     if (rangeUp >= RANGE_PTS) {
                         closedBars.push({ dir: 2,
                             open: barOpen, close: barOpen + RANGE_PTS,
-                            high: barOpen + RANGE_PTS, low: barOpen,
+                            high: barHigh,
+                            low:  barLow,
                             delta: barDelta, ticks: barTicks,
                             open_ts: barOpenTs, close_ts: tsMs });
                         barOpen = +(barOpen + RANGE_PTS).toFixed(2);
-                        barHigh = barOpen; barLow = barOpen;
-                        // Применяем оставшееся движение цены
-                        if (px > barHigh) barHigh = px;
-                        if (px < barLow)  barLow  = px;
+                        barHigh = Math.max(barOpen, px);
+                        barLow  = Math.min(barOpen, px);
                         barDelta = 0; barTicks = 0; barOpenTs = tsMs;
                     } else if (rangeDown >= RANGE_PTS) {
                         closedBars.push({ dir: 1,
                             open: barOpen, close: barOpen - RANGE_PTS,
-                            high: barOpen, low: barOpen - RANGE_PTS,
+                            high: barHigh,
+                            low:  barLow,
                             delta: barDelta, ticks: barTicks,
                             open_ts: barOpenTs, close_ts: tsMs });
                         barOpen = +(barOpen - RANGE_PTS).toFixed(2);
-                        barHigh = barOpen; barLow = barOpen;
-                        if (px > barHigh) barHigh = px;
-                        if (px < barLow)  barLow  = px;
+                        barHigh = Math.max(barOpen, px);
+                        barLow  = Math.min(barOpen, px);
                         barDelta = 0; barTicks = 0; barOpenTs = tsMs;
                     } else {
                         break; // нет закрытия

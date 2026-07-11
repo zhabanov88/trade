@@ -1420,81 +1420,89 @@
     const totalPnl = trades.reduce((s,t)=>s+(t.pnl||0),0).toFixed(0);
     const wr = Math.round(trades.filter(t=>(t.pnl||0)>0).length/trades.length*100);
 
-    const scriptCode = `// ${name} | WR ${wr}% | P&L $${totalPnl}
-(function(){
-  var TRADES=${tradesJson};
-  TVEngine.define({
-    name:${JSON.stringify(name)},
-    defaultInputs:{show_entry:true,show_zones:true,show_exit:true,show_tooltip:true,opacity:80,use_position_shape:true},
-    buildCfg:function(inp){return{
-      show_entry:inp.show_entry!==false,show_zones:inp.show_zones!==false,
-      show_exit:inp.show_exit!==false,show_tooltip:inp.show_tooltip!==false,
-      use_position_shape:inp.use_position_shape!==false,
-      alpha:(parseFloat(inp.opacity)||80)/100,
-    };},
-    analyze:function(bars,cfg){
-      var shapes=[],bArr=[];
-      for(var i=0;i<bars.length;i++) bArr.push(bars[i].t);
-      bArr.sort(function(a,b){return a-b;});
-      function nearestT(tsMs){
-        var s=Math.floor(tsMs/1000),lo=0,hi=bArr.length-1,best=bArr[0];
-        while(lo<=hi){var m=(lo+hi)>>1;if(bArr[m]<=s){best=bArr[m];lo=m+1;}else hi=m-1;}
-        return best;
-      }
-      var a=cfg.alpha;
-      for(var i=0;i<TRADES.length;i++){
-        var t=TRADES[i];
-        if(!t.entryTs) continue;
-        var eT=nearestT(t.entryTs),xT=t.exitTs?nearestT(t.exitTs):eT;
-        var isS=t.dir==='short';
+    // Рисуем shapes напрямую через TV Chart API без TVEngine
+    const drawTradesOnChart = async () => {
+      try {
+        const widget = window.app?.widget;
+        if (!widget) { alert('График недоступен'); return; }
+        const datafeed = window.app?.datafeed;
+        const firstTrade = trades.find(t => t.entryTs);
+        if (!firstTrade) { alert('Нет сделок для отображения'); return; }
 
-        if(cfg.use_position_shape&&t.sl&&t.tp){
-          // ── Нативный TV Long/Short Position shape ───────────────
-          // 3 точки: entry, sl, tp
-          // shape: long_position или short_position
-          var posShape=isS?'short_position':'long_position';
-          shapes.push({
-            shape:posShape,
-            points:[
-              {time:eT,  price:t.entry},
-              {time:xT,  price:t.sl},
-              {time:xT,  price:t.tp},
-            ],
-            color:isS?'rgba(239,68,68,'+a+')':'rgba(34,197,94,'+a+')',
-            overrides:{
-              profitLevel: t.tp,
-              stopLevel:   t.sl,
-              qty: 1,
-            },
-          });
-        } else {
-          // ── Простые shapes: стрелка + зоны ─────────────────────
-          var ec=isS?'rgba(239,68,68,'+a+')':'rgba(34,197,94,'+a+')';
-          if(cfg.show_entry){
-            shapes.push({shape:isS?'arrow_down':'arrow_up',point:{time:eT,price:t.entry},color:ec,fontsize:16});
-            if(cfg.show_tooltip&&t.pdelta!=null){
-              var lb=(isS?'▼':'▲')+' Δ='+(t.pdelta>0?'+':'')+Math.round(t.pdelta||0)
-                +' z='+(t.zgamma?Math.round(t.zgamma):'—')
-                +' vol='+(t.gvol?Math.round(t.gvol):'—')
-                +' P&L=$'+(t.pnl>=0?'+':'')+Math.round(t.pnl||0);
-              shapes.push({shape:'text',point:{time:eT,price:t.entry},label:lb,color:'rgba(0,0,0,0)',textcolor:ec,fontsize:10});
-            }
-          }
-          if(cfg.show_zones&&t.sl&&t.tp){
-            shapes.push({shape:'rectangle',points:[{time:eT,price:isS?t.sl:t.entry},{time:xT,price:isS?t.entry:t.sl}],color:'rgba(239,68,68,'+a*0.12+')',linewidth:0,fillBackground:true,transparency:0});
-            shapes.push({shape:'rectangle',points:[{time:eT,price:isS?t.entry:t.tp},{time:xT,price:isS?t.tp:t.entry}],color:'rgba(34,197,94,'+a*0.12+')',linewidth:0,fillBackground:true,transparency:0});
-          }
-          if(cfg.show_exit&&t.exit){
-            var xc=t.reason==='TP'?'rgba(34,197,94,'+a+')':t.reason==='BE'?'rgba(251,191,36,'+a+')':'rgba(239,68,68,'+a+')';
-            var xs=t.reason==='TP'?(isS?'arrow_up':'arrow_down'):t.reason==='BE'?'circle':'cross';
-            shapes.push({shape:xs,point:{time:xT,price:t.exit},color:xc,fontsize:14});
+        const entrySec = Math.floor(firstTrade.entryTs / 1000);
+
+        // Шаг 1: переключаем resolution 5m → 1T с gotoTick — рабочая последовательность
+        const c = widget.activeChart();
+        window.app.activedata = [];
+        window.app._activeDataIndex = new Set();
+        if (datafeed?.loadedRanges) datafeed.loadedRanges = new Map();
+        await new Promise(resolve => c.setResolution('5', resolve));
+        await new Promise(r => setTimeout(r, 300));
+        if (datafeed) {
+          datafeed._tickStartTs = entrySec;
+          datafeed._gotoTarget  = entrySec;
+        }
+        window.app.activedata = [];
+        window.app._activeDataIndex = new Set();
+
+        await new Promise(resolve => c.setResolution('1T', resolve));
+        await new Promise(r => setTimeout(r, 1500));
+
+        console.log('[BT] activedata loaded:', window.app.activedata?.length, window.app.activedata?.[0]?.timestamp);
+
+        // Шаг 2: скроллим к сделке
+        try {
+          await c.setVisibleRange({ from: entrySec - 300, to: entrySec + 1800 });
+          console.log('[BT] scrolled to', new Date(entrySec * 1000).toISOString());
+        } catch(e) {
+          console.warn('[BT] scroll error:', e.message);
+        }
+
+        await new Promise(r => setTimeout(r, 300));
+
+        // Шаг 3: удаляем старые shapes
+        try { widget.activeChart().removeAllShapes(); } catch(_) {}
+
+        // Шаг 4: рисуем shapes — теперь TV поставит их на видимую область (март)
+        let drawn = 0;
+        for (const t of trades) {
+          if (!t.entryTs || !t.entry || !t.sl || !t.tp) continue;
+          const tEntrySec = Math.floor(t.entryTs / 1000);
+          const tExitSec  = t.exitTs ? Math.floor(t.exitTs / 1000) : tEntrySec + 600;
+          const isShort   = t.dir === 'short';
+          try {
+            await widget.activeChart().createMultipointShape(
+              [
+                { time: tEntrySec, price: t.entry },
+                { time: tExitSec,  price: t.sl    },
+              ],
+              {
+                shape: isShort ? 'short_position' : 'long_position',
+                lock: false,
+                disableSelection: false,
+                zOrder: 'top',
+                overrides: {
+                  stopLevel:   t.sl,
+                  profitLevel: t.tp,
+                },
+              }
+            );
+            drawn++;
+          } catch(e) {
+            console.warn('[BT] shape error:', e.message);
           }
         }
+
+        window._btLastTrades = trades;
+        console.log('[BT] drawn:', drawn, 'of', trades.length);
+        alert('Нарисовано ' + drawn + ' позиций из ' + trades.length + '.');
+      } catch(err) {
+        alert('Ошибка: ' + err.message);
       }
-      return shapes;
-    }
-  });
-})();`;
+    };
+
+    // Сохраняем скрипт в БД (для истории) и сразу рисуем
+    const scriptCode = `// ${name} — сохранено в библиотеке`;
 
     // Сохраняем скрипт в БД как индикатор (type_id=2)
     const systemName = 'bt_indicator_' + Date.now();
@@ -1515,14 +1523,26 @@
         }),
       });
       // Запускаем индикатор на чарте через TVEngine
-      const scriptId = resp?.id;
+      // Рисуем напрямую через Chart API
+      await drawTradesOnChart();
+      return;
+
+      const scriptId = resp?.id; // unreachable — kept for reference
       if (window.app?.addIndicatorToChart) {
         window.app.addIndicatorToChart(scriptId);
-      } else if (window._tve) {
-        // Прямой запуск через TVEngine если есть код
-        const fn = new Function(scriptCode);
-        fn();
-        alert('Индикатор добавлен на график! Также сохранён в библиотеке как «' + name + '»');
+      } else if (window._tve || window.TVEngine) {
+        try {
+          // Внедряем TVEngine в контекст скрипта
+          const tve = window.TVEngine || window._tve;
+          // Оборачиваем скрипт чтобы TVEngine был доступен
+          const wrappedCode = `(function(TVEngine){ ${scriptCode} })(arguments[0])`;
+          const fn = new Function(wrappedCode);
+          fn.call(window, tve);
+          alert('Индикатор добавлен на график! Также сохранён в библиотеке как «' + name + '»');
+        } catch(err) {
+          console.error('[BT] TVEngine run error:', err);
+          alert('Ошибка отрисовки: ' + err.message + '\nСкрипт сохранён в библиотеке как «' + name + '»');
+        }
       } else {
         alert('Скрипт сохранён в библиотеке индикаторов как «' + name + '». Добавьте его через кнопку Indicators на графике.');
       }
@@ -1718,36 +1738,40 @@
           const currentSymbol = chart.symbol?.() || '';
           const currentRes    = chart.resolution?.() || '';
 
-          // Устанавливаем точку старта тиков ПЕРЕД переключением
-          // (gotoTick очищает кэш — следующий firstDataRequest загрузит с этой точки)
-          datafeed.gotoTick(entrySec);
-
-          const doReset = () => {
-            setTimeout(() => {
-              try { widget.activeChart().resetData(); }
-              catch(err) {
-                // Fallback: пересоздать серию через setResolution
-                try { const c = widget.activeChart(); c.setResolution(c.resolution()); }
-                catch(_) {}
-              }
-            }, 100);
-          };
-
           const needSymbol = targetSymbol && targetSymbol !== currentSymbol;
           const needRes    = currentRes !== '1T';
 
+          // После переключения символа/ТФ — navigateToTime
+          const doNavigate = () => {
+            setTimeout(() => {
+              try {
+                const c = widget.activeChart();
+                // gotoTick устанавливает точку загрузки данных в datafeed
+                datafeed.gotoTick(entrySec);
+                // setVisibleRange заставляет datafeed подгрузить нужный диапазон
+                const from = entrySec - 900;   // -15 минут
+                const to   = entrySec + 900;   // +15 минут
+                c.setVisibleRange({ from, to }).then(() => {
+                  console.log('[BT] navigated to', new Date(entrySec * 1000).toISOString());
+                }).catch(e => {
+                  console.warn('[BT] setVisibleRange error:', e?.message);
+                });
+              } catch(err) {
+                console.warn('[BT] navigate error:', err.message);
+              }
+            }, 500);
+          };
+
           if (needSymbol && needRes) {
-            // Переключаем символ → в колбэке переключаем резолюцию → reset
             chart.setSymbol(targetSymbol, () => {
-              widget.activeChart().setResolution('1T', doReset);
+              widget.activeChart().setResolution('1T', doNavigate);
             });
           } else if (needSymbol) {
-            chart.setSymbol(targetSymbol, doReset);
+            chart.setSymbol(targetSymbol, doNavigate);
           } else if (needRes) {
-            chart.setResolution('1T', doReset);
+            chart.setResolution('1T', doNavigate);
           } else {
-            // Уже на нужном символе и ТФ — просто сбрасываем данные
-            doReset();
+            doNavigate();
           }
 
         } catch(err) {
