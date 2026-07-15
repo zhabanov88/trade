@@ -551,6 +551,7 @@ function runBacktestOnBars(bars, cfg) {
                     priceTicks,
                     // bar data at entry
                     rb_delta:       inTrade.bar_rb_delta,
+                    rb_prev_delta:  inTrade.bar_rb_prev_delta,
                     rb_ticks:       inTrade.bar_rb_ticks,
                     rb_open:        inTrade.bar_rb_open,
                     rb_close:       inTrade.bar_rb_close,
@@ -559,7 +560,11 @@ function runBacktestOnBars(bars, cfg) {
                     gex_zero_gamma: inTrade.bar_gex_zero_gamma,
                     gex_sum_vol:    inTrade.bar_gex_sum_vol,
                     gex_major_neg:  inTrade.bar_gex_major_neg,
+                    gex_major_pos:  inTrade.bar_gex_major_pos,
+                    gex_sum_oi:     inTrade.bar_gex_sum_oi,
+                    gex_spot:       inTrade.bar_gex_spot,
                     gex_has_data:   inTrade.bar_gex_has_data,
+                    rb_dir:         bar.rb_dir === 1 ? 1 : 2,
                 });
                 inTrade = null;
             }
@@ -586,6 +591,7 @@ function runBacktestOnBars(bars, cfg) {
                     capitalBefore: +(capital.toFixed(2)),
                     breakevenApplied: false,
                     bar_rb_delta:       pendingLimit.bar_rb_delta,
+                    bar_rb_prev_delta:  pendingLimit.bar_rb_prev_delta,
                     bar_rb_ticks:       pendingLimit.bar_rb_ticks,
                     bar_rb_open:        pendingLimit.bar_rb_open,
                     bar_rb_close:       pendingLimit.bar_rb_close,
@@ -594,6 +600,9 @@ function runBacktestOnBars(bars, cfg) {
                     bar_gex_zero_gamma: pendingLimit.bar_gex_zero_gamma,
                     bar_gex_sum_vol:    pendingLimit.bar_gex_sum_vol,
                     bar_gex_major_neg:  pendingLimit.bar_gex_major_neg,
+                    bar_gex_major_pos:  pendingLimit.bar_gex_major_pos,
+                    bar_gex_sum_oi:     pendingLimit.bar_gex_sum_oi,
+                    bar_gex_spot:       pendingLimit.bar_gex_spot,
                     bar_gex_has_data:   pendingLimit.bar_gex_has_data,
                 };
                 pendingLimit = null;
@@ -607,6 +616,7 @@ function runBacktestOnBars(bars, cfg) {
                     capitalBefore: +(capital.toFixed(2)),
                     breakevenApplied: false,
                     bar_rb_delta:       pendingLimit.bar_rb_delta,
+                    bar_rb_prev_delta:  pendingLimit.bar_rb_prev_delta,
                     bar_rb_ticks:       pendingLimit.bar_rb_ticks,
                     bar_rb_open:        pendingLimit.bar_rb_open,
                     bar_rb_close:       pendingLimit.bar_rb_close,
@@ -615,6 +625,9 @@ function runBacktestOnBars(bars, cfg) {
                     bar_gex_zero_gamma: pendingLimit.bar_gex_zero_gamma,
                     bar_gex_sum_vol:    pendingLimit.bar_gex_sum_vol,
                     bar_gex_major_neg:  pendingLimit.bar_gex_major_neg,
+                    bar_gex_major_pos:  pendingLimit.bar_gex_major_pos,
+                    bar_gex_sum_oi:     pendingLimit.bar_gex_sum_oi,
+                    bar_gex_spot:       pendingLimit.bar_gex_spot,
                     bar_gex_has_data:   pendingLimit.bar_gex_has_data,
                 };
                 pendingLimit = null;
@@ -704,6 +717,7 @@ function runBacktestOnBars(bars, cfg) {
                         : +(actualLimitPrice + cancelTicks * TICK_SIZE).toFixed(2),
                     placedTs: tsMs, placedDate: new Date(tsMs).toISOString().slice(0,10),
                     bar_rb_delta:       bar.rb_delta       ?? null,
+                    bar_rb_prev_delta:  bar.rb_prev_delta  ?? null,
                     bar_rb_ticks:       bar.rb_ticks       ?? null,
                     bar_rb_open:        bar.rb_open        ?? null,
                     bar_rb_close:       bar.rb_close       ?? null,
@@ -712,6 +726,9 @@ function runBacktestOnBars(bars, cfg) {
                     bar_gex_zero_gamma: bar.gex_zero_gamma ?? null,
                     bar_gex_sum_vol:    bar.gex_sum_vol    ?? null,
                     bar_gex_major_neg:  bar.gex_major_neg  ?? null,
+                    bar_gex_major_pos:  bar.gex_major_pos  ?? null,
+                    bar_gex_sum_oi:     bar.gex_sum_oi     ?? null,
+                    bar_gex_spot:       bar.gex_spot       ?? null,
                     bar_gex_has_data:   bar.gex_has_data   ?? null,
                 };
             }
