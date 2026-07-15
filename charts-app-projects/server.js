@@ -1138,10 +1138,12 @@ app.post('/api/backtest/run', requireAuth, async (req, res) => {
             mtfUpTables: mtfUpTables || [],
         };
 
+
+
         console.log(`▶ [Backtest/run SSE] ${ticker} @ ${table}`);
         send('progress', { pct: 1, message: `Запуск бэктеста: ${ticker} @ ${table}...` });
 
-        const { trades, barsProcessed, logs } = await runBacktestOnServer(
+        const { trades, barsProcessed, barsForChart, logs } = await runBacktestOnServer(
             clickhouse, cfg,
             (progress) => {
                 send('progress', {
@@ -1160,6 +1162,7 @@ app.post('/api/backtest/run', requireAuth, async (req, res) => {
             ok: true,
             barsProcessed,
             trades,
+            barsForChart: barsForChart || [],
             stats,
             scriptLogs: (logs || []).slice(-50),
             meta: { ticker, table, fromDate, toDate, ...cfg },
@@ -2640,20 +2643,19 @@ app.get('/api/market-data/last-data', requireAuth, async (req, res) => {
 app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
     const { ticker, from, to, interval = 1 } = req.query;
 
-    if (!ticker || !from || !to) {
-        return res.status(400).json({ error: 'Missing required parameters: ticker, from, to' });
+    if (!ticker) {
+        return res.status(400).json({ error: 'Missing required parameter: ticker' });
     }
+
+    const hasDateFilter = !!(from && to);
+    const DEFAULT_LIMIT = 20000;
 
     console.log('\n📊 TICK AGGREGATION REQUEST:');
     console.log(`   Ticker: ${ticker}`);
-    console.log(`   From: ${from} (${new Date(parseInt(from) * 1000).toISOString()})`);
-    console.log(`   To: ${to} (${new Date(parseInt(to) * 1000).toISOString()})`);
+    console.log(`   Mode: ${hasDateFilter ? 'date range' : `last ${DEFAULT_LIMIT} rows`}`);
     console.log(`   Interval: ${interval}s`);
 
     try {
-        const fromDate = new Date(parseInt(from) * 1000);
-        const toDate = new Date(parseInt(to) * 1000);
-
         // Формат DateTime64(6) требует точно 6 цифр микросекунд
         const formatDateTime64 = (date) => {
             const isoString = date.toISOString();
@@ -2665,42 +2667,65 @@ app.get('/api/market-data/ticks/aggregated', requireAuth, async (req, res) => {
             return `${dateTimePart}.${microseconds}`;
         };
 
-        const fromFormatted = formatDateTime64(fromDate);
-        const toFormatted = formatDateTime64(toDate);
-
-        console.log(`   From formatted: ${fromFormatted}`);
-        console.log(`   To formatted: ${toFormatted}`);
-
         //const intervalSeconds = parseInt(interval);
         const intervalSeconds = 1;
 
-        const query = `
-            SELECT
-                ticker,
-                formatDateTime(toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
-                toFloat64(avg((price))) as open,
-                toFloat64(max((price))) as high,
-                toFloat64(min((price))) as low,
-                toFloat64(argMax((price), participant_timestamp)) as close,
-                toUInt64(count()) as volume
-            FROM raw_market_data
-            WHERE ticker = {ticker:String}
-              AND participant_timestamp >= {from:DateTime64(6, 'UTC')}
-              AND participant_timestamp <= {to:DateTime64(6, 'UTC')}
-            GROUP BY ticker, timestamp
-            ORDER BY timestamp ASC
-            LIMIT 10000
-        `;
+        let query, queryParams;
+
+        if (hasDateFilter) {
+            const fromFormatted = formatDateTime64(new Date(parseInt(from) * 1000));
+            const toFormatted = formatDateTime64(new Date(parseInt(to) * 1000));
+
+            console.log(`   From formatted: ${fromFormatted}`);
+            console.log(`   To formatted: ${toFormatted}`);
+
+            query = `
+                SELECT
+                    ticker,
+                    formatDateTime(toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
+                    toFloat64(avg((price))) as open,
+                    toFloat64(max((price))) as high,
+                    toFloat64(min((price))) as low,
+                    toFloat64(argMax((price), participant_timestamp)) as close,
+                    toUInt64(count()) as volume
+                FROM raw_market_data
+                WHERE ticker = {ticker:String}
+                  AND participant_timestamp >= {from:DateTime64(6, 'UTC')}
+                  AND participant_timestamp <= {to:DateTime64(6, 'UTC')}
+                GROUP BY ticker, timestamp
+                ORDER BY timestamp ASC
+                LIMIT 10000
+            `;
+            queryParams = { ticker, from: fromFormatted, to: toFormatted };
+        } else {
+            // Дат нет — берём последние DEFAULT_LIMIT тиков и агрегируем только их
+            query = `
+                SELECT
+                    {ticker:String} as ticker,
+                    formatDateTime(toStartOfInterval(participant_timestamp, INTERVAL ${intervalSeconds} SECOND), '%Y-%m-%dT%H:%i:%S.000Z') as timestamp,
+                    toFloat64(avg((price))) as open,
+                    toFloat64(max((price))) as high,
+                    toFloat64(min((price))) as low,
+                    toFloat64(argMax((price), participant_timestamp)) as close,
+                    toUInt64(count()) as volume
+                FROM (
+                    SELECT participant_timestamp, price
+                    FROM raw_market_data
+                    WHERE ticker = {ticker:String}
+                    ORDER BY participant_timestamp DESC
+                    LIMIT ${DEFAULT_LIMIT}
+                )
+                GROUP BY timestamp
+                ORDER BY timestamp ASC
+            `;
+            queryParams = { ticker };
+        }
 
         console.log('   📝 Executing query...');
 
         const result = await clickhouse.query({
             query: query,
-            query_params: {
-                ticker: ticker,
-                from: fromFormatted,
-                to: toFormatted
-            },
+            query_params: queryParams,
             format: 'JSONEachRow'
         });
 

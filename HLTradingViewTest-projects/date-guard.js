@@ -373,6 +373,13 @@ if (window._dgLoaded) {} else { window._dgLoaded = true; (function () {
             const orig = chart.setVisibleRange?.bind(chart);
             if (!orig) return;
             chart.setVisibleRange = function(range, ...args) {
+                // Синтетический символ бэктеста ('<TICKER>__BT') — статичная
+                // серия целиком в памяти, понятие "нет данных раньше X" тут
+                // неприменимо, гвард пропускаем.
+                const sym = chart.symbol?.();
+                if (sym && sym.endsWith('__BT')) {
+                    return orig(range, ...args);
+                }
                 const minDate = getMinDate();
                 if (minDate && range.from) {
                     const fromMs = (range.from < 1e10 ? range.from * 1000 : range.from);

@@ -439,6 +439,30 @@ class DatabaseIntegratedDatafeed {
     resolveSymbol(symbolName, onSymbolResolvedCallback, onResolveErrorCallback) {
         console.log('🎯 Resolve symbol:', symbolName);
 
+        // ── Синтетический символ для статичного обзора бэктеста ("ESU6__BT") ──
+        // TV не валидирует имя символа форматом (в отличие от resolution),
+        // поэтому это надёжнее кастомной resolution-строки типа 'RB'/'1RB',
+        // которые TV молча отклоняет (проверено на практике).
+        if (symbolName.endsWith('__BT')) {
+            const baseSymbol = symbolName.slice(0, -4); // убираем суффикс '__BT'
+            const baseInfo = this.symbols.get(baseSymbol) || this.buildSymbolInfo(
+                this.instruments.find(i => i.symbol === baseSymbol) || { symbol: baseSymbol }
+            );
+            const btInfo = {
+                ...JSON.parse(JSON.stringify(baseInfo)),
+                name: symbolName,
+                full_name: symbolName,
+                description: `${baseSymbol} — Backtest Range-Bars`,
+                is_bt_static: true,
+                has_ticks: true,
+                has_seconds: true,
+                seconds_multipliers: ['30'],
+            };
+            this.symbols.set(symbolName, btInfo);
+            setTimeout(() => onSymbolResolvedCallback(btInfo), 0);
+            return;
+        }
+
         // 1. Извлекаем чистый символ без провайдеров (все что после последнего двоеточия)
         let symbol = symbolName;
         if (symbolName.indexOf(":") !== -1) {
@@ -600,7 +624,12 @@ class DatabaseIntegratedDatafeed {
 
         if(fromRepeat.hasOwnProperty(from + " " +  to + resolution + symbolInfo.name)){
             console.log(`NOT REPEAT !!! 📊 getBars | ${symbolInfo.name} | ${resolution} | first=${firstDataRequest}`);
-            return ""
+            // ВАЖНО: TV ждёт вызов колбэка для КАЖДОГО своего запроса — иначе
+            // внутренний промис зависает и падает по таймауту (Rejected by timeout).
+            // Раньше здесь был return "" без вызова колбэка — чинили тут.
+            const bars = this._adToBars(this._filterAd(from, to));
+            onHistoryCallback(bars, { noData: bars.length === 0 });
+            return;
         }
         fromRepeat[from + " " +  to + resolution + symbolInfo.name] = ""
         console.log(`\n${'='.repeat(50)}`); 
@@ -616,6 +645,11 @@ class DatabaseIntegratedDatafeed {
             window.app._currentTicker = ticker;
             window.app._currentTable = table;
             window.app._currentResolution = resolution;
+
+            if (symbolInfo.is_bt_static) {
+                console.log('IS BT STATIC (backtest range-bars, in-memory)');
+                return this._getBarsRangeBarInternal(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback);
+            }
 
             const isTick = table === 'raw_market_data' || resolution === '1t' || resolution === '1T';
             if (isTick) {
@@ -992,6 +1026,40 @@ async _getBarsTickInternal(symbolInfo, resolution, periodParams, onHistoryCallba
     } finally {
         // Если после всех веток TV не получил баров — запоминаем окно чтобы не повторять
         // (защита сработает уже на следующем идентичном запросе через _emptyWindows проверку выше)
+    }
+}
+async _getBarsRangeBarInternal(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
+    try {
+        const { from, to, firstDataRequest } = periodParams;
+        const all = window._btRangeBars || [];
+        if (!all.length) {
+            console.warn('⚠️ BT static: window._btRangeBars пуст — сначала запустите бэктест');
+            onHistoryCallback([], { noData: true });
+            return;
+        }
+        // Вся серия уже целиком в памяти (пришла одним куском вместе с
+        // результатами бэктеста) — на первом запросе отдаём её всю сразу,
+        // без похода на сервер. Навигация к ЛЮБОЙ дате бэктеста (включая
+        // март) становится мгновенной и не зависит от гонок/таймаутов TV.
+        if (firstDataRequest) {
+            const bars = all.map(b => ({
+                time: b.t * 1000, open: b.open, high: b.high, low: b.low, close: b.close, volume: 0,
+            }));
+            window.app.activedata = all.map(b => ({
+                timestamp: new Date(b.t * 1000).toISOString().replace('Z', ''),
+                open: b.open, high: b.high, low: b.low, close: b.close, volume: 0,
+            }));
+            console.log(`✅ BT static: serving ALL ${bars.length} range-баров разом`);
+            onHistoryCallback(bars, { noData: false });
+            return;
+        }
+        const bars = all
+            .filter(b => b.t >= from && b.t <= to)
+            .map(b => ({ time: b.t * 1000, open: b.open, high: b.high, low: b.low, close: b.close, volume: 0 }));
+        onHistoryCallback(bars, { noData: bars.length === 0 });
+    } catch (err) {
+        console.error('❌ BT static getBars error:', err);
+        onErrorCallback(err.message);
     }
 }
 

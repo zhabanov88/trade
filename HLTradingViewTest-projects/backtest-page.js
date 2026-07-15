@@ -1401,6 +1401,282 @@
     // back/history handled in bindEvents
   }
 
+  // ── BT: боковая панель сделок + попап деталей + подписи дельты ────────────
+
+function btRemoveUI() {
+  document.getElementById('bt-trades-panel')?.remove();
+  document.getElementById('bt-trade-popup')?.remove();
+}
+
+function btRenderTradesSidePanel(trades) {
+  document.getElementById('bt-trades-panel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'bt-trades-panel';
+  panel.style.cssText = `
+    position: fixed; top: 60px; right: 0; width: 300px;
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    background: #131722; border-left: 1px solid #2a2e39; z-index: 9999;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #d1d4dc; box-shadow: -2px 0 12px rgba(0,0,0,.35);
+  `;
+
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 10px 12px; border-bottom: 1px solid #2a2e39; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; background: #131722;
+  `;
+  header.innerHTML = `<span>Сделки (${trades.filter(t=>t.entryTs).length})</span>`;
+  const closeBtn = document.createElement('span');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'cursor:pointer; opacity:.6; padding:2px 6px;';
+  closeBtn.onmouseenter = () => closeBtn.style.opacity = '1';
+  closeBtn.onmouseleave = () => closeBtn.style.opacity = '.6';
+  closeBtn.onclick = () => panel.remove();
+  header.appendChild(closeBtn);
+  panel.appendChild(header);
+
+  const list = document.createElement('div');
+  trades.forEach((t) => {
+    if (!t.entryTs) return;
+    const isShort = t.dir === 'short';
+    const pnl = t.pnl || 0;
+    const row = document.createElement('div');
+    row.style.cssText = `
+      padding: 8px 12px; border-bottom: 1px solid #1e222d; cursor: pointer;
+      display: flex; justify-content: space-between; gap: 6px; align-items: center;
+    `;
+    row.innerHTML = `
+      <span style="color:${isShort ? '#ef5350' : '#26a69a'}; font-weight:600; width:46px;">${isShort ? 'SHORT' : 'LONG'}</span>
+      <span style="flex:1; opacity:.85;">${new Date(t.entryTs).toISOString().slice(0,16).replace('T',' ')}</span>
+      <span style="color:${pnl >= 0 ? '#26a69a' : '#ef5350'}; font-weight:600;">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}</span>
+    `;
+    row.onmouseenter = () => row.style.background = '#1e222d';
+    row.onmouseleave = () => row.style.background = '';
+    row.onclick = () => btOnTradeClick(t);
+    list.appendChild(row);
+  });
+  panel.appendChild(list);
+  document.body.appendChild(panel);
+}
+
+async function btOnTradeClick(t) {
+  try {
+    const widget = window.app?.widget;
+    const c = widget?.activeChart?.();
+    if (!c) return;
+    const tEntrySec = Math.floor(t.entryTs / 1000);
+    await c.setVisibleRange({ from: tEntrySec - 900, to: tEntrySec + 1800 });
+  } catch(e) {
+    console.warn('[BT] trade nav error:', e.message);
+  }
+  btShowTradePopup(t);
+}
+
+function btShowTradePopup(t) {
+  document.getElementById('bt-trade-popup')?.remove();
+  const isShort = t.dir === 'short';
+  const pnl = t.pnl || 0;
+  const fmt = (v, d=1) => (typeof v === 'number' ? v.toFixed(d) : '—');
+
+  const box = document.createElement('div');
+  box.id = 'bt-trade-popup';
+  box.style.cssText = `
+    position: fixed; top: 70px; right: 312px; width: 260px;
+    background: #1e222d; border: 1px solid #2a2e39; border-radius: 6px;
+    padding: 12px; z-index: 10000;
+    font: 12px/1.6 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #d1d4dc; box-shadow: 0 4px 16px rgba(0,0,0,.45);
+  `;
+  box.innerHTML = `
+    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+      <b style="color:${isShort ? '#ef5350' : '#26a69a'}">${isShort ? 'SHORT' : 'LONG'} · ${t.exitReason || '—'}</b>
+      <span style="cursor:pointer; opacity:.6;" id="bt-popup-close">✕</span>
+    </div>
+    <div>Вход: <b>${fmt(t.entry, 2)}</b> → Выход: <b>${fmt(t.exitPrice, 2)}</b></div>
+    <div>SL: ${fmt(t.sl, 2)} · TP: ${fmt(t.tp, 2)}</div>
+    <div>P&amp;L: <b style="color:${pnl >= 0 ? '#26a69a' : '#ef5350'}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</b></div>
+    <hr style="border-color:#2a2e39; margin:6px 0;">
+    <div>Delta бара: ${t.rb_delta ?? '—'} · тиков: ${t.rb_ticks ?? '—'}</div>
+    <div>GEX zero_gamma: ${fmt(t.gex_zero_gamma)}</div>
+    <div>GEX sum_vol: ${fmt(t.gex_sum_vol, 0)}</div>
+    <div>GEX major_neg: ${fmt(t.gex_major_neg)}</div>
+  `;
+  document.body.appendChild(box);
+  document.getElementById('bt-popup-close').onclick = () => box.remove();
+}
+
+// Подписи дельты рисуются через createShape (тот же API что и сделки) —
+// не зависит от лицензии charting_library. Для больших серий (>800 баров)
+// не рисуем автоматически (иначе сотни/тысячи вызовов API подвесят вкладку) —
+// вызывайте вручную из консоли: window.btDrawDeltaLabels()
+window.btDrawDeltaLabels = async function() {
+  const widget = window.app?.widget;
+  const c = widget?.activeChart?.();
+  const all = window._btRangeBars || [];
+  if (!c || !all.length) { console.warn('[BT] Нет range-баров для подписей дельты'); return; }
+  let drawn = 0;
+  for (const b of all) {
+    if (b.delta == null) continue;
+    const isBear = b.dir === 1;
+    const span = (b.high - b.low) || (b.high * 0.001);
+    const y = isBear ? b.high + span * 0.4 : b.low - span * 0.4;
+    try {
+      await c.createShape(
+        { time: b.t, price: y },
+        {
+          shape: 'text',
+          text: (b.delta > 0 ? '+' : '') + b.delta,
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: { color: isBear ? '#ef5350' : '#26a69a', fontsize: 10 },
+        }
+      );
+      drawn++;
+    } catch(e) { /* пропускаем единичные сбои, не прерываем цикл */ }
+  }
+  console.log(`[BT] delta labels drawn: ${drawn} of ${all.length}`);
+};
+// ── BT: боковая панель сделок + попап деталей + подписи дельты ────────────
+
+function btRemoveUI() {
+  document.getElementById('bt-trades-panel')?.remove();
+  document.getElementById('bt-trade-popup')?.remove();
+}
+
+function btRenderTradesSidePanel(trades) {
+  document.getElementById('bt-trades-panel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'bt-trades-panel';
+  panel.style.cssText = `
+    position: fixed; top: 60px; right: 0; width: 300px;
+    max-height: calc(100vh - 80px); overflow-y: auto;
+    background: #131722; border-left: 1px solid #2a2e39; z-index: 9999;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #d1d4dc; box-shadow: -2px 0 12px rgba(0,0,0,.35);
+  `;
+
+  const header = document.createElement('div');
+  header.style.cssText = `
+    padding: 10px 12px; border-bottom: 1px solid #2a2e39; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; background: #131722;
+  `;
+  header.innerHTML = `<span>Сделки (${trades.filter(t=>t.entryTs).length})</span>`;
+  const closeBtn = document.createElement('span');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = 'cursor:pointer; opacity:.6; padding:2px 6px;';
+  closeBtn.onmouseenter = () => closeBtn.style.opacity = '1';
+  closeBtn.onmouseleave = () => closeBtn.style.opacity = '.6';
+  closeBtn.onclick = () => panel.remove();
+  header.appendChild(closeBtn);
+  panel.appendChild(header);
+
+  const list = document.createElement('div');
+  trades.forEach((t) => {
+    if (!t.entryTs) return;
+    const isShort = t.dir === 'short';
+    const pnl = t.pnl || 0;
+    const row = document.createElement('div');
+    row.style.cssText = `
+      padding: 8px 12px; border-bottom: 1px solid #1e222d; cursor: pointer;
+      display: flex; justify-content: space-between; gap: 6px; align-items: center;
+    `;
+    row.innerHTML = `
+      <span style="color:${isShort ? '#ef5350' : '#26a69a'}; font-weight:600; width:46px;">${isShort ? 'SHORT' : 'LONG'}</span>
+      <span style="flex:1; opacity:.85;">${new Date(t.entryTs).toISOString().slice(0,16).replace('T',' ')}</span>
+      <span style="color:${pnl >= 0 ? '#26a69a' : '#ef5350'}; font-weight:600;">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}</span>
+    `;
+    row.onmouseenter = () => row.style.background = '#1e222d';
+    row.onmouseleave = () => row.style.background = '';
+    row.onclick = () => btOnTradeClick(t);
+    list.appendChild(row);
+  });
+  panel.appendChild(list);
+  document.body.appendChild(panel);
+}
+
+async function btOnTradeClick(t) {
+  try {
+    const widget = window.app?.widget;
+    const c = widget?.activeChart?.();
+    if (!c) return;
+    const tEntrySec = Math.floor(t.entryTs / 1000);
+    await c.setVisibleRange({ from: tEntrySec - 900, to: tEntrySec + 1800 });
+  } catch(e) {
+    console.warn('[BT] trade nav error:', e.message);
+  }
+  btShowTradePopup(t);
+}
+
+function btShowTradePopup(t) {
+  document.getElementById('bt-trade-popup')?.remove();
+  const isShort = t.dir === 'short';
+  const pnl = t.pnl || 0;
+  const fmt = (v, d=1) => (typeof v === 'number' ? v.toFixed(d) : '—');
+
+  const box = document.createElement('div');
+  box.id = 'bt-trade-popup';
+  box.style.cssText = `
+    position: fixed; top: 70px; right: 312px; width: 260px;
+    background: #1e222d; border: 1px solid #2a2e39; border-radius: 6px;
+    padding: 12px; z-index: 10000;
+    font: 12px/1.6 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #d1d4dc; box-shadow: 0 4px 16px rgba(0,0,0,.45);
+  `;
+  box.innerHTML = `
+    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+      <b style="color:${isShort ? '#ef5350' : '#26a69a'}">${isShort ? 'SHORT' : 'LONG'} · ${t.exitReason || '—'}</b>
+      <span style="cursor:pointer; opacity:.6;" id="bt-popup-close">✕</span>
+    </div>
+    <div>Вход: <b>${fmt(t.entry, 2)}</b> → Выход: <b>${fmt(t.exitPrice, 2)}</b></div>
+    <div>SL: ${fmt(t.sl, 2)} · TP: ${fmt(t.tp, 2)}</div>
+    <div>P&amp;L: <b style="color:${pnl >= 0 ? '#26a69a' : '#ef5350'}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</b></div>
+    <hr style="border-color:#2a2e39; margin:6px 0;">
+    <div>Delta бара: ${t.rb_delta ?? '—'} · тиков: ${t.rb_ticks ?? '—'}</div>
+    <div>GEX zero_gamma: ${fmt(t.gex_zero_gamma)}</div>
+    <div>GEX sum_vol: ${fmt(t.gex_sum_vol, 0)}</div>
+    <div>GEX major_neg: ${fmt(t.gex_major_neg)}</div>
+  `;
+  document.body.appendChild(box);
+  document.getElementById('bt-popup-close').onclick = () => box.remove();
+}
+
+// Подписи дельты рисуются через createShape (тот же API что и сделки) —
+// не зависит от лицензии charting_library. Для больших серий (>800 баров)
+// не рисуем автоматически (иначе сотни/тысячи вызовов API подвесят вкладку) —
+// вызывайте вручную из консоли: window.btDrawDeltaLabels()
+window.btDrawDeltaLabels = async function() {
+  const widget = window.app?.widget;
+  const c = widget?.activeChart?.();
+  const all = window._btRangeBars || [];
+  if (!c || !all.length) { console.warn('[BT] Нет range-баров для подписей дельты'); return; }
+  let drawn = 0;
+  for (const b of all) {
+    if (b.delta == null) continue;
+    const isBear = b.dir === 1;
+    const span = (b.high - b.low) || (b.high * 0.001);
+    const y = isBear ? b.high + span * 0.4 : b.low - span * 0.4;
+    try {
+      await c.createShape(
+        { time: b.t, price: y },
+        {
+          shape: 'text',
+          text: (b.delta > 0 ? '+' : '') + b.delta,
+          lock: true,
+          disableSelection: true,
+          disableSave: true,
+          overrides: { color: isBear ? '#ef5350' : '#26a69a', fontsize: 10 },
+        }
+      );
+      drawn++;
+    } catch(e) { /* пропускаем единичные сбои, не прерываем цикл */ }
+  }
+  console.log(`[BT] delta labels drawn: ${drawn} of ${all.length}`);
+};
   // ── Отправить бэктест на график как TVEngine индикатор ──────
   async function sendBacktestToChart(run, sessionId) {
     const trades = run.result?.trades || run.trades_data || [];
@@ -1425,45 +1701,59 @@
       try {
         const widget = window.app?.widget;
         if (!widget) { alert('График недоступен'); return; }
-        const datafeed = window.app?.datafeed;
         const firstTrade = trades.find(t => t.entryTs);
         if (!firstTrade) { alert('Нет сделок для отображения'); return; }
-
+    
         const entrySec = Math.floor(firstTrade.entryTs / 1000);
-
-        // Шаг 1: переключаем resolution 5m → 1T с gotoTick — рабочая последовательность
+        const baseSymbol = run.inst?.symbol || run.instrument || 'ESU6';
+        const btSymbol = baseSymbol + '__BT';
+    
         const c = widget.activeChart();
-        window.app.activedata = [];
-        window.app._activeDataIndex = new Set();
-        if (datafeed?.loadedRanges) datafeed.loadedRanges = new Map();
-        await new Promise(resolve => c.setResolution('5', resolve));
-        await new Promise(r => setTimeout(r, 300));
-        if (datafeed) {
-          datafeed._tickStartTs = entrySec;
-          datafeed._gotoTarget  = entrySec;
+    
+        // Кладём ВСЕ range-бары в память ДО переключения символа.
+        // Синтетический символ "<TICKER>__BT" отдаёт их статично, целиком,
+        // независимо от resolution — TV не валидирует ФОРМАТ имени символа
+        // (в отличие от resolution, где кастомные коды типа 'RB'/'1RB'
+        // молча отклоняются), поэтому этот путь надёжен.
+        window._btRangeBars = run.result?.barsForChart || [];
+        if (!window._btRangeBars.length) {
+          console.warn('[BT] barsForChart пуст — проверьте что backtest-engine-server.js/server.js обновлены, либо это старый результат без этого поля');
         }
+    
         window.app.activedata = [];
         window.app._activeDataIndex = new Set();
-
-        await new Promise(resolve => c.setResolution('1T', resolve));
-        await new Promise(r => setTimeout(r, 1500));
-
-        console.log('[BT] activedata loaded:', window.app.activedata?.length, window.app.activedata?.[0]?.timestamp);
-
-        // Шаг 2: скроллим к сделке
+    
+        console.log('[BT] switching to synthetic BT symbol:', btSymbol);
+        await new Promise(resolve => c.setSymbol(btSymbol, resolve));
+        await new Promise(r => setTimeout(r, 200));
+    
+        // Двойной тоггл резолюции форсирует у TV настоящую перезагрузку серии
+        // (даже если символ формально "тот же" при повторном запуске бэктеста)
+        await new Promise(resolve => c.setResolution('5', resolve));
+        await new Promise(r => setTimeout(r, 200));
+        window.app.activedata = [];
+        window.app._activeDataIndex = new Set();
+        await new Promise(resolve => c.setResolution('1', resolve));
+    
+        // Ждём фактического появления данных (все бары должны появиться разом)
+        for (let i = 0; i < 50; i++) {           // до ~5с
+          if ((window.app.activedata?.length || 0) >= window._btRangeBars.length) break;
+          await new Promise(r => setTimeout(r, 100));
+        }
+        console.log('[BT] symbol:', c.symbol(), 'resolution:', c.resolution?.(), 'bars loaded:', window.app.activedata?.length, '(expected', window._btRangeBars.length, ')');
+    
+        // Скроллим к первой сделке — данные уже все в памяти, одной попытки хватает.
         try {
-          await c.setVisibleRange({ from: entrySec - 300, to: entrySec + 1800 });
+          await c.setVisibleRange({ from: entrySec - 1800, to: entrySec + 3600 });
           console.log('[BT] scrolled to', new Date(entrySec * 1000).toISOString());
         } catch(e) {
           console.warn('[BT] scroll error:', e.message);
         }
-
-        await new Promise(r => setTimeout(r, 300));
-
-        // Шаг 3: удаляем старые shapes
+    
+        // Удаляем старые shapes
         try { widget.activeChart().removeAllShapes(); } catch(_) {}
-
-        // Шаг 4: рисуем shapes — теперь TV поставит их на видимую область (март)
+    
+        // Рисуем ВСЕ сделки (range-бары уже видны как сама серия — символ __BT)
         let drawn = 0;
         for (const t of trades) {
           if (!t.entryTs || !t.entry || !t.sl || !t.tp) continue;
@@ -1492,10 +1782,19 @@
             console.warn('[BT] shape error:', e.message);
           }
         }
-
+    
         window._btLastTrades = trades;
         console.log('[BT] drawn:', drawn, 'of', trades.length);
-        alert('Нарисовано ' + drawn + ' позиций из ' + trades.length + '.');
+
+        // Боковая панель сделок (клик → переход + попап с деталями)
+        btRenderTradesSidePanel(trades);
+
+        // Подписи дельты — авто только для небольших серий (иначе долго)
+        if (window._btRangeBars.length <= 800) {
+          await window.btDrawDeltaLabels();
+        } else {
+          console.log(`[BT] ${window._btRangeBars.length} баров > 800 — подписи дельты не рисуются автоматически. Вызовите window.btDrawDeltaLabels() вручную если нужно.`);
+        }
       } catch(err) {
         alert('Ошибка: ' + err.message);
       }
@@ -1566,7 +1865,7 @@
             startedAt: sm.startedAt||s.created_at,
             totalRuns: 1, doneRuns: sm.doneRuns||1, errorRuns: sm.errorRuns||0,
             runs: [{ status:'done', result: meta.rangebar_result||null,
-                     inst:{symbol:(meta.runs?.[0]?.ticker||'ESU6')}, ival:{name:'RB'}, params:{} }],
+                     inst:{symbol:(meta.runs?.[0]?.ticker||'ESU6')}, ival:{name:'1RB'}, params:{} }],
           };
         } else {
           const runs=(meta.runs||[]).map(r=>({

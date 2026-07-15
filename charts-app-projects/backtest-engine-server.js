@@ -20,6 +20,7 @@
 const vm      = require('vm');
 const os      = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const RangeBars = require('./range-bars.js');
 
 // ════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -796,8 +797,8 @@ async function runBacktestOnServer(clickhouse, cfg, onProgress) {
             return dir;
         };
 
-        // Range-bar state
-        let barOpen = null, barHigh = null, barLow = null;
+        // Range-bar state (v2 module — только O/H/L/C + факт закрытия)
+        let rbState = null;              // RangeBars.newRangeState(...) объект
         let barDelta = 0, barTicks = 0;
         let barOpenTs = 0;
         let sessionDay = null;
@@ -847,7 +848,7 @@ async function runBacktestOnServer(clickhouse, cfg, onProgress) {
                 const tickDate = d.toISOString().slice(0, 10);
                 if (tickDate !== sessionDay) {
                     sessionDay = tickDate;
-                    barOpen = null; barHigh = null; barLow = null;
+                    rbState = null;
                     barDelta = 0; barTicks = 0; barOpenTs = 0;
                     cumDelta = 0; prevBarDelta = 0;
                     prevPrice = null; prevDir = 0;
@@ -857,77 +858,49 @@ async function runBacktestOnServer(clickhouse, cfg, onProgress) {
                 const askSz = parseFloat(row.ask_size) || 0;
                 const bidSz = parseFloat(row.bid_size) || 0;
                 const tickDelta = (askSz > 0 || bidSz > 0) ? (askSz - bidSz) : leeReady(px);
-                cumDelta += tickDelta;
 
-                if (barOpen === null) {
-                    barOpen = px; barHigh = px; barLow = px;
-                    barOpenTs = tsMs; barDelta = 0; barTicks = 0;
-                }
-                if (px > barHigh) barHigh = px;
-                if (px < barLow)  barLow  = px;
-                barDelta += tickDelta;
-                barTicks++;
+                if (rbState === null) {
+                    // Первый тик сессии/дня — затравка бара
+                    rbState   = RangeBars.newRangeState(RANGE_PTS, px);
+                    barOpenTs = tsMs;
+                    barDelta  = tickDelta;
+                    barTicks  = 1;
+                    cumDelta += tickDelta;
+                } else {
+                    const { completed } = RangeBars.rangeStep(rbState, px, 0);
 
-                // ── Range-bar closure loop ──────────────────────────────
-                // Один тик может закрыть несколько баров если цена прыгнула
-                // на N*RANGE_PTS за один тик (gap). Каждый промежуточный бар
-                // получает ticks=0 (gap-бар) — они будут отфильтрованы.
-                // Последний бар получает реальное количество тиков.
-                let closedBars = [];
-                while (true) {
-                    const rangeUp   = barHigh - barOpen;
-                    const rangeDown = barOpen - barLow;
-                    if (rangeUp >= RANGE_PTS) {
-                        closedBars.push({ dir: 2,
-                            open: barOpen, close: barOpen + RANGE_PTS,
-                            high: barHigh,
-                            low:  barLow,
-                            delta: barDelta, ticks: barTicks,
-                            open_ts: barOpenTs, close_ts: tsMs });
-                        barOpen = +(barOpen + RANGE_PTS).toFixed(2);
-                        barHigh = Math.max(barOpen, px);
-                        barLow  = Math.min(barOpen, px);
-                        barDelta = 0; barTicks = 0; barOpenTs = tsMs;
-                    } else if (rangeDown >= RANGE_PTS) {
-                        closedBars.push({ dir: 1,
-                            open: barOpen, close: barOpen - RANGE_PTS,
-                            high: barHigh,
-                            low:  barLow,
-                            delta: barDelta, ticks: barTicks,
-                            open_ts: barOpenTs, close_ts: tsMs });
-                        barOpen = +(barOpen - RANGE_PTS).toFixed(2);
-                        barHigh = Math.max(barOpen, px);
-                        barLow  = Math.min(barOpen, px);
-                        barDelta = 0; barTicks = 0; barOpenTs = tsMs;
+                    if (completed.length > 0) {
+                        // v2-спека: закрывается максимум ОДИН бар за тик.
+                        const closed = completed[0];
+                        const dir = RangeBars.classifySide(closed) === 'bear' ? 1 : 2;
+                        // GEX присоединяется позже, отдельным шагом (GEX JOIN ниже).
+
+                        bars.push({
+                            timestamp:      row.timestamp,
+                            t:              tSec,
+                            rb_dir:         dir,
+                            rb_delta:       barDelta,
+                            rb_prev_delta:  prevBarDelta,
+                            rb_cum_delta:   cumDelta,
+                            rb_ticks:       barTicks,
+                            rb_open:        closed.open,
+                            rb_high:        closed.high,
+                            rb_low:         closed.low,
+                            rb_close:       closed.close,
+                            rb_bar_open_ts: barOpenTs,
+                        });
+
+                        prevBarDelta = barDelta;
+                        // Тик, вызвавший overflow, становится затравкой НОВОГО бара —
+                        // он не входит в закрытый (совпадает с семантикой rangeStep).
+                        barOpenTs = tsMs;
+                        barDelta  = tickDelta;
+                        barTicks  = 1;
                     } else {
-                        break; // нет закрытия
+                        barDelta += tickDelta;
+                        barTicks++;
                     }
-                }
-
-                for (const closed of closedBars) {
-                    // Пропускаем gap-бары (0 тиков) — артефакты резких ценовых прыжков
-                    if (closed.ticks === 0) continue;
-                    bars.push({
-                        timestamp: row.timestamp,
-                        t: tSec,
-                        rb_dir:         closed.dir,
-                        rb_delta:       closed.delta,
-                        rb_prev_delta:  prevBarDelta,
-                        rb_cum_delta:   cumDelta,
-                        rb_ticks:       closed.ticks,
-                        rb_open:        closed.open,
-                        rb_close:       closed.close,
-                        rb_high:        closed.high,
-                        rb_low:         closed.low,
-                        rb_bar_open_ts: closed.open_ts,
-                        open:  closed.open, high: closed.high,
-                        low:   closed.low,  close: closed.close,
-                        o: closed.open, h: closed.high, l: closed.low, c: closed.close,
-                        price: closed.close, volume: 1, atr: 0,
-                        ask_price: askPx, bid_price: bidPx,
-                        ask_size: askSz, bid_size: bidSz,
-                    });
-                    prevBarDelta = closed.delta;
+                    cumDelta += tickDelta;
                 }
                 tickCount++;
             }
@@ -1077,7 +1050,23 @@ async function runBacktestOnServer(clickhouse, cfg, onProgress) {
         const trades = runBacktestOnBars(bars, cfg);
         onProgress?.({ phase: 'done', pct: 100, message: `Готово: ${trades.length} сделок` });
         console.log(`[BT v7.1] Done: ${trades.length} trades`);
-        return { trades, barsProcessed: bars.length, logs: [] };
+
+        // Лёгкая версия ВСЕХ range-баров (независимо от сделок) — фронтенд
+        // использует её как отдельную статическую серию (resolution 'RB'),
+        // поэтому навигация к любой дате бэктеста (включая март) работает
+        // мгновенно, без повторных походов на сервер.
+        const barsForChart = bars.map(b => ({
+            t:     b.t,
+            open:  b.rb_open,
+            high:  b.rb_high,
+            low:   b.rb_low,
+            close: b.rb_close,
+            dir:   b.rb_dir,
+            delta: b.rb_delta,
+            ticks: b.rb_ticks,
+        }));
+
+        return { trades, barsProcessed: bars.length, barsForChart, logs: [] };
     }
 
     const { sab, floats, timestamps } = barsToSAB(bars);

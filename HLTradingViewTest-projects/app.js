@@ -300,6 +300,9 @@ class TradingApp {
             if (_savedData) {
             } else {
             }
+            // Установка RangeBarMode ДО создания виджета — иначе виджет
+            // захватит НЕобёрнутый getBars (см. пояснение в старой версии app.js)
+            if (window.RangeBarMode) { window.RangeBarMode.install(this.datafeed); }
             this.widget = new TradingView.widget({
                 debug: false,
                 symbol: _savedData ? undefined : defaultSymbol,
@@ -604,6 +607,11 @@ class TradingApp {
 
                     if (window.intervalSelector) {
                         window.intervalSelector.init(this.widget);
+                    }
+
+                    if (window.RangeBarMode) {
+                        window.RangeBarMode.install(this.datafeed);
+                        window.RangeBarMode.initUI(this.widget);
                     }
 
                     if (window.drawingTemplateManager) {
